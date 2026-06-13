@@ -57,6 +57,7 @@ export function EpgPicker({
     );
   }, [epgChannels, query]);
 
+  const displayName = channel.customName ?? channel.sourceName;
   const isDefault =
     channel.epgSourceId === channel.channelSourceId &&
     channel.epgChannelId === channel.sourceEpgChannelId;
@@ -134,6 +135,10 @@ export function EpgPicker({
       <PopoverContent className="w-72 p-0" align="end">
         {/* We do our own filtering and capping, so cmdk's filter is off. */}
         <Command shouldFilter={false}>
+          <div className="border-b border-border px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">EPG for</p>
+            <p className="truncate text-sm font-medium">{displayName}</p>
+          </div>
           <CommandInput
             placeholder="Search EPG channels..."
             value={query}

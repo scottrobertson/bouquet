@@ -95,6 +95,8 @@ All notable changes to this project are recorded here. Newest first.
   (the whole row is still the drag handle), gaps tighten, and the secondary per-row
   controls (EPG picker, revert-to-source-name) move to desktop only, leaving just the
   enable toggle and remove inline. Desktop is unchanged.
+- The EPG picker now shows which channel you're editing in a header above the search
+  box, so you keep that context while searching.
 - Renamed playlist channels now show a small pencil icon next to the name instead of
   a separate "renamed from" line. The original name is in the icon's tooltip.
 - Toasts now confirm the playlist editor's batch actions (add group / add all, the
