@@ -27,7 +27,7 @@ app.use(express.static("build/client", { maxAge: "1h" }));
 app.use(createRequestHandler({ build, mode: "production" }));
 
 app.listen(port, () => {
-  console.log(`IPTV Manager listening on http://localhost:${port}`);
+  console.log(`Bouquet listening on http://localhost:${port}`);
 });
 
 if (cron.validate(syncCron)) {

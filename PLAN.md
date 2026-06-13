@@ -1,4 +1,4 @@
-# IPTV Manager — Plan and Status
+# Bouquet — Plan and Status
 
 ## What this is
 

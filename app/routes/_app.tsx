@@ -38,7 +38,7 @@ export default function AppLayout() {
               <Tv className="size-4" />
             </div>
             <span className="text-sm font-semibold tracking-tight">
-              IPTV Manager
+              Bouquet
             </span>
           </div>
         </header>

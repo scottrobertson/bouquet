@@ -1,4 +1,4 @@
-# IPTV Manager
+# Bouquet
 
 Self-hosted, open-source playlist manager for IPTV. Add your providers, merge
 their channels into curated playlists through a web UI, and get back a clean
@@ -38,7 +38,7 @@ npm run dev
 ```
 
 In dev, missing env vars fall back to insecure defaults (password `admin`), and
-the SQLite file is created at `./data/iptv.db`.
+the SQLite file is created at `./data/bouquet.db`.
 
 ### Useful scripts
 
@@ -55,7 +55,7 @@ the SQLite file is created at `./data/iptv.db`.
 |-----|---------|---------|
 | `APP_PASSWORD` | `admin` (dev only) | Single login password |
 | `SESSION_SECRET` | dev default | Signs the session cookie |
-| `DATABASE_PATH` | `./data/iptv.db` | SQLite file location |
+| `DATABASE_PATH` | `./data/bouquet.db` | SQLite file location |
 | `SYNC_CRON` | `0 4 * * *` | Schedule for provider resync |
 | `PORT` | `3000` | Server port |
 

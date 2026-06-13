@@ -6,7 +6,7 @@ on:
 
 # The image name on GitHub Container Registry.
 env:
-  IMAGE_NAME: ghcr.io/scottrobertson/iptv-manager
+  IMAGE_NAME: ghcr.io/scottrobertson/bouquet
 
 jobs:
   test:

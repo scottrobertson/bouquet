@@ -8,7 +8,7 @@ All notable changes to this project are recorded here. Newest first.
 
 - GitHub Actions CI (`.github/workflows/ci.yml`): runs typecheck and tests on every
   push and PR, then builds the Docker image, and pushes it to GHCR
-  (`ghcr.io/scottrobertson/iptv-manager`, tagged `latest` + git sha) only on main.
+  (`ghcr.io/scottrobertson/bouquet`, tagged `latest` + git sha) only on main.
 - Mobile layout. The desktop design is untouched; the same components just respond
   to screen size. The sidebar becomes a hamburger drawer with a top bar, page
   padding and headers tighten and stack, tables scroll sideways, and the playlist

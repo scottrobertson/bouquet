@@ -123,7 +123,7 @@ export async function buildXmltv(rows: ResolvedChannel[]): Promise<string> {
 
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<tv generator-info-name="iptv-manager">\n` +
+    `<tv generator-info-name="bouquet">\n` +
     (channelParts.length ? channelParts.join("\n") + "\n" : "") +
     (programmeParts.length ? programmeParts.join("\n") + "\n" : "") +
     `</tv>\n`
