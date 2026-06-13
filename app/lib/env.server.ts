@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 const isProd = process.env.NODE_ENV === "production";
 
-// Everything we persist (the SQLite db, and backups later) lives under here.
+// Everything we persist (the SQLite db and backups) lives under here.
 const configPath = process.env.CONFIG_PATH ?? "./data";
 
 function required(name: string, devFallback: string): string {
@@ -22,6 +22,9 @@ export const env = {
   sessionSecret: required("SESSION_SECRET", "dev-insecure-session-secret"),
   configPath,
   databasePath: join(configPath, "bouquet.db"),
+  backupsPath: join(configPath, "backups"),
   syncCron: process.env.SYNC_CRON ?? "0 4 * * *",
+  backupCron: process.env.BACKUP_CRON ?? "0 3 * * *",
+  backupKeep: Number(process.env.BACKUP_KEEP ?? 14),
   port: Number(process.env.PORT ?? 3000),
 };

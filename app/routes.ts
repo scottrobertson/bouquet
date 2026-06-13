@@ -24,10 +24,12 @@ export default [
     route("playlists/:id/settings", "routes/playlists.$id.settings.tsx"),
 
     route("settings", "routes/settings.tsx"),
+    route("settings/backup/:file", "routes/settings.backup.$file.tsx"),
   ]),
 
   // Public, no layout. Hit by IPTV players and the cron job.
   route("internal/sync", "routes/internal.sync.tsx"),
+  route("internal/backup", "routes/internal.backup.tsx"),
   route("output/m3u/:token", "routes/output.m3u.$token.tsx"),
   route("output/epg/:token", "routes/output.epg.$token.tsx"),
 ] satisfies RouteConfig;

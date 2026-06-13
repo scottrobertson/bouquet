@@ -26,6 +26,9 @@ function createConnection() {
 const sqlite = globalForDb.__sqlite ?? createConnection();
 globalForDb.__sqlite = sqlite;
 
+// Raw connection, exposed for backup/restore which dump and reinsert rows
+// directly to keep exact fidelity (no ORM type coercion).
+export { sqlite };
 export const db = drizzle(sqlite, { schema });
 
 // Migrate once per process. Idempotent (drizzle tracks applied migrations) and

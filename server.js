@@ -9,7 +9,29 @@ import cron from "node-cron";
 
 const port = Number(process.env.PORT ?? 3000);
 const syncCron = process.env.SYNC_CRON ?? "0 4 * * *";
+const backupCron = process.env.BACKUP_CRON ?? "0 3 * * *";
 const internalToken = process.env.SESSION_SECRET ?? "dev-insecure-session-secret";
+
+// Fire an internal POST endpoint from a cron job, so all the logic stays in the
+// app (the same code the UI uses).
+function scheduleInternal(label, expression, path) {
+  if (!cron.validate(expression)) {
+    console.warn(`[cron] invalid ${label} cron "${expression}", disabled`);
+    return;
+  }
+  cron.schedule(expression, async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+        method: "POST",
+        headers: { "x-internal-token": internalToken },
+      });
+      console.log(`[cron] ${label} triggered: ${res.status}`);
+    } catch (err) {
+      console.error(`[cron] ${label} failed`, err);
+    }
+  });
+  console.log(`[cron] scheduled ${label}: ${expression}`);
+}
 
 const build = await import("./build/server/index.js");
 
@@ -30,19 +52,5 @@ app.listen(port, () => {
   console.log(`Bouquet listening on http://localhost:${port}`);
 });
 
-if (cron.validate(syncCron)) {
-  cron.schedule(syncCron, async () => {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/internal/sync`, {
-        method: "POST",
-        headers: { "x-internal-token": internalToken },
-      });
-      console.log(`[cron] sync triggered: ${res.status}`);
-    } catch (err) {
-      console.error("[cron] sync failed", err);
-    }
-  });
-  console.log(`[cron] scheduled sync: ${syncCron}`);
-} else {
-  console.warn(`[cron] invalid SYNC_CRON "${syncCron}", scheduled sync disabled`);
-}
+scheduleInternal("sync", syncCron, "/internal/sync");
+scheduleInternal("backup", backupCron, "/internal/backup");

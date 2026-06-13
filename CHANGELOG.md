@@ -6,6 +6,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Backup and restore, in Settings. Backups are JSON files in `<CONFIG_PATH>/backups`
+  (the folder is the source of truth, so dropping a `.json` in shows it in the UI).
+  Each backup is a curated snapshot: your sources, category enable/disable, playlists,
+  and only the channel rows your playlists use, not the whole synced catalog (so files
+  are tiny). Back up on a schedule (`BACKUP_CRON`, daily 3am, keeping `BACKUP_KEEP`=14)
+  or manually. Restore replaces all current data in one transaction and takes a safety
+  backup first; run a sync afterwards to refill the channel browser. Backups can be
+  downloaded, and restore is blocked for files from a different schema version.
 - GitHub Actions CI (`.github/workflows/ci.yml`): runs typecheck and tests on every
   push and PR, then builds the Docker image, and pushes it to GHCR
   (`ghcr.io/scottrobertson/bouquet`, tagged `latest` + git sha) only on main.
