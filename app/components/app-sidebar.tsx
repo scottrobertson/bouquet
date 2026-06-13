@@ -8,9 +8,11 @@ const nav = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppSidebar() {
+/** The brand row and nav links. Shared by the desktop sidebar and the mobile
+    drawer so there's one set of nav markup. onNavigate lets the drawer close. */
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <aside className="flex h-screen w-[240px] shrink-0 flex-col border-r border-border bg-sidebar">
+    <>
       <div className="flex h-14 items-center gap-2 px-4">
         <div className="flex size-7 items-center justify-center rounded-md bg-primary/15 text-primary">
           <Tv className="size-4" />
@@ -25,9 +27,10 @@ export function AppSidebar() {
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                "group flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+                "group flex h-9 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors md:h-8",
                 isActive
                   ? "bg-white/[0.06] text-foreground"
                   : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
@@ -50,6 +53,15 @@ export function AppSidebar() {
           </NavLink>
         ))}
       </nav>
+    </>
+  );
+}
+
+/** Desktop sidebar. Hidden on small screens, where the drawer takes over. */
+export function AppSidebar() {
+  return (
+    <aside className="hidden h-screen w-[240px] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+      <SidebarContent />
     </aside>
   );
 }

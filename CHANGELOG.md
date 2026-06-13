@@ -4,6 +4,72 @@ All notable changes to this project are recorded here. Newest first.
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions CI (`.github/workflows/ci.yml`): runs typecheck and tests on every
+  push and PR, then builds the Docker image, and pushes it to GHCR
+  (`ghcr.io/scottrobertson/iptv-manager`, tagged `latest` + git sha) only on main.
+- Mobile layout. The desktop design is untouched; the same components just respond
+  to screen size. The sidebar becomes a hamburger drawer with a top bar, page
+  padding and headers tighten and stack, tables scroll sideways, and the playlist
+  editor (which can't show both panes side by side on a phone) gets a Source
+  channels / Playlist tab switcher. No separate mobile markup.
+- A Tools menu in the Action Bar (the floating bulk-actions bar) for transforms on
+  the selected channels: add prefix, add suffix, find and replace (leave the
+  replace box empty to just remove the text), and reset EPG (moved here from its
+  own button). The menu is a small registry, so new tools are easy to add.
+- When a channel's EPG is pointed at something other than its source default, the
+  EPG icon is now orange (gray = default, red = none), and the picker pins that
+  selected channel to the top under a "Selected" heading.
+- Unit tests (Vitest) for the most critical pure logic: the M3U output builder
+  (`buildM3u`) and the Xtream client's URL building and EPG channel parsing. Run
+  with `npm test` (or `npm run test:watch`).
+
+- Dragging a source channel into the playlist now drops it at the position you
+  release over (insert at that row), not just the bottom, with an insertion-line
+  indicator. Dropping on the category header or empty space still appends.
+- Drag a playlist channel out onto the Source Channels pane to remove it from the
+  playlist (with a "drop here to remove" overlay). Removed channels reappear in
+  the source list.
+
+### Fixed
+
+- Reduced the left indent on source browser category and channel rows (28px to
+  16px) so there's less wasted space, especially on mobile.
+- Bigger touch targets on mobile in the source browser: source headers, category
+  rows, and channel rows are taller, and the per-group "Add all" button is always
+  visible on touch (it was hover-only, so unreachable on a phone).
+- The bulk-actions bar no longer pushes the channel list down when you select a
+  row. It now floats as a centered pill near the bottom of the playlist pane.
+- Dragging a playlist channel that's part of a multi-selection now moves the whole
+  selection as a block (keeping their order), not just the grabbed row. The drag
+  preview shows a "+N" badge for the rest.
+- Reordering a channel downward now lands it where you drop it instead of snapping
+  back above the target. The insert math ignored drag direction; it now uses
+  arrayMove so dropping on a lower row puts the channel after it.
+- The blue insertion line now only shows when dragging in from the source list.
+  When reordering an existing channel, dnd-kit already shifts the rows to show the
+  gap, so the extra line was redundant and appeared on the wrong side.
+- Releasing a dragged source channel outside the playlist now cancels instead of
+  dropping it into the nearest category.
+- A revert icon on renamed playlist channels (left of the EPG icon) that clears
+  the custom name back to the source default. Tooltips on the revert and EPG icons.
+
+### Fixed
+
+- The inline rename field no longer makes the row taller while editing (sits
+  inline at the same height with a subtle background and focus ring).
+- Editing a playlist channel no longer flickers the Source Channels list. The
+  source-channels and EPG endpoints opt out of automatic revalidation, so a
+  rename/toggle/reorder no longer re-fetches and rebuilds the whole browser.
+- EPG picker popover now opens and closes reliably (was wrapped in a tooltip that
+  fought the popover), and only renders a capped, filtered slice of channels
+  instead of all of them, so it no longer stutters with large EPG lists.
+- Renaming a channel and pressing Enter or Space no longer grabs the row into a
+  drag. Removed dnd-kit's keyboard sensor since the editor drag is pointer-only.
+- The "renamed from" pencil no longer shows when the custom name matches the
+  source name. Renaming a channel back to its source name now clears the rename.
+
 ## [1.0.0] - 2026-06-13
 
 ### Added

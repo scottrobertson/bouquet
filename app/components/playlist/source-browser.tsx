@@ -319,7 +319,7 @@ export function SourceBrowser({
                     <button
                       type="button"
                       onClick={() => toggleSource(row.sourceId)}
-                      className="flex w-full cursor-pointer items-center gap-1.5 border-b border-border bg-secondary px-3 py-2 text-left"
+                      className="flex w-full cursor-pointer items-center gap-1.5 border-b border-border bg-secondary px-3 py-3 text-left md:py-2"
                     >
                       {collapsedSources.has(row.sourceId) ? (
                         <ChevronRight className="size-3.5 text-muted-foreground" />
@@ -337,8 +337,8 @@ export function SourceBrowser({
                   ) : row.kind === "category" ? (
                     <div
                       className={cn(
-                        "group/grp flex w-full items-center gap-1.5 border-b border-white/5 bg-card px-3 py-1.5",
-                        multiSource && "pl-7",
+                        "group/grp flex w-full items-center gap-1.5 border-b border-white/5 bg-card px-3 py-2.5 md:py-1.5",
+                        multiSource && "pl-4",
                       )}
                     >
                       <button
@@ -362,7 +362,7 @@ export function SourceBrowser({
                         type="button"
                         onClick={() => onAddGroup(row.sourceId, row.name)}
                         title="Add this whole group as a category"
-                        className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground opacity-0 transition-colors hover:bg-white/[0.06] hover:text-primary group-hover/grp:opacity-100"
+                        className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-primary md:py-0.5 md:opacity-0 md:group-hover/grp:opacity-100"
                       >
                         <Plus className="size-3" />
                         Add all
@@ -524,8 +524,8 @@ function DraggableSourceRow({
       ref={setNodeRef}
       title="Drag into a category"
       className={cn(
-        "flex cursor-grab items-center gap-2 px-3 py-1.5 transition-colors hover:bg-white/[0.02] active:cursor-grabbing",
-        indented && "pl-7",
+        "flex cursor-grab items-center gap-2 px-3 py-2.5 transition-colors hover:bg-white/[0.02] active:cursor-grabbing md:py-1.5",
+        indented && "pl-4",
         checked && "bg-primary/5",
         isDragging && "opacity-40",
       )}

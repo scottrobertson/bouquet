@@ -77,7 +77,7 @@ export default function SourceEdit({ loaderData, actionData, params }: Route.Com
   return (
     <div>
       <PageHeader title="Edit source" description="Update connection details." />
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 md:px-8 md:py-6">
         <SourceForm
           defaults={loaderData.source}
           submitLabel="Save changes"

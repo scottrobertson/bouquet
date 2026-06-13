@@ -154,7 +154,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
         }
       />
 
-      <div className="space-y-5 px-8 py-6">
+      <div className="space-y-5 px-4 py-5 md:px-8 md:py-6">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-[13px]">
           <MetaCount
             label="Channels"

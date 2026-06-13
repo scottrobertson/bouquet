@@ -5,6 +5,13 @@ import {
 } from "~/services/playlist/queries.server";
 import type { Route } from "./+types/playlists.$id.source-channels";
 
+// Playlist edits would otherwise revalidate this big list on every mutation,
+// flickering the browser. The editor reloads it explicitly when it needs to
+// (filter change, after an add), so skip automatic revalidation.
+export function shouldRevalidate() {
+  return false;
+}
+
 // Lazy endpoint for the source browser. Returns channels across every source
 // (each row carries its source), kept out of the editor loader so playlist edits
 // never reload this (potentially huge) list.

@@ -102,7 +102,7 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
           </Button>
         }
       />
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 md:px-8 md:py-6">
         {rows.length === 0 ? (
           <EmptyState
             icon={Radio}

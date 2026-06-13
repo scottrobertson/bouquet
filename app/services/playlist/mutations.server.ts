@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -90,16 +90,20 @@ export function reorderCategories(playlistId: number, ids: number[]) {
   });
 }
 
-/** Add many source channels into a category at the end, defaulting EPG to the channel's own. */
+/** Add many source channels into a category, defaulting EPG to the channel's
+    own. Appends by default, or inserts at insertIndex within the category. */
 export function addChannels(
   playlistId: number,
   categoryId: number,
   sourceChannelIds: number[],
+  insertIndex?: number,
 ) {
   if (!categoryInPlaylist(playlistId, categoryId) || sourceChannelIds.length === 0) {
     return 0;
   }
 
+  // Preserve the order the ids were given in.
+  const order = new Map(sourceChannelIds.map((id, i) => [id, i]));
   const channels = db
     .select({
       id: sourceChannels.id,
@@ -108,7 +112,8 @@ export function addChannels(
     })
     .from(sourceChannels)
     .where(inArray(sourceChannels.id, sourceChannelIds))
-    .all();
+    .all()
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
   // Skip channels already in this category so re-adding does not duplicate.
   const existing = new Set(
@@ -119,26 +124,47 @@ export function addChannels(
       .all()
       .map((r) => r.sourceChannelId),
   );
+  const toAdd = channels.filter((ch) => !existing.has(ch.id));
+  if (toAdd.length === 0) return 0;
 
-  let position = nextChannelPosition(categoryId);
-  let added = 0;
   db.transaction((tx) => {
-    for (const ch of channels) {
-      if (existing.has(ch.id)) continue;
-      tx.insert(playlistChannels)
-        .values({
-          playlistId,
-          categoryId,
-          sourceChannelId: ch.id,
-          position: position++,
-          epgSourceId: ch.sourceId,
-          epgChannelId: ch.epgChannelId,
-        })
+    const current = tx
+      .select({ id: playlistChannels.id })
+      .from(playlistChannels)
+      .where(eq(playlistChannels.categoryId, categoryId))
+      .orderBy(asc(playlistChannels.position), asc(playlistChannels.id))
+      .all()
+      .map((r) => r.id);
+
+    const newIds = toAdd.map(
+      (ch) =>
+        tx
+          .insert(playlistChannels)
+          .values({
+            playlistId,
+            categoryId,
+            sourceChannelId: ch.id,
+            position: 0,
+            epgSourceId: ch.sourceId,
+            epgChannelId: ch.epgChannelId,
+          })
+          .returning({ id: playlistChannels.id })
+          .get().id,
+    );
+
+    const at =
+      insertIndex == null
+        ? current.length
+        : Math.max(0, Math.min(insertIndex, current.length));
+    const ordered = [...current.slice(0, at), ...newIds, ...current.slice(at)];
+    ordered.forEach((id, i) => {
+      tx.update(playlistChannels)
+        .set({ position: i })
+        .where(eq(playlistChannels.id, id))
         .run();
-      added++;
-    }
+    });
   });
-  return added;
+  return toAdd.length;
 }
 
 /** Persist a drag: move one channel to a category and reorder the affected categories. */
@@ -192,8 +218,19 @@ export function renameChannel(
 ) {
   if (!channelInPlaylist(playlistId, channelId)) return;
   const trimmed = customName.trim();
+  // Renaming back to the source name clears the custom name (not a real rename).
+  const row = db
+    .select({ sourceName: sourceChannels.name })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .where(eq(playlistChannels.id, channelId))
+    .get();
+  const next = trimmed && trimmed !== row?.sourceName ? trimmed : null;
   db.update(playlistChannels)
-    .set({ customName: trimmed || null })
+    .set({ customName: next })
     .where(eq(playlistChannels.id, channelId))
     .run();
 }
@@ -284,6 +321,64 @@ export function bulkMove(
         .run();
     }
   });
+}
+
+/** Apply a name transform to each selected channel. Works off the current
+    display name (custom name, or the source name), and clears the custom name
+    when the result lands back on the source name. */
+function bulkRename(
+  playlistId: number,
+  channelIds: number[],
+  transform: (current: string) => string,
+) {
+  const ids = [...ownedChannels(playlistId, channelIds)];
+  if (!ids.length) return;
+  db.transaction((tx) => {
+    const rows = tx
+      .select({
+        id: playlistChannels.id,
+        customName: playlistChannels.customName,
+        sourceName: sourceChannels.name,
+      })
+      .from(playlistChannels)
+      .innerJoin(
+        sourceChannels,
+        eq(playlistChannels.sourceChannelId, sourceChannels.id),
+      )
+      .where(inArray(playlistChannels.id, ids))
+      .all();
+    for (const r of rows) {
+      const current = r.customName ?? r.sourceName;
+      const result = transform(current).trim();
+      const next = result && result !== r.sourceName ? result : null;
+      tx.update(playlistChannels)
+        .set({ customName: next })
+        .where(eq(playlistChannels.id, r.id))
+        .run();
+    }
+  });
+}
+
+export function bulkAddPrefix(playlistId: number, ids: number[], prefix: string) {
+  if (!prefix) return;
+  bulkRename(playlistId, ids, (current) => prefix + current);
+}
+
+export function bulkAddSuffix(playlistId: number, ids: number[], suffix: string) {
+  if (!suffix) return;
+  bulkRename(playlistId, ids, (current) => current + suffix);
+}
+
+/** Replace every occurrence of `search` with `replace` (literal, not regex).
+    Pass an empty `replace` to just remove the matched text. */
+export function bulkReplace(
+  playlistId: number,
+  ids: number[],
+  search: string,
+  replace: string,
+) {
+  if (!search) return;
+  bulkRename(playlistId, ids, (current) => current.split(search).join(replace));
 }
 
 /** Reset EPG on each channel to its own source's default. */

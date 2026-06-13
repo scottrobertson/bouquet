@@ -1,10 +1,10 @@
 import {
   DndContext,
   DragOverlay,
-  KeyboardSensor,
   PointerSensor,
   closestCenter,
   pointerWithin,
+  useDroppable,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -14,10 +14,9 @@ import {
 import {
   SortableContext,
   arrayMove,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ListVideo, Loader2, Plus, Tv } from "lucide-react";
+import { ListVideo, Loader2, Plus, Trash2, Tv } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useSearchParams } from "react-router";
 import {
@@ -40,8 +39,10 @@ import {
   SelectItem,
   SelectTrigger,
 } from "~/components/ui/select";
+import { cn } from "~/lib/utils";
 import { CategoryGroup } from "./category-group";
 import { ChannelRowBody } from "./channel-row";
+import { ChannelTools } from "./channel-tools";
 import { SourceBrowser, type AddTarget } from "./source-browser";
 import type {
   BrowserChannel,
@@ -101,15 +102,21 @@ export function EditorBoard({
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
   useEffect(() => setHiddenIds(new Set()), [browserFetcher.data]);
 
-  // Refetch the browser after an add so the server-side exclude takes over.
-  const prevAddState = useRef(addFetcher.state);
+  // Refetch the browser whenever the set of channels in the playlist changes
+  // (add or remove), so added ones drop out and removed ones come back. Renames
+  // and reorders don't change the set, so they don't trigger a refetch.
+  const channelKey = channels
+    .map((c) => c.sourceChannelId)
+    .sort((a, b) => a - b)
+    .join(",");
+  const prevChannelKey = useRef(channelKey);
   useEffect(() => {
-    if (prevAddState.current !== "idle" && addFetcher.state === "idle") {
+    if (prevChannelKey.current !== channelKey) {
+      prevChannelKey.current = channelKey;
       browserFetcher.load(browserUrl);
     }
-    prevAddState.current = addFetcher.state;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addFetcher.state, browserUrl]);
+  }, [channelKey, browserUrl]);
 
   const browserResults = (browserFetcher.data?.channels ?? []).filter(
     (c) => !hiddenIds.has(c.id),
@@ -128,17 +135,24 @@ export function EditorBoard({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [active, setActive] = useState<ActiveDrag>(null);
   const [newCategory, setNewCategory] = useState("");
+  // Which pane shows on mobile. Desktop shows both side by side regardless.
+  const [view, setView] = useState<"source" | "playlist">("playlist");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Pointer-based detection makes dropping a source onto a category reliable,
-  // and closestCenter keeps in-list reordering smooth.
+  // Dropping a playlist channel here removes it from the playlist.
+  const removeZone = useDroppable({ id: "remove-zone", data: { type: "removeZone" } });
+
+  // Use the pointer's actual target. For a source drag, require it to be over a
+  // droppable so releasing outside the playlist cancels instead of guessing the
+  // nearest category. Reordering still falls back to the closest item.
   const collisionDetection: CollisionDetection = (args) => {
     const pointer = pointerWithin(args);
-    return pointer.length ? pointer : closestCenter(args);
+    if (pointer.length) return pointer;
+    if (args.active.data.current?.type === "source") return [];
+    return closestCenter(args);
   };
 
   const byCategory = useMemo(() => {
@@ -157,13 +171,14 @@ export function EditorBoard({
     });
   }
 
-  function submitAdd(ids: number[], target: AddTarget) {
+  function submitAdd(ids: number[], target: AddTarget, insertIndex?: number) {
     if (ids.length === 0) return;
     const fd = new FormData();
     fd.set("intent", "addChannels");
     for (const id of ids) fd.append("sourceChannelIds", String(id));
     if ("categoryId" in target) fd.set("categoryId", String(target.categoryId));
     else fd.set("newCategoryName", target.newCategoryName);
+    if (insertIndex != null) fd.set("index", String(insertIndex));
     addFetcher.submit(fd, { method: "post" });
     setHiddenIds((prev) => new Set([...prev, ...ids]));
     setSelected(new Set());
@@ -217,7 +232,19 @@ export function EditorBoard({
       const categoryId = categoryFromOver(over);
       if (categoryId == null) return;
       const ids = selected.has(sc.id) ? Array.from(selected) : [sc.id];
-      submitAdd(ids, { categoryId });
+      // Dropped on a channel: insert at its spot. Otherwise append.
+      const overData = over.data.current as
+        | { type?: string; channel?: EditorChannel }
+        | undefined;
+      let insertIndex: number | undefined;
+      if (overData?.type === "channel" && overData.channel) {
+        const cat = overData.channel.categoryId;
+        const idx = items
+          .filter((c) => c.categoryId === cat)
+          .findIndex((c) => c.id === overData.channel!.id);
+        if (idx >= 0) insertIndex = idx;
+      }
+      submitAdd(ids, { categoryId }, insertIndex);
       return;
     }
     if (type === "categoryHeader") {
@@ -225,8 +252,21 @@ export function EditorBoard({
       return;
     }
     if (type === "channel") {
+      if (over.data.current?.type === "removeZone") {
+        removeFromPlaylist(Number(a.id));
+        return;
+      }
       reorderChannels(Number(a.id), over);
     }
+  }
+
+  // Dragged out of the playlist onto the source pane: remove it.
+  function removeFromPlaylist(channelId: number) {
+    setItems((prev) => prev.filter((c) => c.id !== channelId));
+    bulkFetcher.submit(
+      { intent: "removeChannel", channelId },
+      { method: "post" },
+    );
   }
 
   function reorderCats(activeId: string | number, overId: string | number) {
@@ -248,48 +288,91 @@ export function EditorBoard({
     const moved = items.find((c) => c.id === activeId);
     if (!moved) return;
 
+    // Drag the whole selection when the grabbed row is part of it, keeping the
+    // selected channels in their current order as one block.
+    const movingSet =
+      selectedPl.has(activeId) && selectedPl.size > 1
+        ? new Set(selectedPl)
+        : new Set([activeId]);
+    const movingIds = items.filter((c) => movingSet.has(c.id)).map((c) => c.id);
+
     const overData = over.data.current as
       | { type?: string; channel?: EditorChannel; categoryId?: number }
       | undefined;
     const overChannel = overData?.type === "channel" ? overData.channel : undefined;
+    // Dropping onto one of the rows being dragged is a no-op.
+    if (overChannel && movingSet.has(overChannel.id)) return;
     const toCategoryId =
       overData?.type === "category" || overData?.type === "categoryHeader"
         ? Number(overData.categoryId)
         : (overChannel?.categoryId ?? moved.categoryId);
 
-    const next = items.map((c) => ({ ...c }));
-    const movedRef = next.find((c) => c.id === activeId)!;
-    const fromCategoryId = movedRef.categoryId;
-    const without = next.filter((c) => c.id !== activeId);
-    movedRef.categoryId = toCategoryId;
-
-    let insertAt: number;
-    if (overChannel && overChannel.id !== activeId) {
-      insertAt = without.findIndex((c) => c.id === overChannel.id);
-      if (insertAt < 0) insertAt = without.length;
-    } else {
-      const lastIdx = without.map((c) => c.categoryId).lastIndexOf(toCategoryId);
-      insertAt = lastIdx < 0 ? without.length : lastIdx + 1;
-    }
-    without.splice(insertAt, 0, movedRef);
-
-    if (fromCategoryId === toCategoryId) {
-      const before = items.filter((c) => c.categoryId === toCategoryId).map((c) => c.id);
-      const after = without.filter((c) => c.categoryId === toCategoryId).map((c) => c.id);
-      if (before.join(",") === after.join(",")) return;
-    }
-
-    setItems(without);
-
-    const order: Record<string, number[]> = {};
-    order[toCategoryId] = without
-      .filter((c) => c.categoryId === toCategoryId)
+    // Destination order with the moving channels pulled out, then the block
+    // spliced back in at the drop point.
+    const destBase = items
+      .filter((c) => c.categoryId === toCategoryId && !movingSet.has(c.id))
       .map((c) => c.id);
-    if (fromCategoryId !== toCategoryId) {
-      order[fromCategoryId] = without
-        .filter((c) => c.categoryId === fromCategoryId)
+
+    let at: number;
+    if (overChannel) {
+      const overPos = destBase.indexOf(overChannel.id);
+      // Direction matters for a same-category move: dnd-kit shows the gap below
+      // the row when dragging down, so the block lands after it. (Inserting at
+      // the over row's index would put a downward move right back above it.)
+      const sameCatList = items
+        .filter((c) => c.categoryId === toCategoryId)
+        .map((c) => c.id);
+      const movingDown =
+        moved.categoryId === toCategoryId &&
+        sameCatList.indexOf(activeId) < sameCatList.indexOf(overChannel.id);
+      at = overPos < 0 ? destBase.length : movingDown ? overPos + 1 : overPos;
+    } else {
+      at = destBase.length;
+    }
+    const destOrder = [...destBase.slice(0, at), ...movingIds, ...destBase.slice(at)];
+
+    // Categories the moving channels came from, so we renumber them too.
+    const sourceCats = new Set(
+      items.filter((c) => movingSet.has(c.id)).map((c) => c.categoryId),
+    );
+
+    const order: Record<string, number[]> = { [toCategoryId]: destOrder };
+    for (const catId of sourceCats) {
+      if (catId === toCategoryId) continue;
+      order[catId] = items
+        .filter((c) => c.categoryId === catId && !movingSet.has(c.id))
         .map((c) => c.id);
     }
+
+    // Bail if nothing actually moved (same category, same order).
+    if (sourceCats.size === 1 && sourceCats.has(toCategoryId)) {
+      const before = items
+        .filter((c) => c.categoryId === toCategoryId)
+        .map((c) => c.id);
+      if (before.join(",") === destOrder.join(",")) return;
+    }
+
+    // Rebuild the flat list category by category so each bucket matches the
+    // order above.
+    const byId = new Map(
+      items.map((c) => [
+        c.id,
+        movingSet.has(c.id) ? { ...c, categoryId: toCategoryId } : c,
+      ]),
+    );
+    const next: EditorChannel[] = [];
+    for (const cat of cats) {
+      const ids = order[cat.id];
+      if (ids) {
+        for (const id of ids) next.push(byId.get(id)!);
+      } else {
+        for (const c of items) {
+          if (c.categoryId === cat.id && !movingSet.has(c.id)) next.push(c);
+        }
+      }
+    }
+
+    setItems(next);
 
     reorderFetcher.submit(
       {
@@ -390,8 +473,34 @@ export function EditorBoard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid h-full grid-cols-[minmax(320px,2fr)_3fr] overflow-hidden">
-        <div className="min-h-0 border-r border-border">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden md:grid md:grid-cols-[minmax(320px,2fr)_3fr]">
+        {/* Mobile pane switcher. The two panes can't sit side by side on a
+            phone, so this toggles which one is shown. */}
+        <div className="flex shrink-0 gap-1 border-b border-border p-2 md:hidden">
+          {(["source", "playlist"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={cn(
+                "flex-1 rounded-md px-3 py-1.5 text-[13px] font-medium capitalize transition-colors",
+                view === v
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              {v === "source" ? "Source channels" : "Playlist"}
+            </button>
+          ))}
+        </div>
+
+        <div
+          ref={removeZone.setNodeRef}
+          className={cn(
+            "relative min-h-0 border-border md:block md:border-r",
+            view === "source" ? "block flex-1" : "hidden",
+          )}
+        >
           <SourceBrowser
             categories={browserCategories}
             results={browserResults}
@@ -405,9 +514,29 @@ export function EditorBoard({
             onAddMatching={addMatching}
             adding={adding}
           />
+          {active?.type === "channel" ? (
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed transition-colors",
+                removeZone.isOver
+                  ? "border-destructive bg-destructive/15 text-destructive"
+                  : "border-border/60 bg-background/70 text-muted-foreground",
+              )}
+            >
+              <span className="flex items-center gap-2 text-[13px] font-medium">
+                <Trash2 className="size-4" />
+                Drop here to remove
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex min-h-0 flex-col">
+        <div
+          className={cn(
+            "relative min-h-0 flex-col md:flex",
+            view === "playlist" ? "flex flex-1" : "hidden",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               Playlist
@@ -439,7 +568,7 @@ export function EditorBoard({
           </div>
 
           {selectedPl.size > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-[13px]">
+            <div className="absolute bottom-20 left-1/2 z-30 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2 text-[13px] shadow-lg shadow-black/40 backdrop-blur duration-150 animate-in fade-in slide-in-from-bottom-2">
               <span className="text-muted-foreground">
                 {selectedPl.size} selected
               </span>
@@ -472,13 +601,7 @@ export function EditorBoard({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => bulkSubmit("bulkResetEpg")}
-              >
-                Reset EPG
-              </Button>
+              <ChannelTools count={selectedPl.size} onRun={bulkSubmit} />
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
@@ -513,7 +636,7 @@ export function EditorBoard({
               <Button
                 size="sm"
                 variant="ghost"
-                className="ml-auto"
+                className="ml-1"
                 onClick={() => setSelectedPl(new Set())}
               >
                 Clear
@@ -593,6 +716,11 @@ export function EditorBoard({
         ) : active?.type === "channel" ? (
           <div className="flex items-center gap-2 rounded-md border border-border bg-popover px-3 py-1.5 shadow-lg shadow-black/40">
             <ChannelRowBody channel={active.channel} overlay />
+            {selectedPl.size > 1 && selectedPl.has(active.channel.id) ? (
+              <Badge className="bg-primary/15 text-primary">
+                +{selectedPl.size - 1}
+              </Badge>
+            ) : null}
           </div>
         ) : null}
       </DragOverlay>

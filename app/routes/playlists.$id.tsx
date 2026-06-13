@@ -5,8 +5,11 @@ import { EditorBoard } from "~/components/playlist/editor-board";
 import { Button } from "~/components/ui/button";
 import {
   addChannels,
+  bulkAddPrefix,
+  bulkAddSuffix,
   bulkMove,
   bulkRemove,
+  bulkReplace,
   bulkResetEpg,
   bulkToggle,
   createCategory,
@@ -77,7 +80,10 @@ export async function action({ request, params }: Route.ActionArgs) {
       if (!Number.isFinite(categoryId)) {
         return data({ ok: false, error: "Pick a category" }, { status: 400 });
       }
-      const added = addChannels(playlistId, categoryId, ids);
+      const indexRaw = form.get("index");
+      const insertIndex =
+        indexRaw != null && indexRaw !== "" ? Number(indexRaw) : undefined;
+      const added = addChannels(playlistId, categoryId, ids, insertIndex);
       return data({ ok: true, intent, added });
     }
 
@@ -217,6 +223,26 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: true, intent });
     }
 
+    case "bulkPrefix": {
+      bulkAddPrefix(playlistId, bulkIds(form), String(form.get("text") ?? ""));
+      return data({ ok: true, intent });
+    }
+
+    case "bulkSuffix": {
+      bulkAddSuffix(playlistId, bulkIds(form), String(form.get("text") ?? ""));
+      return data({ ok: true, intent });
+    }
+
+    case "bulkReplace": {
+      bulkReplace(
+        playlistId,
+        bulkIds(form),
+        String(form.get("search") ?? ""),
+        String(form.get("replace") ?? ""),
+      );
+      return data({ ok: true, intent });
+    }
+
     default:
       return data({ ok: false, error: "Unknown action" }, { status: 400 });
   }
@@ -227,14 +253,16 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon" className="size-7">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 md:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button asChild variant="ghost" size="icon" className="size-7 shrink-0">
             <Link to="/playlists">
               <ArrowLeft className="size-4" />
             </Link>
           </Button>
-          <h1 className="text-base font-semibold tracking-tight">{playlist.name}</h1>
+          <h1 className="truncate text-base font-semibold tracking-tight">
+            {playlist.name}
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           <SaveStatus />
@@ -267,12 +295,12 @@ function SaveStatus() {
       {saving ? (
         <>
           <Loader2 className="size-3.5 animate-spin" />
-          Saving…
+          <span className="hidden sm:inline">Saving…</span>
         </>
       ) : (
         <>
           <Check className="size-3.5 text-success" />
-          All changes saved
+          <span className="hidden sm:inline">All changes saved</span>
         </>
       )}
     </span>

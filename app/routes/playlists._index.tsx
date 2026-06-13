@@ -105,7 +105,7 @@ export default function PlaylistsIndex({ loaderData }: Route.ComponentProps) {
         description="Curated channel lists you publish to your IPTV player."
         actions={<NewPlaylistDialog />}
       />
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 md:px-8 md:py-6">
         {rows.length === 0 ? (
           <EmptyState
             icon={ListVideo}

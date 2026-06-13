@@ -80,7 +80,7 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
         }
       />
 
-      <div className="max-w-2xl space-y-8 px-8 py-6">
+      <div className="max-w-2xl space-y-8 px-4 py-5 md:px-8 md:py-6">
         <section className="space-y-3">
           <h2 className="text-[13px] font-medium">Name</h2>
           <Form method="post" className="flex items-end gap-2">

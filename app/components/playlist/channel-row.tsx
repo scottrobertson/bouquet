@@ -1,12 +1,17 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Pencil, Trash2, Tv } from "lucide-react";
+import { GripVertical, Pencil, RotateCcw, Trash2, Tv } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Switch } from "~/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import type { EditorChannel } from "./types";
@@ -22,12 +27,24 @@ export function SortableChannelRow({
   selected: boolean;
   onSelect: (id: number, shiftKey: boolean) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: channel.id, data: { type: "channel", channel } });
+  const {
+    active,
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id: channel.id, data: { type: "channel", channel } });
 
+  // Only show the insert line when adding from the source list (it lands above
+  // this row). For reordering, dnd-kit already shifts the rows to show the gap.
+  const insertAbove = isOver && active?.data.current?.type === "source";
   const style = {
     transform: CSS.Translate.toString(transform),
     transition,
+    boxShadow: insertAbove ? "inset 0 2px 0 0 var(--primary)" : undefined,
   };
 
   return (
@@ -80,6 +97,8 @@ export function ChannelRowBody({
       ? fetcher.formData.get("enabled") === "true"
       : undefined;
   const enabled = submittedEnabled ?? channel.enabled;
+  const renamed =
+    !!channel.customName && channel.customName !== channel.sourceName;
 
   return (
     <>
@@ -116,7 +135,7 @@ export function ChannelRowBody({
           <span className="min-w-0 shrink truncate">
             {channel.sourceCategoryName ?? "Uncategorised"}
           </span>
-          {channel.customName ? (
+          {renamed ? (
             <span
               className="flex min-w-0 shrink items-center gap-1"
               title={`Renamed from ${channel.sourceName}`}
@@ -130,6 +149,28 @@ export function ChannelRowBody({
       </div>
 
       <div className="ml-auto flex items-center gap-0.5">
+        {!overlay && renamed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() =>
+                  fetcher.submit(
+                    { intent: "renameChannel", channelId: channel.id, customName: "" },
+                    { method: "post" },
+                  )
+                }
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Revert to source name</TooltipContent>
+          </Tooltip>
+        ) : null}
         {overlay || playlistId == null ? null : (
           <span onPointerDown={(e) => e.stopPropagation()}>
             <EpgPicker channel={channel} playlistId={playlistId} fetcher={fetcher} />
@@ -225,7 +266,7 @@ function NameField({
             setEditing(false);
           }
         }}
-        className="min-w-0 flex-1 rounded border border-input bg-transparent px-1.5 py-0.5 text-[13px] outline-none focus:border-ring"
+        className="-mx-1.5 min-w-0 flex-1 rounded-sm bg-white/[0.06] px-1.5 text-[13px] leading-[1.4] outline-none ring-1 ring-ring/60"
       />
     );
   }
@@ -237,7 +278,9 @@ function NameField({
       onClick={() => setEditing(true)}
       className={cn(
         "min-w-0 flex-1 truncate text-left text-[13px]",
-        channel.customName ? "font-medium" : "",
+        channel.customName && channel.customName !== channel.sourceName
+          ? "font-medium"
+          : "",
       )}
       title="Click to rename"
     >

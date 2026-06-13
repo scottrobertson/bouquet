@@ -69,7 +69,7 @@ export default function SourceNew({ actionData }: Route.ComponentProps) {
         title="Add source"
         description="Connect an Xtream Codes provider."
       />
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 md:px-8 md:py-6">
         <SourceForm
           submitLabel="Create source"
           submitIntent="create"
