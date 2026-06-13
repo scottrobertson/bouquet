@@ -78,6 +78,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- The playlist action bar now stays on one line and uses the full width available,
+  instead of wrapping into a tall blob. Its centering was capping it at about half
+  the pane width.
 - A new deploy no longer needs a manual cache clear. The HTML document was being
   cached without revalidation, so after a deploy it pointed at old hashed asset files
   that no longer existed and the page broke. The document and its data requests now

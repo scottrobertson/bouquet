@@ -633,7 +633,7 @@ export function EditorBoard({
           </div>
 
           {selectedPl.size > 0 ? (
-            <div className="absolute bottom-20 left-1/2 z-30 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2 text-[13px] shadow-lg shadow-black/40 backdrop-blur duration-150 animate-in fade-in slide-in-from-bottom-2">
+            <div className="absolute inset-x-0 bottom-20 z-30 mx-auto flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2 rounded-2xl border border-border bg-card/95 px-4 py-2.5 text-[13px] shadow-lg shadow-black/40 backdrop-blur duration-150 animate-in fade-in slide-in-from-bottom-2">
               <span className="text-muted-foreground">
                 {selectedPl.size} selected
               </span>
