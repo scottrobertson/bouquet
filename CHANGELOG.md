@@ -32,6 +32,12 @@ All notable changes to this project are recorded here. Newest first.
   playlist (with a "drop here to remove" overlay). Removed channels reappear in
   the source list.
 
+### Changed
+
+- Replaced the `DATABASE_PATH` env var with `CONFIG_PATH`, a directory (default
+  `./data`, `/data` in Docker) that holds the SQLite database and, soon, backups.
+  The database now lives at `<CONFIG_PATH>/bouquet.db`.
+
 ### Fixed
 
 - Reduced the left indent on source browser category and channel rows (28px to

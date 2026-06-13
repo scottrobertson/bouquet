@@ -45,7 +45,7 @@ they never reach the client bundle.
 - Docker: multi-stage build, Debian-slim base so better-sqlite3 prebuilds work,
   SQLite on a mounted volume. `docker-compose.yml` ships with it.
 
-Env: `APP_PASSWORD`, `SESSION_SECRET`, `DATABASE_PATH`, `SYNC_CRON`, `PORT`. In dev,
+Env: `APP_PASSWORD`, `SESSION_SECRET`, `CONFIG_PATH`, `SYNC_CRON`, `PORT`. In dev,
 missing values fall back to insecure defaults; production refuses to start without them.
 
 ## Data model (app/db/schema.ts)

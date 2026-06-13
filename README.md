@@ -55,7 +55,7 @@ the SQLite file is created at `./data/bouquet.db`.
 |-----|---------|---------|
 | `APP_PASSWORD` | `admin` (dev only) | Single login password |
 | `SESSION_SECRET` | dev default | Signs the session cookie |
-| `DATABASE_PATH` | `./data/bouquet.db` | SQLite file location |
+| `CONFIG_PATH` | `./data` | Directory for the database and backups |
 | `SYNC_CRON` | `0 4 * * *` | Schedule for provider resync |
 | `PORT` | `3000` | Server port |
 

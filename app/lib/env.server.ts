@@ -1,4 +1,9 @@
+import { join } from "node:path";
+
 const isProd = process.env.NODE_ENV === "production";
+
+// Everything we persist (the SQLite db, and backups later) lives under here.
+const configPath = process.env.CONFIG_PATH ?? "./data";
 
 function required(name: string, devFallback: string): string {
   const value = process.env[name];
@@ -15,7 +20,8 @@ export const env = {
   isProd,
   appPassword: required("APP_PASSWORD", "admin"),
   sessionSecret: required("SESSION_SECRET", "dev-insecure-session-secret"),
-  databasePath: process.env.DATABASE_PATH ?? "./data/bouquet.db",
+  configPath,
+  databasePath: join(configPath, "bouquet.db"),
   syncCron: process.env.SYNC_CRON ?? "0 4 * * *",
   port: Number(process.env.PORT ?? 3000),
 };
