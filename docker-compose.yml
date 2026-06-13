@@ -1,0 +1,18 @@
+services:
+  iptv-manager:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # Required in production. Change these.
+      APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      # Optional.
+      DATABASE_PATH: /data/iptv.db
+      SYNC_CRON: ${SYNC_CRON:-0 4 * * *}
+    volumes:
+      - iptv-data:/data
+    restart: unless-stopped
+
+volumes:
+  iptv-data:

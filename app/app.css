@@ -1,0 +1,132 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@plugin "tailwindcss-animate";
+
+/* Deterministic dark mode: we always render dark, driven by the `dark` class
+   on <html> rather than the OS setting, so the shadcn dark: variants apply. */
+@custom-variant dark (&:is(.dark *));
+
+/* Dark-first design system. See ~/Desktop/design-guide.md.
+   Blend of Supabase / Linear / Vercel / Railway: minimal, dark, dense. */
+:root {
+  --background: #09090b;
+  --foreground: #ededef;
+
+  /* layered surfaces: page -> card -> popover = 3 tones */
+  --card: #111113;
+  --card-foreground: #ededef;
+  --popover: #18181b;
+  --popover-foreground: #ededef;
+
+  /* single accent, used sparingly */
+  --primary: #6e62e5;
+  --primary-foreground: #ffffff;
+
+  --secondary: #1c1c1f;
+  --secondary-foreground: #ededef;
+
+  --muted: #18181b;
+  --muted-foreground: #8b8b94;
+
+  /* hover fills and active nav highlight */
+  --accent: #1c1c1f;
+  --accent-foreground: #fafafa;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --warning: #f59e0b;
+  --success: #22c55e;
+
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #6e62e5;
+
+  --sidebar: #0c0c0e;
+
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular",
+    Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* tighter heading tracking per guide */
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* subtle, dark scrollbars to match the chrome */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 8px;
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+@keyframes skeleton-pulse {
+  50% { opacity: 0.4; }
+}
+.skeleton {
+  background: var(--secondary);
+  border-radius: var(--radius-md);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
