@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Check, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { Check, History, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
@@ -143,6 +143,12 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
                 {syncing ? "Syncing..." : "Sync now"}
               </Button>
             </Form>
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/sources/${source.id}/changes`}>
+                <History className="size-4" />
+                Changes
+              </Link>
+            </Button>
             <Button asChild size="sm" variant="outline">
               <Link to={`/sources/${source.id}/edit`}>
                 <Pencil className="size-4" />

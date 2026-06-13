@@ -163,8 +163,41 @@ export const playlistChannels = sqliteTable(
   ],
 );
 
+/** Append-only log of what a sync added/removed for a source, for history. */
+export const sourceChanges = sqliteTable(
+  "source_changes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sourceId: integer("source_id")
+      .notNull()
+      .references(() => sources.id, { onDelete: "cascade" }),
+    // Groups every change from one sync run.
+    syncedAt: integer("synced_at", { mode: "timestamp" }).notNull(),
+    kind: text("kind", {
+      enum: [
+        "channel_added",
+        "channel_removed",
+        "channel_returned",
+        "category_added",
+        "category_removed",
+      ],
+    }).notNull(),
+    // Snapshot of the name at the time, so history stays readable later.
+    name: text("name").notNull(),
+    categoryName: text("category_name"),
+    streamId: text("stream_id"),
+    // Playlists this change touched, snapshotted (id + name) at sync time so the
+    // log stays accurate even if a playlist is later renamed or deleted.
+    playlists: text("playlists", { mode: "json" }).$type<
+      { id: number; name: string }[]
+    >(),
+  },
+  (t) => [index("source_changes_source_synced").on(t.sourceId, t.syncedAt)],
+);
+
 export type Source = typeof sources.$inferSelect;
 export type SourceChannel = typeof sourceChannels.$inferSelect;
+export type SourceChange = typeof sourceChanges.$inferSelect;
 export type SourceEpgChannel = typeof sourceEpgChannels.$inferSelect;
 export type SourceCategory = typeof sourceCategories.$inferSelect;
 export type Playlist = typeof playlists.$inferSelect;

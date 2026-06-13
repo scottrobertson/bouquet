@@ -2,6 +2,11 @@ import { eq } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import { sourceChannels, sourceEpgChannels, sources } from "~/db/schema";
 import { invalidateAll } from "~/services/output/cache.server";
+import {
+  recordSyncChanges,
+  type BeforeChannel,
+  type SeenChannel,
+} from "~/services/sources/changes.server";
 import type { XtreamCreds } from "~/services/xtream/client.server";
 import { syncSourceCategories } from "~/services/sources/categories.server";
 import {
@@ -79,6 +84,26 @@ export async function runSync(sourceId: number): Promise<void> {
     );
     const streams = await fetchLiveStreams(creds);
 
+    // Snapshot the catalog before we touch it, so we can log what this sync
+    // added/removed once it's done.
+    const before = new Map<string, BeforeChannel>(
+      db
+        .select({
+          streamId: sourceChannels.streamId,
+          name: sourceChannels.name,
+          categoryName: sourceChannels.categoryName,
+          available: sourceChannels.available,
+        })
+        .from(sourceChannels)
+        .where(eq(sourceChannels.sourceId, sourceId))
+        .all()
+        .map((r) => [
+          r.streamId,
+          { name: r.name, categoryName: r.categoryName, available: r.available },
+        ]),
+    );
+    const seen: SeenChannel[] = [];
+
     // Mark everything unavailable first, then the upsert below flips the
     // channels still present back to available.
     db.update(sourceChannels)
@@ -92,6 +117,7 @@ export async function runSync(sourceId: number): Promise<void> {
         ? (categoryNames.get(stream.categoryId) ?? null)
         : null;
       if (categoryName) seenCategories.add(categoryName);
+      seen.push({ streamId: stream.streamId, name: stream.name, categoryName });
       db.insert(sourceChannels)
         .values({
           sourceId,
@@ -138,6 +164,13 @@ export async function runSync(sourceId: number): Promise<void> {
     // Drop cached output so auto-sync categories and availability changes reach
     // players on the next poll instead of waiting out the cache TTL.
     invalidateAll();
+
+    // Log what changed for the source's history. Never let it break a sync.
+    try {
+      recordSyncChanges(sourceId, before, seen, now);
+    } catch (err) {
+      console.error("[sync] recording changes failed", err);
+    }
   } catch (err) {
     db.update(sources)
       .set({

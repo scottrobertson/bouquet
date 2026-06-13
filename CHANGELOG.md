@@ -6,6 +6,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Source change log. Each sync now records which channels and categories the provider
+  added or removed (and channels that returned after being gone), on a "Changes" page
+  per source. The page is a full-width table with a selectable list of syncs (newest
+  first, with +/- counts), loading one sync at a time so it scales to a long history.
+  Each change shows which playlists it touched (channels added directly or via an
+  auto-sync category), snapshotted at sync time so the record stays accurate even if a
+  playlist is later renamed or deleted. The first sync of a source is a baseline (no
+  per-channel spam), syncs with no changes add nothing, and it's not in backups.
 - Auto-sync categories. From the Source Channels pane, a provider category's header
   has an "Auto-sync" action: name a playlist group and it mirrors that provider
   category 1:1, staying current on its own as the provider adds and removes channels
