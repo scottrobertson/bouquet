@@ -95,6 +95,9 @@ All notable changes to this project are recorded here. Newest first.
   (the whole row is still the drag handle), gaps tighten, and the secondary per-row
   controls (EPG picker, revert-to-source-name) move to desktop only, leaving just the
   enable toggle and remove inline. Desktop is unchanged.
+- Shift+click in the source channels list now selects a range, the same as the
+  playlist side. The range spans the rows you can see, so collapsed groups aren't
+  included.
 - The EPG picker now shows which channel you're editing in a header above the search
   box, so you keep that context while searching.
 - Renamed playlist channels now show a small pencil icon next to the name instead of

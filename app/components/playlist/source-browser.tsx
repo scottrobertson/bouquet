@@ -59,7 +59,7 @@ export function SourceBrowser({
   loading,
   playlistCategories,
   selected,
-  onToggle,
+  onSelect,
   onAdd,
   onAddGroup,
   onAutoSync,
@@ -72,7 +72,7 @@ export function SourceBrowser({
   loading: boolean;
   playlistCategories: EditorCategory[];
   selected: Set<number>;
-  onToggle: (id: number) => void;
+  onSelect: (id: number, shiftKey: boolean, orderedIds: number[]) => void;
   onAdd: (ids: number[], target: AddTarget) => void;
   onAddGroup: (sourceId: number, categoryName: string) => void;
   onAutoSync: (sourceId: number, categoryName: string, name: string) => void;
@@ -211,6 +211,14 @@ export function SourceBrowser({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceGroups, multiSource, collapsedSources, expandedCats]);
+
+  // The visible channel rows in display order, so a shift+click range only spans
+  // what's actually on screen (collapsed groups aren't included).
+  const orderedChannelIds = useMemo(
+    () =>
+      flatRows.flatMap((r) => (r.kind === "channel" ? [r.channel.id] : [])),
+    [flatRows],
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -384,7 +392,9 @@ export function SourceBrowser({
                     <DraggableSourceRow
                       channel={row.channel}
                       checked={selected.has(row.channel.id)}
-                      onToggle={() => onToggle(row.channel.id)}
+                      onSelect={(shiftKey) =>
+                        onSelect(row.channel.id, shiftKey, orderedChannelIds)
+                      }
                       indented={multiSource}
                     />
                   )}
@@ -582,12 +592,12 @@ function AutoSyncButton({
 function DraggableSourceRow({
   channel,
   checked,
-  onToggle,
+  onSelect,
   indented,
 }: {
   channel: BrowserChannel;
   checked: boolean;
-  onToggle: () => void;
+  onSelect: (shiftKey: boolean) => void;
   indented?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -611,12 +621,16 @@ function DraggableSourceRow({
       {...listeners}
     >
       <GripVertical className="size-4 shrink-0 text-muted-foreground/40" />
-      <Checkbox
-        checked={checked}
-        onCheckedChange={onToggle}
+      <span
+        onClick={(e) => {
+          e.preventDefault();
+          onSelect(e.shiftKey);
+        }}
         onPointerDown={(e) => e.stopPropagation()}
-        className="cursor-pointer"
-      />
+        className="flex cursor-pointer items-center"
+      >
+        <Checkbox checked={checked} className="pointer-events-none" />
+      </span>
       {channel.logo ? (
         <img
           src={logoSrc(channel.logo)}

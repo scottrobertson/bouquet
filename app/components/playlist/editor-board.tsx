@@ -191,13 +191,29 @@ export function EditorBoard({
     [cats],
   );
 
-  function toggle(id: number) {
+  // Source channel selection. Shift+click extends from the last click across the
+  // visible rows, matching the playlist side. The browser passes the rows it's
+  // showing, in order, so the range only covers what you can see.
+  const [lastClickedSrc, setLastClickedSrc] = useState<number | null>(null);
+  function selectSource(id: number, shiftKey: boolean, orderedIds: number[]) {
+    if (shiftKey && lastClickedSrc != null) {
+      const a = orderedIds.indexOf(lastClickedSrc);
+      const b = orderedIds.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = orderedIds.slice(lo, hi + 1);
+        setSelected((prev) => new Set([...prev, ...range]));
+        setLastClickedSrc(id);
+        return;
+      }
+    }
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    setLastClickedSrc(id);
   }
 
   function submitAdd(ids: number[], target: AddTarget, insertIndex?: number) {
@@ -556,7 +572,7 @@ export function EditorBoard({
             loading={browserLoading}
             playlistCategories={cats}
             selected={selected}
-            onToggle={toggle}
+            onSelect={selectSource}
             onAdd={submitAdd}
             onAddGroup={addGroup}
             onAutoSync={addAuto}
