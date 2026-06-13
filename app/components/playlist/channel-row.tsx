@@ -55,14 +55,16 @@ export function SortableChannelRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group/row flex cursor-grab items-center gap-2 border-b border-white/5 px-3 py-2 transition-colors hover:bg-white/[0.02] active:cursor-grabbing",
+        "group/row flex cursor-grab items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors hover:bg-white/[0.02] active:cursor-grabbing sm:gap-2 sm:px-3",
         selected && "bg-primary/5",
         isDragging && "opacity-50",
       )}
       {...attributes}
       {...listeners}
     >
-      <GripVertical className="size-4 shrink-0 text-muted-foreground/50" />
+      {/* The whole row is the drag handle; the grip is just an affordance, so
+          hide it on mobile to claw back width. */}
+      <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/50 sm:block" />
       <span
         onClick={(e) => {
           e.preventDefault();
@@ -103,6 +105,7 @@ export function ChannelRowBody({
 
   return (
     <>
+      {/* Logo is hidden on mobile to give the name room. */}
       {logo ? (
         <img
           src={logoSrc(logo)}
@@ -111,10 +114,10 @@ export function ChannelRowBody({
           onError={(e) => {
             e.currentTarget.style.visibility = "hidden";
           }}
-          className="size-7 shrink-0 rounded object-contain"
+          className="hidden size-7 shrink-0 rounded object-contain sm:block"
         />
       ) : (
-        <div className="flex size-7 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
+        <div className="hidden size-7 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground sm:flex">
           <Tv className="size-3.5" />
         </div>
       )}
@@ -122,37 +125,41 @@ export function ChannelRowBody({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2">
           <NameField channel={channel} displayName={displayName} disabled={overlay} />
-          {!channel.sourceAvailable ? (
-            <Badge className="shrink-0 border-transparent bg-warning/10 text-warning">
-              Unavailable
-            </Badge>
-          ) : null}
-          {!channel.sourceCategoryEnabled ? (
-            <Badge className="shrink-0 border-transparent bg-muted text-muted-foreground">
-              Category off
-            </Badge>
-          ) : null}
         </div>
         <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
           <span className="shrink-0">{channel.sourceProviderName}</span>
           <span className="shrink-0 text-muted-foreground/50">·</span>
-          <span className="min-w-0 shrink truncate">
+          <span className="min-w-0 truncate">
             {channel.sourceCategoryName ?? "Uncategorised"}
           </span>
-          {renamed ? (
-            <span
-              className="flex min-w-0 shrink items-center gap-1"
-              title={`Renamed from ${channel.sourceName}`}
-            >
-              <span className="shrink-0 text-muted-foreground/50">·</span>
-              <Pencil className="size-3 shrink-0" />
-              <span className="min-w-0 truncate">“{channel.sourceName}”</span>
-            </span>
-          ) : null}
         </div>
+        {renamed ? (
+          <div
+            className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground"
+            title={`Renamed from ${channel.sourceName}`}
+          >
+            <Pencil className="size-3 shrink-0" />
+            <span className="min-w-0 truncate">“{channel.sourceName}”</span>
+          </div>
+        ) : null}
       </div>
 
-      <div className="ml-auto flex items-center gap-0.5">
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        {!channel.sourceAvailable || !channel.sourceCategoryEnabled ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {!channel.sourceAvailable ? (
+              <Badge className="border-transparent bg-warning/10 text-warning">
+                Unavailable
+              </Badge>
+            ) : null}
+            {!channel.sourceCategoryEnabled ? (
+              <Badge className="border-transparent bg-muted text-muted-foreground">
+                Category off
+              </Badge>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="flex items-center gap-0.5">
         {!overlay && renamed ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -160,7 +167,7 @@ export function ChannelRowBody({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+                className="hidden size-7 cursor-pointer text-muted-foreground hover:text-foreground sm:inline-flex"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() =>
                   fetcher.submit(
@@ -176,7 +183,10 @@ export function ChannelRowBody({
           </Tooltip>
         ) : null}
         {overlay || playlistId == null ? null : (
-          <span onPointerDown={(e) => e.stopPropagation()}>
+          <span
+            onPointerDown={(e) => e.stopPropagation()}
+            className="hidden sm:inline-flex"
+          >
             <EpgPicker channel={channel} playlistId={playlistId} fetcher={fetcher} />
           </span>
         )}
@@ -208,6 +218,7 @@ export function ChannelRowBody({
             <Trash2 className="size-4" />
           </Button>
         )}
+        </div>
       </div>
     </>
   );

@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import { ArrowLeft } from "lucide-react";
-import { Form, Link, data, redirect } from "react-router";
+import { useEffect } from "react";
+import { Form, Link, data, redirect, useActionData } from "react-router";
+import { toast } from "sonner";
 import { z } from "zod";
 import { CopyField } from "~/components/copy-field";
 import { PageHeader } from "~/components/page-header";
@@ -68,6 +70,13 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
   const { playlist, m3uUrl, epgUrl } = loaderData;
+  const actionData = useActionData<typeof action>();
+
+  useEffect(() => {
+    if (actionData && "ok" in actionData && actionData.ok) {
+      toast.success("Playlist renamed");
+    }
+  }, [actionData]);
 
   return (
     <div>

@@ -19,6 +19,7 @@ import {
 import { ListVideo, Loader2, Plus, Trash2, Tv } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,6 +80,17 @@ export function EditorBoard({
   const addFetcher = useFetcher();
   const createCatFetcher = useFetcher();
   const bulkFetcher = useFetcher();
+
+  // Confirm the batch actions, which otherwise only show via the save status.
+  useFetcherToast(addFetcher, (d) => {
+    if (d.intent === "createAutoCategory") return "Auto-sync group created";
+    const n = Number(d.added ?? 0);
+    return n > 0
+      ? `Added ${n} channel${n === 1 ? "" : "s"}`
+      : "Those channels are already in the playlist";
+  });
+  useFetcherToast(createCatFetcher, () => "Category created");
+  useFetcherToast(bulkFetcher, (d) => BULK_TOAST[d.intent as string] ?? "Done");
 
   // The source browser loads from its own endpoint (all sources at once),
   // driven by the URL filters, so editing the playlist never reloads it.
@@ -267,7 +279,16 @@ export function EditorBoard({
         const idx = items
           .filter((c) => c.categoryId === cat)
           .findIndex((c) => c.id === overData.channel!.id);
-        if (idx >= 0) insertIndex = idx;
+        if (idx >= 0) {
+          // Insert above or below the hovered row based on where the dragged
+          // item sits, so the last row's bottom half lands at the very end.
+          const dragged = a.rect.current.translated;
+          const below =
+            !!dragged &&
+            dragged.top + dragged.height / 2 >
+              over.rect.top + over.rect.height / 2;
+          insertIndex = below ? idx + 1 : idx;
+        }
       }
       submitAdd(ids, { categoryId }, insertIndex);
       return;
@@ -757,4 +778,38 @@ export function EditorBoard({
       </DragOverlay>
     </DndContext>
   );
+}
+
+const BULK_TOAST: Record<string, string> = {
+  bulkToggle: "Channels updated",
+  bulkMove: "Channels moved",
+  bulkRemove: "Channels removed",
+  bulkResetEpg: "EPG reset to source default",
+  bulkPrefix: "Names updated",
+  bulkSuffix: "Names updated",
+  bulkReplace: "Names updated",
+  removeChannel: "Channel removed",
+};
+
+type ActionResult = {
+  ok?: boolean;
+  error?: string;
+  intent?: string;
+  added?: number;
+};
+
+/** Toast once when a fetcher action settles: the message on success, the error
+    on failure. Keyed on the response object so it fires once per result. */
+function useFetcherToast(
+  fetcher: ReturnType<typeof useFetcher>,
+  message: (data: ActionResult) => string,
+) {
+  const last = useRef<unknown>(null);
+  useEffect(() => {
+    const d = fetcher.data as ActionResult | undefined;
+    if (fetcher.state !== "idle" || !d || d === last.current) return;
+    last.current = d;
+    if (d.ok === false) toast.error(d.error ?? "Something went wrong");
+    else toast.success(message(d));
+  }, [fetcher.state, fetcher.data, message]);
 }

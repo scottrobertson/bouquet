@@ -322,7 +322,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
             <PopoverTrigger asChild>
               <Button size="sm" variant="outline">
                 <Link2 className="size-4" />
-                Output URLs
+                <span className="hidden sm:inline">Output URLs</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -340,7 +340,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/settings`}>
               <Settings className="size-4" />
-              Settings
+              <span className="hidden sm:inline">Settings</span>
             </Link>
           </Button>
         </div>

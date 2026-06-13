@@ -71,6 +71,21 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Dragging a source channel onto the last row of a playlist group can now drop it at
+  the very bottom (drop in the row's lower half), not only above it.
+- The "Unavailable" / "Category off" badges on playlist rows now sit vertically
+  centered on the right with the row's controls, instead of pinned to the title line.
+- The playlist editor header no longer crowds on mobile: the Output URLs and Settings
+  buttons drop their labels to icons on small screens.
+- Playlist channel rows are less cramped on mobile: the drag grip and logo are hidden
+  (the whole row is still the drag handle), gaps tighten, and the secondary per-row
+  controls (EPG picker, revert-to-source-name) move to desktop only, leaving just the
+  enable toggle and remove inline. Desktop is unchanged.
+- The "renamed from" line on a playlist channel now sits on its own line below the
+  source/category line, so neither gets truncated when a channel is renamed.
+- Toasts now confirm the playlist editor's batch actions (add group / add all, the
+  Tools transforms, bulk enable/disable/move/remove/reset-EPG, auto-sync group
+  created) and renaming a playlist, which previously only showed via the save status.
 - Channel logos now load reliably when the app is served over HTTPS. Many provider
   logos are `http://` (or behind referer-based hotlink blocking), which a browser
   blocks on an HTTPS page. Logos in the UI now go through a small same-origin proxy
