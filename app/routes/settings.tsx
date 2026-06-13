@@ -36,6 +36,10 @@ import {
 } from "~/services/backup/backup.server";
 import type { Route } from "./+types/settings";
 
+export function meta() {
+  return [{ title: "Settings · Bouquet" }];
+}
+
 export function loader() {
   return {
     backups: listBackups(),

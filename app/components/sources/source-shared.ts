@@ -5,6 +5,9 @@ export const sourceSchema = z.object({
   serverUrl: z.string().trim().min(1, "Server URL is required").url("Enter a valid URL"),
   username: z.string().trim().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
+  outputFormat: z.enum(["ts", "m3u8"]).catch("ts"),
+  // Checkbox: "on" when ticked, absent otherwise.
+  autoImportGroups: z.preprocess((v) => v === "on" || v === true, z.boolean()),
 });
 
 export type SourceInput = z.infer<typeof sourceSchema>;

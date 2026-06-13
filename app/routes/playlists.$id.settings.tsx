@@ -1,9 +1,8 @@
 import { eq } from "drizzle-orm";
-import { ArrowLeft, Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
-import { toast } from "sonner";
 import { z } from "zod";
+import { CopyField } from "~/components/copy-field";
 import { PageHeader } from "~/components/page-header";
 import {
   AlertDialog,
@@ -23,6 +22,10 @@ import { db } from "~/db/index.server";
 import { playlists } from "~/db/schema";
 import { getPlaylist } from "~/services/playlist/queries.server";
 import type { Route } from "./+types/playlists.$id.settings";
+
+export function meta({ data }: Route.MetaArgs) {
+  return [{ title: `Settings · ${data?.playlist.name ?? "Playlist"} · Bouquet` }];
+}
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const id = Number(params.id);
@@ -152,32 +155,3 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
   );
 }
 
-function CopyField({ label, url }: { label: string; url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      toast.success(`${label} URL copied`);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Could not copy to clipboard");
-    }
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </Label>
-      <div className="flex items-center gap-2">
-        <Input value={url} readOnly className="font-mono text-xs" />
-        <Button type="button" size="sm" variant="outline" onClick={copy}>
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
-    </div>
-  );
-}

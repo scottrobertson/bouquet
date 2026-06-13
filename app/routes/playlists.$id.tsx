@@ -1,8 +1,14 @@
-import { ArrowLeft, Check, Loader2, Settings } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Settings } from "lucide-react";
 import { Link, data, useFetchers } from "react-router";
 import { z } from "zod";
+import { CopyField } from "~/components/copy-field";
 import { EditorBoard } from "~/components/playlist/editor-board";
 import { Button } from "~/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import {
   addChannels,
   bulkAddPrefix,
@@ -33,16 +39,25 @@ import {
 import { invalidate } from "~/services/output/cache.server";
 import type { Route } from "./+types/playlists.$id";
 
+export function meta({ data }: Route.MetaArgs) {
+  return [{ title: `${data?.playlist.name ?? "Playlist"} · Bouquet` }];
+}
+
 // Kept light on purpose: the source browser loads from its own endpoint, so
 // editing the playlist revalidates only the playlist itself.
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request }: Route.LoaderArgs) {
   const id = Number(params.id);
   const playlist = getPlaylist(id);
   if (!playlist) throw new Response("Not found", { status: 404 });
 
+  const origin = new URL(request.url).origin;
   const cats = getCategories(id);
   return {
     playlist: { id: playlist.id, name: playlist.name },
+    output: {
+      m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
+      epgUrl: `${origin}/output/epg/${playlist.outputToken}`,
+    },
     categories: cats.map((c) => ({
       id: c.id,
       name: c.name,
@@ -286,7 +301,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
-  const { playlist, categories, channels, autoChannels } = loaderData;
+  const { playlist, categories, channels, autoChannels, output } = loaderData;
 
   return (
     <div className="flex h-full flex-col">
@@ -303,6 +318,25 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="flex items-center gap-3">
           <SaveStatus />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="outline">
+                <Link2 className="size-4" />
+                Output URLs
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              className="w-[32rem] max-w-[calc(100vw-2rem)] space-y-3"
+            >
+              <p className="text-[13px] text-muted-foreground">
+                Point your IPTV player at these.
+              </p>
+              <CopyField label="M3U" url={output.m3uUrl} />
+              <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
+            </PopoverContent>
+          </Popover>
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/settings`}>
               <Settings className="size-4" />

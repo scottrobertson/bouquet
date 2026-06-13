@@ -8,6 +8,10 @@ import { sources } from "~/db/schema";
 import { validateAccount } from "~/services/xtream/client.server";
 import type { Route } from "./+types/sources.$id.edit";
 
+export function meta({ data }: Route.MetaArgs) {
+  return [{ title: `Edit ${data?.source.name ?? "source"} · Bouquet` }];
+}
+
 export async function loader({ params }: Route.LoaderArgs) {
   const id = Number(params.id);
   const source = db.select().from(sources).where(eq(sources.id, id)).get();
@@ -18,6 +22,8 @@ export async function loader({ params }: Route.LoaderArgs) {
       serverUrl: source.serverUrl,
       username: source.username,
       password: source.password,
+      outputFormat: source.outputFormat,
+      autoImportGroups: source.autoImportGroups,
     },
   };
 }
@@ -35,6 +41,8 @@ export async function action({ request, params }: Route.ActionArgs) {
     serverUrl: form.get("serverUrl"),
     username: form.get("username"),
     password: form.get("password"),
+    outputFormat: form.get("outputFormat"),
+    autoImportGroups: form.get("autoImportGroups"),
   });
 
   if (intent === "test") {

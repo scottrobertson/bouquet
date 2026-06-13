@@ -26,6 +26,10 @@ import { sources } from "~/db/schema";
 import { changesForSync, listSyncs } from "~/services/sources/changes.server";
 import type { Route } from "./+types/sources.$id.changes";
 
+export function meta({ data }: Route.MetaArgs) {
+  return [{ title: `Changes · ${data?.source.name ?? "Source"} · Bouquet` }];
+}
+
 export async function loader({ params, request }: Route.LoaderArgs) {
   const id = Number(params.id);
   const source = db

@@ -6,6 +6,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Per-source output format (TS / M3U8 HLS) on the source form. The chosen format is
+  used when building that source's stream URLs in the output M3U.
+- Per-source "Auto-import new groups" toggle. When on (default), categories found on a
+  sync start enabled; when off, new categories arrive disabled and you turn them on
+  from the source's Categories list.
+- Output URLs (M3U + EPG) are now available straight from the playlist editor via an
+  "Output URLs" button, instead of only in Settings.
+- Browser tab titles on every page.
 - Source change log. Each sync now records which channels and categories the provider
   added or removed (and channels that returned after being gone), on a "Changes" page
   per source. The page is a full-width table with a selectable list of syncs (newest

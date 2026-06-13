@@ -3,14 +3,24 @@ import { useEffect, useRef } from "react";
 import { Form, Link, useFetcher, useNavigation } from "react-router";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 
 export interface SourceFormValues {
   name: string;
   serverUrl: string;
   username: string;
   password: string;
+  outputFormat: "ts" | "m3u8";
+  autoImportGroups: boolean;
 }
 
 export interface TestResult {
@@ -131,6 +141,40 @@ export function SourceForm({
           {errors?.password ? (
             <p className="text-xs text-destructive">{errors.password}</p>
           ) : null}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="outputFormat">Output format</Label>
+        <Select name="outputFormat" defaultValue={defaults?.outputFormat ?? "ts"}>
+          <SelectTrigger id="outputFormat" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ts">TS (MPEG-TS)</SelectItem>
+            <SelectItem value="m3u8">M3U8 (HLS)</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          The stream URL flavour written into the output M3U for this source's channels.
+        </p>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
+        <Checkbox
+          id="autoImportGroups"
+          name="autoImportGroups"
+          defaultChecked={defaults?.autoImportGroups ?? true}
+          className="mt-0.5"
+        />
+        <div className="space-y-1">
+          <Label htmlFor="autoImportGroups" className="font-medium">
+            Auto-import new groups
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            When on, categories found on a sync start enabled. When off, new
+            categories arrive disabled and you turn them on from the Categories list.
+          </p>
         </div>
       </div>
 

@@ -22,6 +22,14 @@ export const sources = sqliteTable("sources", {
   })
     .notNull()
     .default("idle"),
+  // Stream URL flavour written into the output M3U for this source's channels.
+  outputFormat: text("output_format", { enum: ["ts", "m3u8"] })
+    .notNull()
+    .default("ts"),
+  // When off, categories newly found on a sync arrive disabled (opt-in).
+  autoImportGroups: integer("auto_import_groups", { mode: "boolean" })
+    .notNull()
+    .default(true),
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
   lastError: text("last_error"),
   channelCount: integer("channel_count").notNull().default(0),

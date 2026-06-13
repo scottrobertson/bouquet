@@ -147,8 +147,8 @@ export async function runSync(sourceId: number): Promise<void> {
         .run();
     });
 
-    // Seed category rows so new ones default to enabled and toggles persist.
-    syncSourceCategories(sourceId, [...seenCategories]);
+    // Seed category rows. New ones honor the source's auto-import setting.
+    syncSourceCategories(sourceId, [...seenCategories], source.autoImportGroups);
 
     // Commit channel success now, before the slower EPG step.
     db.update(sources)

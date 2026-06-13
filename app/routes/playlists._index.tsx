@@ -50,6 +50,10 @@ import { playlists } from "~/db/schema";
 import { listPlaylists } from "~/services/playlist/queries.server";
 import type { Route } from "./+types/playlists._index";
 
+export function meta() {
+  return [{ title: "Playlists · Bouquet" }];
+}
+
 export async function loader() {
   return { playlists: listPlaylists() };
 }

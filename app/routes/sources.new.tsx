@@ -8,6 +8,10 @@ import { startSync } from "~/services/sync/sync.server";
 import { validateAccount } from "~/services/xtream/client.server";
 import type { Route } from "./+types/sources.new";
 
+export function meta() {
+  return [{ title: "Add source · Bouquet" }];
+}
+
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = form.get("intent");
@@ -17,6 +21,8 @@ export async function action({ request }: Route.ActionArgs) {
     serverUrl: form.get("serverUrl"),
     username: form.get("username"),
     password: form.get("password"),
+    outputFormat: form.get("outputFormat"),
+    autoImportGroups: form.get("autoImportGroups"),
   });
 
   if (intent === "test") {

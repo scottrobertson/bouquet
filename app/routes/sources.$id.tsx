@@ -41,6 +41,10 @@ import {
 import { startSync } from "~/services/sync/sync.server";
 import type { Route } from "./+types/sources.$id";
 
+export function meta({ data }: Route.MetaArgs) {
+  return [{ title: `${data?.source.name ?? "Source"} · Bouquet` }];
+}
+
 export async function loader({ params }: Route.LoaderArgs) {
   const id = Number(params.id);
   const source = db.select().from(sources).where(eq(sources.id, id)).get();

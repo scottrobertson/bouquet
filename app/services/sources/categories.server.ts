@@ -2,15 +2,19 @@ import { and, asc, count, eq, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import { sourceCategories, sourceChannels } from "~/db/schema";
 
-/** Seed category rows for a source. New categories default to enabled; existing
-    rows keep their enabled state. Called during sync. */
-export function syncSourceCategories(sourceId: number, names: string[]) {
+/** Seed category rows for a source. New categories default to `enabledDefault`
+    (the source's auto-import setting); existing rows keep their enabled state. */
+export function syncSourceCategories(
+  sourceId: number,
+  names: string[],
+  enabledDefault = true,
+) {
   const unique = [...new Set(names.filter(Boolean))];
   if (unique.length === 0) return;
   db.transaction((tx) => {
     for (const name of unique) {
       tx.insert(sourceCategories)
-        .values({ sourceId, name, enabled: true })
+        .values({ sourceId, name, enabled: enabledDefault })
         .onConflictDoNothing()
         .run();
     }

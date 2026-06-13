@@ -64,6 +64,7 @@ export async function getPlaylistOutput(
       serverUrl: sources.serverUrl,
       username: sources.username,
       password: sources.password,
+      outputFormat: sources.outputFormat,
     })
     .from(playlistChannels)
     .innerJoin(
@@ -109,6 +110,7 @@ export async function getPlaylistOutput(
         serverUrl: sources.serverUrl,
         username: sources.username,
         password: sources.password,
+        outputFormat: sources.outputFormat,
       })
       .from(sourceChannels)
       .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
@@ -136,6 +138,7 @@ export async function getPlaylistOutput(
           streamUrl: buildStreamUrl(
             { serverUrl: r.serverUrl, username: r.username, password: r.password },
             r.streamId,
+            r.outputFormat,
           ),
         });
       }
@@ -150,6 +153,7 @@ export async function getPlaylistOutput(
           streamUrl: buildStreamUrl(
             { serverUrl: r.serverUrl, username: r.username, password: r.password },
             r.streamId,
+            r.outputFormat,
           ),
         });
       }

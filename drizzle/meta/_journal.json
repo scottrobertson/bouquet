@@ -43,6 +43,13 @@
       "when": 1781378632704,
       "tag": "0005_complete_sue_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1781379223541,
+      "tag": "0006_wild_trauma",
+      "breakpoints": true
     }
   ]
 }

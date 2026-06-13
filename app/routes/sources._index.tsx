@@ -39,6 +39,10 @@ import { sources } from "~/db/schema";
 import { startSync } from "~/services/sync/sync.server";
 import type { Route } from "./+types/sources._index";
 
+export function meta() {
+  return [{ title: "Sources · Bouquet" }];
+}
+
 export async function loader() {
   const rows = db.select().from(sources).all();
   return {
