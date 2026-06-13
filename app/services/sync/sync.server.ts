@@ -150,13 +150,16 @@ export async function runSync(sourceId: number): Promise<void> {
     // Seed category rows. New ones honor the source's auto-import setting.
     syncSourceCategories(sourceId, [...seenCategories], source.autoImportGroups);
 
-    // Commit channel success now, before the slower EPG step.
+    // Commit channel success now, before the slower EPG step. Cache the real
+    // base URL from server_info so output stream URLs use it (keep the old one
+    // if the provider didn't return server_info this time).
     db.update(sources)
       .set({
         syncStatus: "ok",
         lastSyncedAt: now,
         lastError: null,
         channelCount: streams.length,
+        ...(account.streamBaseUrl ? { streamBaseUrl: account.streamBaseUrl } : {}),
       })
       .where(eq(sources.id, sourceId))
       .run();

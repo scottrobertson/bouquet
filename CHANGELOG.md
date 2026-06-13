@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Output stream URLs now use the provider's real base address from the API's
+  `server_info` (cached on each sync), instead of the source's configured Server URL.
+  This means the Server URL can point at a proxy or VPN container (for when a provider
+  blocks your server) while the M3U still hands players the real provider address. Falls
+  back to the Server URL if a provider doesn't return a usable `server_info`.
 - Per-source output format (TS / M3U8 HLS) on the source form. The chosen format is
   used when building that source's stream URLs in the output M3U.
 - Per-source "Auto-import new groups" toggle. When on (default), categories found on a

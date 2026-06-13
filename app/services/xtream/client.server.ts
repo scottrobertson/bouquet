@@ -34,6 +34,8 @@ export interface XtreamAccount {
   status?: string;
   expiresAt?: Date | null;
   maxConnections?: number | null;
+  // The provider's real base URL from the API's server_info, if it gave one.
+  streamBaseUrl?: string | null;
 }
 
 const USER_AGENT =
@@ -97,6 +99,21 @@ function asString(v: unknown): string | null {
   return s === "" ? null : s;
 }
 
+/** The provider's real base URL from server_info, e.g. http://host:8080. Lets
+    the output use the real address even when serverUrl points at a proxy. */
+function streamBaseFromServerInfo(si: any): string | null {
+  const host = asString(si?.url);
+  if (!host) return null;
+  // If the panel already handed back a full URL, trust it.
+  if (/^https?:\/\//i.test(host)) return normalizeServerUrl(host);
+  const protocol = asString(si?.server_protocol) ?? "http";
+  const port =
+    protocol === "https"
+      ? (asString(si?.https_port) ?? asString(si?.port))
+      : asString(si?.port);
+  return normalizeServerUrl(port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`);
+}
+
 /** Validate credentials and read account status. */
 export async function validateAccount(creds: XtreamCreds): Promise<XtreamAccount> {
   let data: any;
@@ -115,6 +132,7 @@ export async function validateAccount(creds: XtreamCreds): Promise<XtreamAccount
     status: asString(info.status) ?? undefined,
     expiresAt: exp,
     maxConnections: info.max_connections ? Number(info.max_connections) : null,
+    streamBaseUrl: streamBaseFromServerInfo(data?.server_info),
   };
 }
 

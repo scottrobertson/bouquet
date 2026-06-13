@@ -62,6 +62,7 @@ export async function getPlaylistOutput(
       streamId: sourceChannels.streamId,
       channelSourceId: sourceChannels.sourceId,
       serverUrl: sources.serverUrl,
+      streamBaseUrl: sources.streamBaseUrl,
       username: sources.username,
       password: sources.password,
       outputFormat: sources.outputFormat,
@@ -108,6 +109,7 @@ export async function getPlaylistOutput(
         streamId: sourceChannels.streamId,
         channelSourceId: sourceChannels.sourceId,
         serverUrl: sources.serverUrl,
+        streamBaseUrl: sources.streamBaseUrl,
         username: sources.username,
         password: sources.password,
         outputFormat: sources.outputFormat,
@@ -136,7 +138,11 @@ export async function getPlaylistOutput(
           tvgId: r.channelEpgId ?? "",
           epgSourceId: r.channelSourceId,
           streamUrl: buildStreamUrl(
-            { serverUrl: r.serverUrl, username: r.username, password: r.password },
+            {
+              serverUrl: r.streamBaseUrl ?? r.serverUrl,
+              username: r.username,
+              password: r.password,
+            },
             r.streamId,
             r.outputFormat,
           ),
@@ -151,7 +157,11 @@ export async function getPlaylistOutput(
           tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
           epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
           streamUrl: buildStreamUrl(
-            { serverUrl: r.serverUrl, username: r.username, password: r.password },
+            {
+              serverUrl: r.streamBaseUrl ?? r.serverUrl,
+              username: r.username,
+              password: r.password,
+            },
             r.streamId,
             r.outputFormat,
           ),

@@ -15,6 +15,9 @@ export const sources = sqliteTable("sources", {
     .notNull()
     .default("xtream"),
   serverUrl: text("server_url").notNull(),
+  // The provider's real base URL, learned from the API's server_info on sync.
+  // Used to build output stream URLs, so serverUrl can be a proxy if needed.
+  streamBaseUrl: text("stream_base_url"),
   username: text("username").notNull(),
   password: text("password").notNull(),
   syncStatus: text("sync_status", {

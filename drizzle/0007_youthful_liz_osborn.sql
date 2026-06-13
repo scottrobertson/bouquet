@@ -1,0 +1,1 @@
+ALTER TABLE `sources` ADD `stream_base_url` text;
