@@ -7,6 +7,8 @@ M3U file plus a matching XMLTV EPG to point your player at.
 It's a playlist manager, not a proxy. It never touches the video streams. The
 output M3U contains your provider's own direct stream URLs.
 
+Built with [Claude](https://claude.com/claude-code).
+
 ## Features
 
 - Add Xtream Codes sources (M3U sources coming later)
