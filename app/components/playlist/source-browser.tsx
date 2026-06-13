@@ -34,6 +34,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "~/components/ui/select";
+import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import type { BrowserChannel, EditorCategory } from "./types";
 
@@ -541,9 +542,12 @@ function DraggableSourceRow({
       />
       {channel.logo ? (
         <img
-          src={channel.logo}
+          src={logoSrc(channel.logo)}
           alt=""
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.style.visibility = "hidden";
+          }}
           className="size-6 shrink-0 rounded object-contain"
         />
       ) : (

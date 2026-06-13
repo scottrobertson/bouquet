@@ -48,6 +48,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Channel logos now load reliably when the app is served over HTTPS. Many provider
+  logos are `http://` (or behind referer-based hotlink blocking), which a browser
+  blocks on an HTTPS page. Logos in the UI now go through a small same-origin proxy
+  (`/img?u=`) that fetches them server-side and serves them back over HTTPS. The
+  output M3U still uses the provider's direct logo URLs, since players don't care.
 - Reduced the left indent on source browser category and channel rows (28px to
   16px) so there's less wasted space, especially on mobile.
 - Bigger touch targets on mobile in the source browser: source headers, category

@@ -27,6 +27,9 @@ export default [
     route("settings/backup/:file", "routes/settings.backup.$file.tsx"),
   ]),
 
+  // Proxies remote channel logos through our origin (see routes/img.tsx).
+  route("img", "routes/img.tsx"),
+
   // Public, no layout. Hit by IPTV players and the cron job.
   route("internal/sync", "routes/internal.sync.tsx"),
   route("internal/backup", "routes/internal.backup.tsx"),

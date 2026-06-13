@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import type { EditorChannel } from "./types";
@@ -104,9 +105,12 @@ export function ChannelRowBody({
     <>
       {logo ? (
         <img
-          src={logo}
+          src={logoSrc(logo)}
           alt=""
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.style.visibility = "hidden";
+          }}
           className="size-7 shrink-0 rounded object-contain"
         />
       ) : (
