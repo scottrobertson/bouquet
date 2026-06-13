@@ -12,6 +12,14 @@ import { TooltipProvider } from "~/components/ui/tooltip";
 import { Toaster } from "~/components/ui/sonner";
 import "./app.css";
 
+// The document references hashed asset files. A cached copy would point at
+// assets that no longer exist after a deploy, so make browsers revalidate it
+// every time. Hashed assets are still served immutable. Resource routes
+// (m3u/epg/img) set their own Cache-Control and aren't affected by this.
+export function headers(): HeadersInit {
+  return { "Cache-Control": "no-cache" };
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">

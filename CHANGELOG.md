@@ -78,6 +78,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- A new deploy no longer needs a manual cache clear. The HTML document was being
+  cached without revalidation, so after a deploy it pointed at old hashed asset files
+  that no longer existed and the page broke. The document and its data requests now
+  send `Cache-Control: no-cache`; hashed assets stay immutable.
 - Output URLs (the M3U/EPG links, and the `url-tvg` baked into the M3U) now come out
   `https` when the app runs behind a reverse proxy that terminates SSL, by trusting
   `X-Forwarded-Proto` / `X-Forwarded-Host`.
