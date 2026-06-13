@@ -7,6 +7,8 @@
     "dev": "react-router dev",
     "start": "node server.js",
     "typecheck": "react-router typegen && tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
@@ -56,6 +58,7 @@
     "tailwindcss": "^4.2.2",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "vitest": "^4.1.8"
   }
 }
