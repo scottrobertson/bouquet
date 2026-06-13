@@ -63,14 +63,60 @@ export function getPlaylist(id: number) {
   return db.select().from(playlists).where(eq(playlists.id, id)).get() ?? null;
 }
 
-/** Categories of a playlist in display order. */
+/** Categories of a playlist in display order. Carries auto-sync info (which
+    source category an auto group mirrors, plus that source's name). */
 export function getCategories(playlistId: number) {
   return db
-    .select()
+    .select({
+      id: playlistCategories.id,
+      playlistId: playlistCategories.playlistId,
+      name: playlistCategories.name,
+      position: playlistCategories.position,
+      autoSourceId: playlistCategories.autoSourceId,
+      autoCategoryName: playlistCategories.autoCategoryName,
+      autoSourceName: sources.name,
+    })
     .from(playlistCategories)
+    .leftJoin(sources, eq(sources.id, playlistCategories.autoSourceId))
     .where(eq(playlistCategories.playlistId, playlistId))
     .orderBy(asc(playlistCategories.position), asc(playlistCategories.id))
     .all();
+}
+
+/** Live channels for each auto-sync category: the available channels in the
+    mirrored source category, in provider order. Read-only, so just the bits we
+    render. Keyed by playlist category id. */
+export function getAutoChannels(
+  categories: {
+    id: number;
+    autoSourceId: number | null;
+    autoCategoryName: string | null;
+  }[],
+): Record<number, { sourceChannelId: number; name: string; logo: string | null }[]> {
+  const out: Record<
+    number,
+    { sourceChannelId: number; name: string; logo: string | null }[]
+  > = {};
+  for (const cat of categories) {
+    if (cat.autoSourceId == null || cat.autoCategoryName == null) continue;
+    out[cat.id] = db
+      .select({
+        sourceChannelId: sourceChannels.id,
+        name: sourceChannels.name,
+        logo: sourceChannels.logo,
+      })
+      .from(sourceChannels)
+      .where(
+        and(
+          eq(sourceChannels.sourceId, cat.autoSourceId),
+          eq(sourceChannels.categoryName, cat.autoCategoryName),
+          eq(sourceChannels.available, true),
+        ),
+      )
+      .orderBy(asc(sourceChannels.position), asc(sourceChannels.id))
+      .all();
+  }
+  return out;
 }
 
 /** Playlist channels joined to their source channel, in category then channel order. */
@@ -198,6 +244,22 @@ function browserWhere(opts: BrowserFilter) {
           .select({ id: playlistChannels.sourceChannelId })
           .from(playlistChannels)
           .where(eq(playlistChannels.playlistId, opts.excludePlaylistId)),
+      ),
+    );
+    // Also hide channels already covered by an auto-sync category here, since
+    // those mirror a whole source category and aren't manually added.
+    filters.push(
+      notExists(
+        db
+          .select({ x: sql`1` })
+          .from(playlistCategories)
+          .where(
+            and(
+              eq(playlistCategories.playlistId, opts.excludePlaylistId),
+              eq(playlistCategories.autoSourceId, sourceChannels.sourceId),
+              eq(playlistCategories.autoCategoryName, sourceChannels.categoryName),
+            ),
+          ),
       ),
     );
   }

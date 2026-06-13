@@ -6,6 +6,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Auto-sync categories. From the Source Channels pane, a provider category's header
+  has an "Auto-sync" action: name a playlist group and it mirrors that provider
+  category 1:1, staying current on its own as the provider adds and removes channels
+  (built for things like Pay Per View). The group is read-only (no per-channel edits)
+  but you can rename it, reorder its position, and delete it. Its channels are derived
+  live from the source, so there's nothing to re-sync; a provider sync just updates
+  them, and the published M3U/EPG reflect it on the next poll.
 - Backup and restore, in Settings. Backups are JSON files in `<CONFIG_PATH>/backups`
   (the folder is the source of truth, so dropping a `.json` in shows it in the UI).
   Each backup is a curated snapshot: your sources, category enable/disable, playlists,

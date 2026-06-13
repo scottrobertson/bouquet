@@ -5,7 +5,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  RefreshCw,
+  Trash2,
+  Tv,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import {
@@ -19,13 +26,15 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { SortableChannelRow } from "./channel-row";
-import type { EditorCategory, EditorChannel } from "./types";
+import type { AutoChannelView, EditorCategory, EditorChannel } from "./types";
 
 export function CategoryGroup({
   category,
   channels,
+  autoChannels,
   playlistId,
   collapsed,
   onToggleCollapse,
@@ -34,16 +43,22 @@ export function CategoryGroup({
 }: {
   category: EditorCategory;
   channels: EditorChannel[];
+  autoChannels: AutoChannelView[];
   playlistId: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
   selectedChannels: Set<number>;
   onSelectChannel: (id: number, shiftKey: boolean) => void;
 }) {
+  const auto = category.auto;
+  const isAuto = auto != null;
+  const count = isAuto ? autoChannels.length : channels.length;
+
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: `cat-${category.id}`, data: { type: "categoryHeader", categoryId: category.id } });
 
-  // Channels drop into the category container itself when it has no rows to land on.
+  // Channels drop into the category container itself when it has no rows to land
+  // on. Auto categories are read-only, so we never attach this as a drop target.
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `category-${category.id}`,
     data: { type: "category", categoryId: category.id },
@@ -80,16 +95,32 @@ export function CategoryGroup({
         </button>
         <CategoryName category={category} />
         <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
-          {channels.length}
+          {count}
         </span>
+        {isAuto ? (
+          <span
+            className="flex min-w-0 items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+            title={`Auto-syncs ${auto.sourceName} / ${auto.categoryName}`}
+          >
+            <RefreshCw className="size-3 shrink-0" />
+            <span className="truncate">
+              {auto.sourceName} / {auto.categoryName}
+            </span>
+          </span>
+        ) : null}
         <div className="ml-auto">
-          <DeleteCategory category={category} count={channels.length} />
+          <DeleteCategory category={category} count={count} />
         </div>
       </div>
 
       {collapsed ? (
-        // Still a drop target when collapsed: dropping on the header adds here.
-        <div ref={setDropRef} className={cn("h-0", isOver && "h-1 bg-primary")} />
+        // Normal categories stay a drop target when collapsed (drop on the header
+        // adds here). Auto categories never accept drops.
+        isAuto ? null : (
+          <div ref={setDropRef} className={cn("h-0", isOver && "h-1 bg-primary")} />
+        )
+      ) : isAuto ? (
+        <AutoChannelList channels={autoChannels} />
       ) : (
         <div
           ref={setDropRef}
@@ -120,6 +151,44 @@ export function CategoryGroup({
           </SortableContext>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Read-only channel list for an auto-sync category. */
+function AutoChannelList({ channels }: { channels: AutoChannelView[] }) {
+  if (channels.length === 0) {
+    return (
+      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+        No channels in this category right now. They appear as the provider adds them.
+      </div>
+    );
+  }
+  return (
+    <div>
+      {channels.map((ch) => (
+        <div
+          key={ch.sourceChannelId}
+          className="flex items-center gap-2 border-b border-white/5 px-3 py-2"
+        >
+          {ch.logo ? (
+            <img
+              src={logoSrc(ch.logo)}
+              alt=""
+              loading="lazy"
+              onError={(e) => {
+                e.currentTarget.style.visibility = "hidden";
+              }}
+              className="size-7 shrink-0 rounded object-contain"
+            />
+          ) : (
+            <div className="flex size-7 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
+              <Tv className="size-3.5" />
+            </div>
+          )}
+          <span className="min-w-0 flex-1 truncate text-[13px]">{ch.name}</span>
+        </div>
+      ))}
     </div>
   );
 }

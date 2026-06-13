@@ -21,6 +21,17 @@ function categoryInPlaylist(playlistId: number, categoryId: number) {
     .get();
 }
 
+/** An auto-sync category mirrors a source category and owns no editable
+    channels, so channel mutations must refuse to touch it. */
+function categoryIsAuto(categoryId: number) {
+  const row = db
+    .select({ autoSourceId: playlistCategories.autoSourceId })
+    .from(playlistCategories)
+    .where(eq(playlistCategories.id, categoryId))
+    .get();
+  return row?.autoSourceId != null;
+}
+
 /** Confirm a playlist channel belongs to the playlist. */
 function channelInPlaylist(playlistId: number, channelId: number) {
   return !!db
@@ -44,6 +55,28 @@ export function createCategory(playlistId: number, name: string) {
       playlistId,
       name: trimmed,
       position: nextCategoryPosition(playlistId),
+    })
+    .returning()
+    .get();
+}
+
+/** Create a category that mirrors one source category live (read-only). */
+export function createAutoCategory(
+  playlistId: number,
+  sourceId: number,
+  categoryName: string,
+  name: string,
+) {
+  const trimmed = name.trim();
+  if (!trimmed || !categoryName.trim()) return null;
+  return db
+    .insert(playlistCategories)
+    .values({
+      playlistId,
+      name: trimmed,
+      position: nextCategoryPosition(playlistId),
+      autoSourceId: sourceId,
+      autoCategoryName: categoryName,
     })
     .returning()
     .get();
@@ -98,7 +131,11 @@ export function addChannels(
   sourceChannelIds: number[],
   insertIndex?: number,
 ) {
-  if (!categoryInPlaylist(playlistId, categoryId) || sourceChannelIds.length === 0) {
+  if (
+    !categoryInPlaylist(playlistId, categoryId) ||
+    categoryIsAuto(categoryId) ||
+    sourceChannelIds.length === 0
+  ) {
     return 0;
   }
 
@@ -176,7 +213,8 @@ export function reorderChannels(
 ) {
   if (
     !channelInPlaylist(playlistId, movedId) ||
-    !categoryInPlaylist(playlistId, toCategoryId)
+    !categoryInPlaylist(playlistId, toCategoryId) ||
+    categoryIsAuto(toCategoryId)
   ) {
     return;
   }
@@ -309,7 +347,9 @@ export function bulkMove(
   channelIds: number[],
   toCategoryId: number,
 ) {
-  if (!categoryInPlaylist(playlistId, toCategoryId)) return;
+  if (!categoryInPlaylist(playlistId, toCategoryId) || categoryIsAuto(toCategoryId)) {
+    return;
+  }
   const ids = [...ownedChannels(playlistId, channelIds)];
   if (!ids.length) return;
   let position = nextChannelPosition(toCategoryId);

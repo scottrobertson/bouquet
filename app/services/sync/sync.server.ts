@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import { sourceChannels, sourceEpgChannels, sources } from "~/db/schema";
+import { invalidateAll } from "~/services/output/cache.server";
 import type { XtreamCreds } from "~/services/xtream/client.server";
 import { syncSourceCategories } from "~/services/sources/categories.server";
 import {
@@ -133,6 +134,10 @@ export async function runSync(sourceId: number): Promise<void> {
       })
       .where(eq(sources.id, sourceId))
       .run();
+
+    // Drop cached output so auto-sync categories and availability changes reach
+    // players on the next poll instead of waiting out the cache TTL.
+    invalidateAll();
   } catch (err) {
     db.update(sources)
       .set({

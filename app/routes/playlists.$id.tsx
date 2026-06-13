@@ -12,6 +12,7 @@ import {
   bulkReplace,
   bulkResetEpg,
   bulkToggle,
+  createAutoCategory,
   createCategory,
   deleteCategory,
   removeChannel,
@@ -23,11 +24,13 @@ import {
   toggleChannel,
 } from "~/services/playlist/mutations.server";
 import {
+  getAutoChannels,
   getCategories,
   getPlaylist,
   getPlaylistChannels,
   matchingSourceChannelIds,
 } from "~/services/playlist/queries.server";
+import { invalidate } from "~/services/output/cache.server";
 import type { Route } from "./+types/playlists.$id";
 
 // Kept light on purpose: the source browser loads from its own endpoint, so
@@ -37,10 +40,23 @@ export async function loader({ params }: Route.LoaderArgs) {
   const playlist = getPlaylist(id);
   if (!playlist) throw new Response("Not found", { status: 404 });
 
+  const cats = getCategories(id);
   return {
     playlist: { id: playlist.id, name: playlist.name },
-    categories: getCategories(id).map((c) => ({ id: c.id, name: c.name })),
+    categories: cats.map((c) => ({
+      id: c.id,
+      name: c.name,
+      auto:
+        c.autoSourceId != null
+          ? {
+              sourceId: c.autoSourceId,
+              sourceName: c.autoSourceName ?? "Unknown source",
+              categoryName: c.autoCategoryName ?? "",
+            }
+          : null,
+    })),
     channels: getPlaylistChannels(id),
+    autoChannels: getAutoChannels(cats),
   };
 }
 
@@ -59,7 +75,11 @@ function bulkIds(form: FormData): number[] {
 
 export async function action({ request, params }: Route.ActionArgs) {
   const playlistId = Number(params.id);
-  if (!getPlaylist(playlistId)) throw new Response("Not found", { status: 404 });
+  const playlist = getPlaylist(playlistId);
+  if (!playlist) throw new Response("Not found", { status: 404 });
+  // Drop this playlist's cached output. Used when a structural change (auto
+  // category created/removed) needs to show up in the M3U/EPG right away.
+  const invalidateOutput = () => invalidate(playlist.outputToken);
 
   const form = await request.formData();
   const intent = form.get("intent");
@@ -142,6 +162,21 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: true, intent });
     }
 
+    case "createAutoCategory": {
+      const sourceId = Number(form.get("sourceId"));
+      const categoryName = String(form.get("categoryName") ?? "");
+      const name = String(form.get("name") ?? "");
+      if (!Number.isFinite(sourceId) || !categoryName.trim() || !name.trim()) {
+        return data({ ok: false, error: "Missing fields" }, { status: 400 });
+      }
+      const cat = createAutoCategory(playlistId, sourceId, categoryName, name);
+      if (!cat) {
+        return data({ ok: false, error: "Could not create category" }, { status: 400 });
+      }
+      invalidateOutput();
+      return data({ ok: true, intent });
+    }
+
     case "renameCategory": {
       renameCategory(playlistId, Number(form.get("categoryId")), String(form.get("name") ?? ""));
       return data({ ok: true, intent });
@@ -149,6 +184,8 @@ export async function action({ request, params }: Route.ActionArgs) {
 
     case "deleteCategory": {
       deleteCategory(playlistId, Number(form.get("categoryId")));
+      // An auto category contributes live channels to output, so refresh it.
+      invalidateOutput();
       return data({ ok: true, intent });
     }
 
@@ -249,7 +286,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
-  const { playlist, categories, channels } = loaderData;
+  const { playlist, categories, channels, autoChannels } = loaderData;
 
   return (
     <div className="flex h-full flex-col">
@@ -280,6 +317,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
           playlistId={playlist.id}
           categories={categories}
           channels={channels}
+          autoChannels={autoChannels}
         />
       </div>
     </div>

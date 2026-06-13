@@ -110,7 +110,9 @@ export const playlists = sqliteTable("playlists", {
     .default(sql`(unixepoch())`),
 });
 
-/** A category (group) inside a playlist. */
+/** A category (group) inside a playlist. When autoSourceId is set, it's an
+    auto-sync group: its channels mirror one source category live (read-only),
+    so there are no playlist_channels rows for it. */
 export const playlistCategories = sqliteTable(
   "playlist_categories",
   {
@@ -120,6 +122,10 @@ export const playlistCategories = sqliteTable(
       .references(() => playlists.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
+    autoSourceId: integer("auto_source_id").references(() => sources.id, {
+      onDelete: "set null",
+    }),
+    autoCategoryName: text("auto_category_name"),
   },
   (t) => [index("playlist_categories_playlist").on(t.playlistId)],
 );

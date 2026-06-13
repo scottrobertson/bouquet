@@ -7,6 +7,7 @@ import {
   ListFilter,
   Plus,
   Radio,
+  RefreshCw,
   Search,
   Tv,
 } from "lucide-react";
@@ -61,6 +62,7 @@ export function SourceBrowser({
   onToggle,
   onAdd,
   onAddGroup,
+  onAutoSync,
   onAddMatching,
   adding,
 }: {
@@ -73,6 +75,7 @@ export function SourceBrowser({
   onToggle: (id: number) => void;
   onAdd: (ids: number[], target: AddTarget) => void;
   onAddGroup: (sourceId: number, categoryName: string) => void;
+  onAutoSync: (sourceId: number, categoryName: string, name: string) => void;
   onAddMatching: (target: AddTarget) => void;
   adding: boolean;
 }) {
@@ -100,14 +103,17 @@ export function SourceBrowser({
     return () => clearTimeout(t);
   }, [searchInput, q, setSearchParams]);
 
+  // Auto-sync categories are read-only, so they can't be add targets.
+  const addTargets = playlistCategories.filter((c) => !c.auto);
+
   const [target, setTarget] = useState<string>(
-    playlistCategories[0] ? String(playlistCategories[0].id) : NEW_CATEGORY,
+    addTargets[0] ? String(addTargets[0].id) : NEW_CATEGORY,
   );
   const [newName, setNewName] = useState("");
   useEffect(() => {
     if (target === NEW_CATEGORY) return;
-    if (!playlistCategories.some((c) => String(c.id) === target)) {
-      setTarget(playlistCategories[0] ? String(playlistCategories[0].id) : NEW_CATEGORY);
+    if (!addTargets.some((c) => String(c.id) === target)) {
+      setTarget(addTargets[0] ? String(addTargets[0].id) : NEW_CATEGORY);
     }
   }, [playlistCategories, target]);
 
@@ -368,6 +374,11 @@ export function SourceBrowser({
                         <Plus className="size-3" />
                         Add all
                       </button>
+                      <AutoSyncButton
+                        sourceId={row.sourceId}
+                        categoryName={row.name}
+                        onAutoSync={onAutoSync}
+                      />
                     </div>
                   ) : (
                     <DraggableSourceRow
@@ -404,12 +415,12 @@ export function SourceBrowser({
                 <span className="truncate">
                   {target === NEW_CATEGORY
                     ? "+ New category"
-                    : (playlistCategories.find((c) => String(c.id) === target)
-                        ?.name ?? "Target category")}
+                    : (addTargets.find((c) => String(c.id) === target)?.name ??
+                      "Target category")}
                 </span>
               </SelectTrigger>
               <SelectContent>
-                {playlistCategories.map((cat) => (
+                {addTargets.map((cat) => (
                   <SelectItem key={cat.id} value={String(cat.id)}>
                     {cat.name}
                   </SelectItem>
@@ -497,6 +508,72 @@ function CategoryFilter({
             </CommandGroup>
           </CommandList>
         </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Turns a provider category into an auto-sync playlist group. Asks for the
+    group name (prefilled with the category name) before creating. */
+function AutoSyncButton({
+  sourceId,
+  categoryName,
+  onAutoSync,
+}: {
+  sourceId: number;
+  categoryName: string;
+  onAutoSync: (sourceId: number, categoryName: string, name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(categoryName);
+
+  function create() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAutoSync(sourceId, categoryName, trimmed);
+    setOpen(false);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) setName(categoryName);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Auto-sync this group: keeps a playlist group in step with this category"
+          className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-primary md:py-0.5 md:opacity-0 md:group-hover/grp:opacity-100"
+        >
+          <RefreshCw className="size-3" />
+          Auto-sync
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 space-y-2 p-3">
+        <p className="text-[11px] text-muted-foreground">
+          Creates a read-only group that tracks this category as the provider adds
+          and removes channels.
+        </p>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              create();
+            }
+          }}
+          placeholder="Playlist group name"
+          className="h-8"
+        />
+        <Button size="sm" className="w-full" onClick={create} disabled={!name.trim()}>
+          <RefreshCw className="size-4" />
+          Create auto-sync group
+        </Button>
       </PopoverContent>
     </Popover>
   );

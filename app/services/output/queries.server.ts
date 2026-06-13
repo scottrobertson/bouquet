@@ -36,13 +36,26 @@ export async function getPlaylistOutput(
     .get();
   if (!playlist) return null;
 
-  const rows = db
+  const cats = db
     .select({
+      id: playlistCategories.id,
+      name: playlistCategories.name,
+      autoSourceId: playlistCategories.autoSourceId,
+      autoCategoryName: playlistCategories.autoCategoryName,
+    })
+    .from(playlistCategories)
+    .where(eq(playlistCategories.playlistId, playlist.id))
+    .orderBy(asc(playlistCategories.position), asc(playlistCategories.id))
+    .all();
+
+  // Materialized channels (normal categories), grouped by category id.
+  const normalRows = db
+    .select({
+      categoryId: playlistChannels.categoryId,
       customName: playlistChannels.customName,
       customLogo: playlistChannels.customLogo,
       pcEpgSourceId: playlistChannels.epgSourceId,
       pcEpgChannelId: playlistChannels.epgChannelId,
-      categoryName: playlistCategories.name,
       channelName: sourceChannels.name,
       channelLogo: sourceChannels.logo,
       channelEpgId: sourceChannels.epgChannelId,
@@ -53,10 +66,6 @@ export async function getPlaylistOutput(
       password: sources.password,
     })
     .from(playlistChannels)
-    .innerJoin(
-      playlistCategories,
-      eq(playlistChannels.categoryId, playlistCategories.id),
-    )
     .innerJoin(
       sourceChannels,
       eq(playlistChannels.sourceChannelId, sourceChannels.id),
@@ -78,24 +87,74 @@ export async function getPlaylistOutput(
         or(isNull(sourceCategories.id), eq(sourceCategories.enabled, true)),
       ),
     )
-    .orderBy(asc(playlistCategories.position), asc(playlistChannels.position))
+    .orderBy(asc(playlistChannels.position), asc(playlistChannels.id))
     .all();
 
-  const channels: ResolvedChannel[] = rows.map((r) => ({
-    displayName: r.customName || r.channelName,
-    logo: r.customLogo || r.channelLogo || "",
-    groupTitle: r.categoryName,
-    tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
-    epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
-    streamUrl: buildStreamUrl(
-      {
-        serverUrl: r.serverUrl,
-        username: r.username,
-        password: r.password,
-      },
-      r.streamId,
-    ),
-  }));
+  const byCat = new Map<number, typeof normalRows>();
+  for (const r of normalRows) {
+    const list = byCat.get(r.categoryId);
+    if (list) list.push(r);
+    else byCat.set(r.categoryId, [r]);
+  }
+
+  // Live channels for an auto-sync category, straight from the source catalog.
+  const autoRows = (sourceId: number, categoryName: string) =>
+    db
+      .select({
+        channelName: sourceChannels.name,
+        channelLogo: sourceChannels.logo,
+        channelEpgId: sourceChannels.epgChannelId,
+        streamId: sourceChannels.streamId,
+        channelSourceId: sourceChannels.sourceId,
+        serverUrl: sources.serverUrl,
+        username: sources.username,
+        password: sources.password,
+      })
+      .from(sourceChannels)
+      .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
+      .where(
+        and(
+          eq(sourceChannels.sourceId, sourceId),
+          eq(sourceChannels.categoryName, categoryName),
+          eq(sourceChannels.available, true),
+        ),
+      )
+      .orderBy(asc(sourceChannels.position), asc(sourceChannels.id))
+      .all();
+
+  // Walk categories in display order so auto and normal groups interleave.
+  const channels: ResolvedChannel[] = [];
+  for (const cat of cats) {
+    if (cat.autoSourceId != null && cat.autoCategoryName != null) {
+      for (const r of autoRows(cat.autoSourceId, cat.autoCategoryName)) {
+        channels.push({
+          displayName: r.channelName,
+          logo: r.channelLogo || "",
+          groupTitle: cat.name,
+          tvgId: r.channelEpgId ?? "",
+          epgSourceId: r.channelSourceId,
+          streamUrl: buildStreamUrl(
+            { serverUrl: r.serverUrl, username: r.username, password: r.password },
+            r.streamId,
+          ),
+        });
+      }
+    } else {
+      for (const r of byCat.get(cat.id) ?? []) {
+        channels.push({
+          displayName: r.customName || r.channelName,
+          logo: r.customLogo || r.channelLogo || "",
+          groupTitle: cat.name,
+          tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
+          epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
+          streamUrl: buildStreamUrl(
+            { serverUrl: r.serverUrl, username: r.username, password: r.password },
+            r.streamId,
+          ),
+        });
+      }
+    }
+  }
 
   return { playlist, channels };
 }

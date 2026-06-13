@@ -45,6 +45,7 @@ import { ChannelRowBody } from "./channel-row";
 import { ChannelTools } from "./channel-tools";
 import { SourceBrowser, type AddTarget } from "./source-browser";
 import type {
+  AutoChannelView,
   BrowserChannel,
   EditorCategory,
   EditorChannel,
@@ -66,10 +67,12 @@ export function EditorBoard({
   playlistId,
   categories,
   channels,
+  autoChannels,
 }: {
   playlistId: number;
   categories: EditorCategory[];
   channels: EditorChannel[];
+  autoChannels: Record<number, AutoChannelView[]>;
 }) {
   const reorderFetcher = useFetcher();
   const reorderCatFetcher = useFetcher();
@@ -102,21 +105,29 @@ export function EditorBoard({
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
   useEffect(() => setHiddenIds(new Set()), [browserFetcher.data]);
 
-  // Refetch the browser whenever the set of channels in the playlist changes
-  // (add or remove), so added ones drop out and removed ones come back. Renames
-  // and reorders don't change the set, so they don't trigger a refetch.
+  // Refetch the browser whenever what the playlist covers changes, so newly
+  // covered channels drop out of the source list and removed ones come back.
+  // That's the set of added channels plus the auto-sync categories (which cover
+  // a whole source category without creating channel rows). Renames and
+  // reorders don't change either, so they don't trigger a refetch.
   const channelKey = channels
     .map((c) => c.sourceChannelId)
     .sort((a, b) => a - b)
     .join(",");
-  const prevChannelKey = useRef(channelKey);
+  const autoKey = categories
+    .filter((c) => c.auto)
+    .map((c) => `${c.auto!.sourceId}:${c.auto!.categoryName}`)
+    .sort()
+    .join(",");
+  const coverageKey = `${channelKey}|${autoKey}`;
+  const prevCoverageKey = useRef(coverageKey);
   useEffect(() => {
-    if (prevChannelKey.current !== channelKey) {
-      prevChannelKey.current = channelKey;
+    if (prevCoverageKey.current !== coverageKey) {
+      prevCoverageKey.current = coverageKey;
       browserFetcher.load(browserUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelKey, browserUrl]);
+  }, [coverageKey, browserUrl]);
 
   const browserResults = (browserFetcher.data?.channels ?? []).filter(
     (c) => !hiddenIds.has(c.id),
@@ -162,6 +173,12 @@ export function EditorBoard({
     return map;
   }, [cats, items]);
 
+  // Auto-sync categories are read-only: nothing can be dropped into them.
+  const autoIds = useMemo(
+    () => new Set(cats.filter((c) => c.auto).map((c) => c.id)),
+    [cats],
+  );
+
   function toggle(id: number) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -188,6 +205,14 @@ export function EditorBoard({
   function addGroup(sourceId: number, categoryName: string) {
     addFetcher.submit(
       { intent: "addSourceCategory", sourceId: String(sourceId), categoryName },
+      { method: "post" },
+    );
+  }
+
+  // Create an auto-sync category that mirrors a source category live.
+  function addAuto(sourceId: number, categoryName: string, name: string) {
+    addFetcher.submit(
+      { intent: "createAutoCategory", sourceId: String(sourceId), categoryName, name },
       { method: "post" },
     );
   }
@@ -230,7 +255,7 @@ export function EditorBoard({
     if (type === "source") {
       const sc = a.data.current?.channel as BrowserChannel;
       const categoryId = categoryFromOver(over);
-      if (categoryId == null) return;
+      if (categoryId == null || autoIds.has(categoryId)) return;
       const ids = selected.has(sc.id) ? Array.from(selected) : [sc.id];
       // Dropped on a channel: insert at its spot. Otherwise append.
       const overData = over.data.current as
@@ -306,6 +331,8 @@ export function EditorBoard({
       overData?.type === "category" || overData?.type === "categoryHeader"
         ? Number(overData.categoryId)
         : (overChannel?.categoryId ?? moved.categoryId);
+    // Can't move channels into a read-only auto-sync category.
+    if (autoIds.has(toCategoryId)) return;
 
     // Destination order with the moving channels pulled out, then the block
     // spliced back in at the drop point.
@@ -511,6 +538,7 @@ export function EditorBoard({
             onToggle={toggle}
             onAdd={submitAdd}
             onAddGroup={addGroup}
+            onAutoSync={addAuto}
             onAddMatching={addMatching}
             adding={adding}
           />
@@ -594,11 +622,13 @@ export function EditorBoard({
                   <span className="text-muted-foreground">Move to…</span>
                 </SelectTrigger>
                 <SelectContent>
-                  {cats.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
+                  {cats
+                    .filter((c) => !c.auto)
+                    .map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
               <ChannelTools count={selectedPl.size} onRun={bulkSubmit} />
@@ -664,6 +694,7 @@ export function EditorBoard({
                     key={cat.id}
                     category={cat}
                     channels={byCategory.get(cat.id) ?? []}
+                    autoChannels={autoChannels[cat.id] ?? []}
                     playlistId={playlistId}
                     collapsed={collapsedCats.has(cat.id)}
                     onToggleCollapse={() => toggleCatCollapse(cat.id)}

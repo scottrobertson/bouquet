@@ -21,6 +21,15 @@ export type EditorChannel = {
 export type EditorCategory = {
   id: number;
   name: string;
+  // Set when this is an auto-sync category mirroring one source category.
+  auto: { sourceId: number; sourceName: string; categoryName: string } | null;
+};
+
+/** A read-only channel inside an auto-sync category (derived live from source). */
+export type AutoChannelView = {
+  sourceChannelId: number;
+  name: string;
+  logo: string | null;
 };
 
 export type EpgChannel = {
