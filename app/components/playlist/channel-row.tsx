@@ -123,8 +123,21 @@ export function ChannelRowBody({
       )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <NameField channel={channel} displayName={displayName} disabled={overlay} />
+          {renamed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="shrink-0 cursor-default text-muted-foreground"
+                >
+                  <Pencil className="size-3" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Renamed from “{channel.sourceName}”</TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
         <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
           <span className="shrink-0">{channel.sourceProviderName}</span>
@@ -133,15 +146,6 @@ export function ChannelRowBody({
             {channel.sourceCategoryName ?? "Uncategorised"}
           </span>
         </div>
-        {renamed ? (
-          <div
-            className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground"
-            title={`Renamed from ${channel.sourceName}`}
-          >
-            <Pencil className="size-3 shrink-0" />
-            <span className="min-w-0 truncate">“{channel.sourceName}”</span>
-          </div>
-        ) : null}
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -292,7 +296,7 @@ function NameField({
       disabled={disabled}
       onClick={() => setEditing(true)}
       className={cn(
-        "min-w-0 flex-1 truncate text-left text-[13px]",
+        "min-w-0 truncate text-left text-[13px]",
         channel.customName && channel.customName !== channel.sourceName
           ? "font-medium"
           : "",
