@@ -6,6 +6,8 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- A "Sync all" button on the Sources page that kicks off a background sync for every
+  source at once; the page polls until they finish.
 - Output stream URLs now use the provider's real base address from the API's
   `server_info` (cached on each sync), instead of the source's configured Server URL.
   This means the Server URL can point at a proxy or VPN container (for when a provider

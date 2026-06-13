@@ -60,6 +60,13 @@ export async function loader() {
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = form.get("intent");
+
+  if (intent === "syncAll") {
+    const ids = db.select({ id: sources.id }).from(sources).all().map((r) => r.id);
+    for (const sourceId of ids) startSync(sourceId);
+    return data({ intent: "syncAll" as const, started: ids.length });
+  }
+
   const id = Number(form.get("id"));
   if (!Number.isFinite(id)) {
     return data({ ok: false, error: "Missing source" }, { status: 400 });
@@ -92,18 +99,53 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
     return () => clearInterval(t);
   }, [anySyncing, revalidator]);
 
+  // Sync every source at once.
+  const syncAllFetcher = useFetcher<typeof action>();
+  const startingAll = syncAllFetcher.state !== "idle";
+  const handledAll = useRef<typeof syncAllFetcher.data>(undefined);
+  useEffect(() => {
+    if (syncAllFetcher.state !== "idle" || !syncAllFetcher.data) return;
+    if (syncAllFetcher.data === handledAll.current) return;
+    handledAll.current = syncAllFetcher.data;
+    const res = syncAllFetcher.data;
+    if ("intent" in res && res.intent === "syncAll") {
+      toast(`Syncing ${res.started} source${res.started === 1 ? "" : "s"}`, {
+        description: "Pulling channels in the background.",
+      });
+    }
+  }, [syncAllFetcher.state, syncAllFetcher.data]);
+
   return (
     <div>
       <PageHeader
         title="Sources"
         description="IPTV providers feeding your playlists."
         actions={
-          <Button asChild size="sm">
-            <Link to="/sources/new">
-              <Plus className="size-4" />
-              Add source
-            </Link>
-          </Button>
+          <>
+            {rows.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={startingAll || anySyncing}
+                onClick={() =>
+                  syncAllFetcher.submit({ intent: "syncAll" }, { method: "post" })
+                }
+              >
+                <RefreshCw
+                  className={
+                    startingAll || anySyncing ? "size-4 animate-spin" : "size-4"
+                  }
+                />
+                Sync all
+              </Button>
+            ) : null}
+            <Button asChild size="sm">
+              <Link to="/sources/new">
+                <Plus className="size-4" />
+                Add source
+              </Link>
+            </Button>
+          </>
         }
       />
       <div className="px-4 py-5 md:px-8 md:py-6">
