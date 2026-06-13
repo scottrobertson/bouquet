@@ -1,3 +1,4 @@
+import { externalOrigin } from "~/lib/url.server";
 import { buildM3u } from "~/services/output/m3u.server";
 import { getOrBuild } from "~/services/output/cache.server";
 import { getPlaylistOutput } from "~/services/output/queries.server";
@@ -13,8 +14,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const output = await getPlaylistOutput(params.token);
   if (!output) return new Response("not found", { status: 404 });
 
-  const origin = new URL(request.url).origin;
-  const epgUrl = `${origin}/output/epg/${params.token}`;
+  const epgUrl = `${externalOrigin(request)}/output/epg/${params.token}`;
 
   const { body, etag } = await getOrBuild(
     `m3u:${params.token}`,

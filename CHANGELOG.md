@@ -71,6 +71,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Output URLs (the M3U/EPG links, and the `url-tvg` baked into the M3U) now come out
+  `https` when the app runs behind a reverse proxy that terminates SSL, by trusting
+  `X-Forwarded-Proto` / `X-Forwarded-Host`.
 - Dragging a source channel onto the last row of a playlist group can now drop it at
   the very bottom (drop in the row's lower half), not only above it.
 - The "Unavailable" / "Category off" badges on playlist rows now sit vertically

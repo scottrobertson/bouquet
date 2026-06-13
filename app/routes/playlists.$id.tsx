@@ -2,6 +2,7 @@ import { ArrowLeft, Check, Link2, Loader2, Settings } from "lucide-react";
 import { Link, data, useFetchers } from "react-router";
 import { z } from "zod";
 import { CopyField } from "~/components/copy-field";
+import { externalOrigin } from "~/lib/url.server";
 import { EditorBoard } from "~/components/playlist/editor-board";
 import { Button } from "~/components/ui/button";
 import {
@@ -50,7 +51,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const playlist = getPlaylist(id);
   if (!playlist) throw new Response("Not found", { status: 404 });
 
-  const origin = new URL(request.url).origin;
+  const origin = externalOrigin(request);
   const cats = getCategories(id);
   return {
     playlist: { id: playlist.id, name: playlist.name },

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { CopyField } from "~/components/copy-field";
 import { PageHeader } from "~/components/page-header";
+import { externalOrigin } from "~/lib/url.server";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +35,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const playlist = getPlaylist(id);
   if (!playlist) throw new Response("Not found", { status: 404 });
 
-  const origin = new URL(request.url).origin;
+  const origin = externalOrigin(request);
   return {
     playlist: { id: playlist.id, name: playlist.name },
     m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
