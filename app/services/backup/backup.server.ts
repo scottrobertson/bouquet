@@ -8,38 +8,21 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { sqlite } from "~/db/index.server";
 import { env } from "~/lib/env.server";
 import { invalidateAll } from "~/services/output/cache.server";
 
-// Tables captured in a backup, in an order safe to insert (parents first). We
-// dump and reinsert raw rows via the sqlite connection so values round-trip
-// exactly, with no ORM type coercion.
-const TABLES = [
-  "sources",
-  "source_categories",
-  "source_channels",
-  "playlists",
-  "playlist_categories",
-  "playlist_channels",
-] as const;
+// A backup is a gzipped copy of the whole SQLite database. Restoring replaces
+// everything, and the database's own migrations bring an older backup up to the
+// current schema, so backups keep working across app upgrades (the same model
+// Sonarr and Immich use). The source catalog is included; it's also rebuildable
+// by re-syncing, but a full snapshot keeps restore simple and lossless.
 
-type TableName = (typeof TABLES)[number];
 export type BackupKind = "manual" | "auto" | "prerestore";
-
-export type BackupMeta = {
-  app: string;
-  formatVersion: number;
-  schemaVersion: number;
-  createdAt: string;
-  trigger: BackupKind;
-  counts: Record<string, number>;
-};
-
-type BackupFile = {
-  meta: BackupMeta;
-  tables: Record<string, Record<string, unknown>[]>;
-};
 
 export type BackupInfo = {
   file: string;
@@ -48,26 +31,31 @@ export type BackupInfo = {
   valid: boolean;
   trigger: BackupKind | "unknown";
   createdAt: string | null;
-  counts: Record<string, number> | null;
-  schemaVersion: number | null;
-  schemaMismatch: boolean;
+  // Schema version (count of applied migrations) the backup was taken at.
+  version: number | null;
+  // Backup is from a newer schema than the running app, so it can't be restored
+  // without upgrading first.
+  isNewerThanApp: boolean;
 };
 
-const FORMAT_VERSION = 1;
-// Don't try to parse absurdly large files when listing; just show them.
-const MAX_PARSE_BYTES = 100 * 1024 * 1024;
+const MIGRATIONS = "./drizzle";
+const FILE_RE =
+  /^bouquet-(manual|auto|prerestore)-v(\d+)-(\d{8})-(\d{6})\.db\.gz$/;
 
-/** How many migrations have been applied. Recorded in each backup so we can
-    refuse to restore one taken against a different schema. */
-function currentSchemaVersion(): number {
+/** How many migrations have been applied to a database connection. */
+function schemaVersion(db: Database.Database): number {
   try {
-    const row = sqlite
+    const row = db
       .prepare("select count(*) as n from __drizzle_migrations")
       .get() as { n: number } | undefined;
     return row?.n ?? 0;
   } catch {
     return 0;
   }
+}
+
+function currentSchemaVersion(): number {
+  return schemaVersion(sqlite);
 }
 
 function ensureDir() {
@@ -94,142 +82,142 @@ function resolveInside(file: string): string {
   return full;
 }
 
-function dumpRows(table: TableName): Record<string, unknown>[] {
-  // Only the source channels a playlist actually uses, not the whole catalog.
-  const queryBuilt =
-    table === "source_channels"
-      ? "select * from source_channels where id in (select distinct source_channel_id from playlist_channels)"
-      : `select * from ${table}`;
-  return sqlite.prepare(queryBuilt).all() as Record<string, unknown>[];
-}
+const sqlLiteral = (p: string) => p.replace(/'/g, "''");
 
-/** Write a backup file and return its info. */
-export function createBackup(trigger: BackupKind): { file: string; meta: BackupMeta } {
+/** Write a gzipped snapshot of the whole database and return its info. */
+export function createBackup(trigger: BackupKind): { file: string; version: number } {
   ensureDir();
-  const tables: Record<string, Record<string, unknown>[]> = {};
-  const counts: Record<string, number> = {};
-  for (const t of TABLES) {
-    const rows = dumpRows(t);
-    tables[t] = rows;
-    counts[t] = rows.length;
-  }
+  const version = currentSchemaVersion();
+  const file = `bouquet-${trigger}-v${version}-${stamp(new Date())}.db.gz`;
 
-  const meta: BackupMeta = {
-    app: "bouquet",
-    formatVersion: FORMAT_VERSION,
-    schemaVersion: currentSchemaVersion(),
-    createdAt: new Date().toISOString(),
-    trigger,
-    counts,
-  };
+  // VACUUM INTO writes a clean, consistent single-file copy (WAL folded in).
+  const tmp = join(env.backupsPath, `.tmp-${file}.db`);
+  if (existsSync(tmp)) unlinkSync(tmp);
+  sqlite.exec(`VACUUM INTO '${sqlLiteral(tmp)}'`);
+  writeFileSync(join(env.backupsPath, file), gzipSync(readFileSync(tmp)));
+  unlinkSync(tmp);
 
-  const file = `bouquet-${trigger}-${stamp(new Date())}.json`;
-  writeFileSync(join(env.backupsPath, file), JSON.stringify({ meta, tables }));
-  return { file, meta };
+  return { file, version };
 }
 
-/** List every .json in the backups directory, newest first. Hand-dropped files
-    show up too; unparseable ones are flagged invalid (still deletable). */
+/** List backups newest first. Recognises our own files (parsing trigger, version
+    and date from the name); anything else is flagged so it can still be deleted. */
 export function listBackups(): BackupInfo[] {
   if (!existsSync(env.backupsPath)) return [];
   const current = currentSchemaVersion();
 
-  const items = readdirSync(env.backupsPath)
-    .filter((f) => f.endsWith(".json"))
+  return readdirSync(env.backupsPath)
+    .filter((f) => f.endsWith(".db.gz") || f.endsWith(".json"))
+    .filter((f) => !f.startsWith("."))
     .map((file) => {
       const stat = statSync(join(env.backupsPath, file));
-      const info: BackupInfo = {
+      const m = FILE_RE.exec(file);
+      const version = m ? Number(m[2]) : null;
+      let createdAt: string | null = null;
+      if (m) {
+        const [, , , d, t] = m;
+        const iso = new Date(
+          Number(d.slice(0, 4)),
+          Number(d.slice(4, 6)) - 1,
+          Number(d.slice(6, 8)),
+          Number(t.slice(0, 2)),
+          Number(t.slice(2, 4)),
+          Number(t.slice(4, 6)),
+        );
+        createdAt = Number.isNaN(iso.getTime()) ? null : iso.toISOString();
+      }
+      return {
         file,
         size: stat.size,
         modifiedAt: stat.mtime.toISOString(),
-        valid: false,
-        trigger: "unknown",
-        createdAt: null,
-        counts: null,
-        schemaVersion: null,
-        schemaMismatch: false,
+        valid: m != null,
+        trigger: (m?.[1] as BackupKind) ?? "unknown",
+        createdAt,
+        version,
+        isNewerThanApp: version != null && version > current,
       };
-      if (stat.size <= MAX_PARSE_BYTES) {
-        try {
-          const parsed = JSON.parse(
-            readFileSync(join(env.backupsPath, file), "utf8"),
-          ) as Partial<BackupFile>;
-          if (parsed.tables && typeof parsed.tables === "object") {
-            info.valid = true;
-            const m = parsed.meta;
-            if (m) {
-              info.trigger = m.trigger ?? "unknown";
-              info.createdAt = m.createdAt ?? null;
-              info.counts = m.counts ?? null;
-              info.schemaVersion = m.schemaVersion ?? null;
-              info.schemaMismatch =
-                m.schemaVersion != null && m.schemaVersion !== current;
-            }
-          }
-        } catch {
-          // Leave it flagged invalid.
-        }
-      }
-      return info;
-    });
-
-  return items.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+    })
+    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
-function insertRows(table: TableName, rows: Record<string, unknown>[]) {
-  if (!rows.length) return;
-  const cols = Object.keys(rows[0]);
-  const stmt = sqlite.prepare(
-    `insert into ${table} (${cols.map((c) => `"${c}"`).join(", ")}) ` +
-      `values (${cols.map(() => "?").join(", ")})`,
-  );
-  for (const row of rows) {
-    stmt.run(
-      cols.map((c) => {
-        const v = row[c];
-        // JSON may carry booleans; SQLite wants 0/1.
-        if (v === true) return 1;
-        if (v === false) return 0;
-        return v as never;
-      }),
-    );
-  }
-}
-
-/** Replace all data with the contents of a backup file. Takes a safety backup
-    first, then wipes and reinserts inside one transaction. */
+/** Replace all data with the contents of a backup. Takes a safety backup first,
+    upgrades the backup's schema forward if it's older, then copies every table
+    into the live database in one transaction. */
 export function restoreBackup(file: string): { safetyFile: string } {
   const full = resolveInside(file);
   if (!existsSync(full)) throw new Error("Backup not found");
-
-  let parsed: BackupFile;
-  try {
-    parsed = JSON.parse(readFileSync(full, "utf8")) as BackupFile;
-  } catch {
-    throw new Error("That file is not valid JSON");
-  }
-  if (!parsed.tables || typeof parsed.tables !== "object") {
+  if (!file.endsWith(".db.gz")) {
     throw new Error("That file is not a Bouquet backup");
   }
 
-  const sv = parsed.meta?.schemaVersion;
+  const tmp = join(env.backupsPath, ".tmp-restore.db");
+  if (existsSync(tmp)) unlinkSync(tmp);
+  try {
+    writeFileSync(tmp, gunzipSync(readFileSync(full)));
+  } catch {
+    throw new Error("That backup could not be read");
+  }
+
+  // Validate it's a Bouquet database and read the version it was taken at.
+  const backupDb = new Database(tmp);
+  let backupVersion: number;
+  try {
+    const t = backupDb
+      .prepare(
+        "select count(*) as n from sqlite_master where type='table' and name='playlists'",
+      )
+      .get() as { n: number };
+    if (!t || t.n === 0) throw new Error("not bouquet");
+    backupVersion = schemaVersion(backupDb);
+  } catch {
+    backupDb.close();
+    unlinkSync(tmp);
+    throw new Error("That file is not a Bouquet backup");
+  }
+
   const current = currentSchemaVersion();
-  if (sv != null && sv !== current) {
+  if (backupVersion > current) {
+    backupDb.close();
+    unlinkSync(tmp);
     throw new Error(
-      `This backup is from a different schema version (backup ${sv}, current ${current}). Restore aborted.`,
+      `This backup is from a newer version of Bouquet (schema ${backupVersion}, this app is ${current}). Update the app, then restore.`,
     );
   }
 
-  // Reversible: keep a snapshot of the current state before we wipe it.
+  // Bring an older backup up to the current schema so the copy below lines up.
+  try {
+    migrate(drizzle(backupDb), { migrationsFolder: MIGRATIONS });
+  } finally {
+    backupDb.close();
+  }
+
+  // Reversible: snapshot the current state before we overwrite it.
   const { file: safetyFile } = createBackup("prerestore");
 
-  const run = sqlite.transaction(() => {
-    // Deleting the roots cascades to every child table.
-    sqlite.prepare("delete from sources").run();
-    sqlite.prepare("delete from playlists").run();
-    for (const t of TABLES) insertRows(t, parsed.tables[t] ?? []);
-  });
-  run();
+  const tables = (
+    sqlite
+      .prepare(
+        "select name from sqlite_master where type='table' " +
+          "and name not like 'sqlite_%' and name != '__drizzle_migrations'",
+      )
+      .all() as { name: string }[]
+  ).map((r) => r.name);
+
+  // FKs off for the wipe-and-copy so table order doesn't matter; back on after.
+  sqlite.pragma("foreign_keys = OFF");
+  sqlite.exec(`ATTACH DATABASE '${sqlLiteral(tmp)}' AS restore`);
+  try {
+    sqlite.transaction(() => {
+      for (const t of tables) sqlite.prepare(`DELETE FROM main."${t}"`).run();
+      for (const t of tables) {
+        sqlite.exec(`INSERT INTO main."${t}" SELECT * FROM restore."${t}"`);
+      }
+    })();
+  } finally {
+    sqlite.exec("DETACH DATABASE restore");
+    sqlite.pragma("foreign_keys = ON");
+  }
+  unlinkSync(tmp);
 
   invalidateAll();
   return { safetyFile };
@@ -239,11 +227,11 @@ export function deleteBackup(file: string): void {
   unlinkSync(resolveInside(file));
 }
 
-/** Read a backup's raw JSON for download. Throws if it isn't in the folder. */
-export function readBackup(file: string): { name: string; body: string } {
+/** Read a backup's raw bytes for download. Throws if it isn't in the folder. */
+export function readBackup(file: string): { name: string; body: Buffer } {
   const full = resolveInside(file);
   if (!existsSync(full)) throw new Error("Backup not found");
-  return { name: basename(full), body: readFileSync(full, "utf8") };
+  return { name: basename(full), body: readFileSync(full) };
 }
 
 /** Keep only the newest `keep` auto-backups. Manual, prerestore, and
@@ -251,7 +239,7 @@ export function readBackup(file: string): { name: string; body: string } {
 export function pruneAutoBackups(keep: number): void {
   if (!existsSync(env.backupsPath)) return;
   const autos = readdirSync(env.backupsPath)
-    .filter((f) => /^bouquet-auto-.*\.json$/.test(f))
+    .filter((f) => /^bouquet-auto-.*\.db\.gz$/.test(f))
     .map((file) => ({
       file,
       mtime: statSync(join(env.backupsPath, file)).mtimeMs,

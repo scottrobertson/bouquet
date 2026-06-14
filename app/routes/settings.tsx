@@ -76,7 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
       return data({
         ok: true,
         intent,
-        message: "Restored. Run a sync to refresh the channel browser.",
+        message: "Restored from backup.",
       });
     } catch (err) {
       return data(
@@ -127,11 +127,12 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
       <div className="max-w-3xl space-y-3 px-4 py-5 md:px-8 md:py-6">
         <h2 className="text-[13px] font-medium">Backups</h2>
         <p className="text-[13px] text-muted-foreground">
-          Backups are JSON files in{" "}
+          Each backup is a full snapshot of the database, gzipped, in{" "}
           <code className="rounded bg-secondary px-1 py-0.5 text-xs">{backupsPath}</code>.
           Drop a file in there and it shows up here. Auto-backups run on{" "}
           <code className="rounded bg-secondary px-1 py-0.5 text-xs">{backupCron}</code>,
-          keeping the latest {backupKeep}.
+          keeping the latest {backupKeep}. Restoring replaces everything; an older
+          backup is upgraded to the current version as part of the restore.
         </p>
 
         {backups.length === 0 ? (
@@ -147,7 +148,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
                 <TableRow className="border-white/5 hover:bg-transparent">
                   <TableHead>When</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Contents</TableHead>
+                  <TableHead>Version</TableHead>
                   <TableHead className="text-right">Size</TableHead>
                   <TableHead className="w-32" />
                 </TableRow>
@@ -171,17 +172,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function contents(b: BackupInfo): string {
+function versionLabel(b: BackupInfo): string {
   if (!b.valid) return "Unrecognized file";
-  const c = b.counts ?? {};
-  const playlists = c.playlists ?? 0;
-  const channels = c.playlist_channels ?? 0;
-  const sources = c.sources ?? 0;
-  return `${sources} source${sources === 1 ? "" : "s"} · ${playlists} playlist${playlists === 1 ? "" : "s"} · ${channels} channels`;
+  return b.version != null ? `Schema v${b.version}` : "—";
 }
 
 function BackupRow({ backup: b }: { backup: BackupInfo }) {
-  const restoreBlocked = !b.valid || b.schemaMismatch;
+  // Older backups restore fine (they get upgraded); only newer-than-app or
+  // unrecognized files are blocked.
+  const restoreBlocked = !b.valid || b.isNewerThanApp;
 
   return (
     <TableRow className="border-white/5">
@@ -201,14 +200,14 @@ function BackupRow({ backup: b }: { backup: BackupInfo }) {
       </TableCell>
       <TableCell className="text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          {contents(b)}
-          {b.schemaMismatch ? (
+          {versionLabel(b)}
+          {b.isNewerThanApp ? (
             <span
               className="flex items-center gap-1 text-warning"
-              title="From a different schema version; restore is disabled."
+              title="From a newer version of Bouquet; update the app before restoring."
             >
               <AlertTriangle className="size-3.5" />
-              version mismatch
+              newer than app
             </span>
           ) : null}
         </span>

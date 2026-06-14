@@ -89,6 +89,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Backups are now a gzipped snapshot of the whole database instead of a JSON dump of
+  selected tables. Restoring replaces everything and runs the database's migrations, so an
+  older backup is upgraded to the current schema as part of the restore. This means a backup
+  keeps working after an app update, where before any schema change made older backups
+  un-restorable. A safety snapshot is still taken before each restore. A backup from a newer
+  version than the running app is refused (update first). Old JSON backups can't be restored
+  by the new code; take a fresh backup after upgrading.
 - Source channels are added to the playlist from the action bar at the bottom of the
   pane ("Add to category" and "Add as alternate of…"), not by dragging. Tapping
   anywhere on a channel row toggles its checkbox. Dragging source channels into the

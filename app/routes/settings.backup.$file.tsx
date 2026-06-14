@@ -9,9 +9,9 @@ export function loader({ params }: Route.LoaderArgs) {
   } catch {
     throw new Response("Not found", { status: 404 });
   }
-  return new Response(backup.body, {
+  return new Response(new Uint8Array(backup.body), {
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/gzip",
       "Content-Disposition": `attachment; filename="${backup.name}"`,
     },
   });
