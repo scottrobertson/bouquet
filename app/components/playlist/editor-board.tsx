@@ -149,11 +149,17 @@ export function EditorBoard({
   const browserLoading =
     browserFetcher.state === "loading" || !browserFetcher.data;
 
-  // Optimistic copies so drags feel instant; resync when the loader returns.
+  // Optimistic copies so drags feel instant. Resync to fresh loader data during
+  // render, not in an effect, so a saved rename or reorder doesn't flash the old
+  // value for a frame while the copy catches up.
   const [items, setItems] = useState(channels);
-  useEffect(() => setItems(channels), [channels]);
   const [cats, setCats] = useState(categories);
-  useEffect(() => setCats(categories), [categories]);
+  const [synced, setSynced] = useState({ channels, categories });
+  if (synced.channels !== channels || synced.categories !== categories) {
+    setSynced({ channels, categories });
+    setItems(channels);
+    setCats(categories);
+  }
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [active, setActive] = useState<ActiveDrag>(null);
