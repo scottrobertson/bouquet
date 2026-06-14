@@ -386,12 +386,34 @@ export function pruneOldProgrammes(): void {
   db.delete(epgProgrammes).where(lt(epgProgrammes.stopTs, cutoff)).run();
 }
 
-/** Sync every source one at a time so we don't hammer providers in parallel.
-    Used by the scheduled cron job, which waits for completion. */
-export async function syncAllSources(): Promise<void> {
-  const all = db.select({ id: sources.id }).from(sources).all();
+/** Has this source's refresh interval elapsed since its last sync? A 0 interval
+    means manual only, so it's never due from the scheduler. */
+export function isSyncDue(
+  lastSyncedAt: Date | null,
+  intervalMinutes: number,
+  now: number,
+): boolean {
+  if (intervalMinutes <= 0) return false;
+  if (!lastSyncedAt) return true;
+  return now - lastSyncedAt.getTime() >= intervalMinutes * 60_000;
+}
+
+/** Sync the sources whose interval has elapsed, one at a time so we don't hammer
+    providers in parallel. Run hourly by the cron job; most ticks sync nothing. */
+export async function syncDueSources(): Promise<void> {
+  const now = Date.now();
+  const all = db
+    .select({
+      id: sources.id,
+      lastSyncedAt: sources.lastSyncedAt,
+      syncIntervalMinutes: sources.syncIntervalMinutes,
+    })
+    .from(sources)
+    .all();
   for (const s of all) {
-    await runSync(s.id);
+    if (isSyncDue(s.lastSyncedAt, s.syncIntervalMinutes, now)) {
+      await runSync(s.id);
+    }
   }
   pruneOldProgrammes();
 }

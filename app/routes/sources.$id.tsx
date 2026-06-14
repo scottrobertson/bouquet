@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
-import { relativeTime } from "~/components/sources/source-shared";
+import { relativeTime, syncIntervalLabel } from "~/components/sources/source-shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +59,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       channelCount: source.channelCount,
       lastError: source.lastError,
       epgStale: source.epgStale,
+      syncIntervalMinutes: source.syncIntervalMinutes,
     },
     categories: listSourceCategories(id),
   };
@@ -180,6 +181,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             off={offCount}
           />
           <Meta label="Last synced" value={relativeTime(source.lastSyncedAt)} />
+          <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
         </div>
 
         {source.syncStatus === "error" && source.lastError ? (

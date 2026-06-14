@@ -8,7 +8,9 @@ import express from "express";
 import cron from "node-cron";
 
 const port = Number(process.env.PORT ?? 3000);
-const syncCron = process.env.SYNC_CRON ?? "0 4 * * *";
+// Ticks hourly and the endpoint syncs only sources whose interval has elapsed,
+// so the per-source refresh frequency is what actually controls timing.
+const syncCron = process.env.SYNC_CRON ?? "0 * * * *";
 const backupCron = process.env.BACKUP_CRON ?? "0 3 * * *";
 const internalToken = process.env.SESSION_SECRET ?? "dev-insecure-session-secret";
 
@@ -36,10 +38,7 @@ function scheduleInternal(label, expression, path) {
 const build = await import("./build/server/index.js");
 
 const app = express();
-// Skip compressing tiny responses. React Router streams SSR in small chunks,
-// and running each through brotli piled up enough drain listeners to trip
-// Node's leak warning. Assets (JS/CSS) are well over this and still get compressed.
-app.use(compression({ threshold: "1kb" }));
+app.use(compression());
 app.disable("x-powered-by");
 
 app.use(

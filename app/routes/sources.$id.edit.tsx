@@ -24,6 +24,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       password: source.password,
       outputFormat: source.outputFormat,
       autoImportGroups: source.autoImportGroups,
+      syncIntervalMinutes: source.syncIntervalMinutes,
     },
   };
 }
@@ -43,6 +44,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     password: form.get("password"),
     outputFormat: form.get("outputFormat"),
     autoImportGroups: form.get("autoImportGroups"),
+    syncIntervalMinutes: form.get("syncIntervalMinutes"),
   });
 
   if (intent === "test") {

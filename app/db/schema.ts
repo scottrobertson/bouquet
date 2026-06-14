@@ -34,6 +34,8 @@ export const sources = sqliteTable("sources", {
   autoImportGroups: integer("auto_import_groups", { mode: "boolean" })
     .notNull()
     .default(true),
+  // How often the scheduler auto-syncs this source, in minutes. 0 = manual only.
+  syncIntervalMinutes: integer("sync_interval_minutes").notNull().default(1440),
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
   lastError: text("last_error"),
   channelCount: integer("channel_count").notNull().default(0),

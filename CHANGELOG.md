@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Per-source refresh frequency on the source form: every hour, 6 hours, 12 hours, daily,
+  or manual only. The scheduler now checks every hour and syncs only the sources whose
+  interval has elapsed, so each provider refreshes on its own schedule. "Manual only"
+  sources are never auto-synced; you sync them by hand (the sync buttons still work for
+  any source). Existing and new sources default to daily, matching the old behaviour.
+  `SYNC_CRON` still works but now sets how often the check runs (default hourly).
 - TV guide per playlist. A "Guide" button on the playlist opens a TiViMate style grid:
   channels down the left, a scrollable timeline across the top, programmes laid out by
   time with the airing one highlighted and a "now" line. It loads instantly because

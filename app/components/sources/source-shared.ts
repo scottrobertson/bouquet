@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+// How often the scheduler auto-syncs a source. 0 means manual only.
+export const SYNC_INTERVAL_OPTIONS = [
+  { value: 60, label: "Every hour" },
+  { value: 360, label: "Every 6 hours" },
+  { value: 720, label: "Every 12 hours" },
+  { value: 1440, label: "Daily" },
+  { value: 0, label: "Manual only" },
+] as const;
+
+const SYNC_INTERVAL_VALUES = SYNC_INTERVAL_OPTIONS.map((o) => o.value);
+
+/** Human label for a stored interval, e.g. "Daily" or "Manual only". */
+export function syncIntervalLabel(minutes: number): string {
+  return SYNC_INTERVAL_OPTIONS.find((o) => o.value === minutes)?.label ?? "Daily";
+}
+
 export const sourceSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   serverUrl: z.string().trim().min(1, "Server URL is required").url("Enter a valid URL"),
@@ -8,6 +24,11 @@ export const sourceSchema = z.object({
   outputFormat: z.enum(["ts", "m3u8"]).catch("ts"),
   // Checkbox: "on" when ticked, absent otherwise.
   autoImportGroups: z.preprocess((v) => v === "on" || v === true, z.boolean()),
+  // One of the preset intervals; anything else falls back to daily.
+  syncIntervalMinutes: z.coerce
+    .number()
+    .refine((n) => SYNC_INTERVAL_VALUES.includes(n as never))
+    .catch(1440),
 });
 
 export type SourceInput = z.infer<typeof sourceSchema>;

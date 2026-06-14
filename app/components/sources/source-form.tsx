@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
+import { SYNC_INTERVAL_OPTIONS } from "~/components/sources/source-shared";
 
 export interface SourceFormValues {
   name: string;
@@ -21,6 +22,7 @@ export interface SourceFormValues {
   password: string;
   outputFormat: "ts" | "m3u8";
   autoImportGroups: boolean;
+  syncIntervalMinutes: number;
 }
 
 export interface TestResult {
@@ -157,6 +159,29 @@ export function SourceForm({
         </Select>
         <p className="text-xs text-muted-foreground">
           The stream URL flavour written into the output M3U for this source's channels.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="syncIntervalMinutes">Refresh frequency</Label>
+        <Select
+          name="syncIntervalMinutes"
+          defaultValue={String(defaults?.syncIntervalMinutes ?? 1440)}
+        >
+          <SelectTrigger id="syncIntervalMinutes" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SYNC_INTERVAL_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={String(o.value)}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          How often the channels and guide refresh from the provider. "Manual
+          only" never auto-syncs; you sync it by hand.
         </p>
       </div>
 

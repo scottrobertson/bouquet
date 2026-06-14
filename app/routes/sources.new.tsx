@@ -23,6 +23,7 @@ export async function action({ request }: Route.ActionArgs) {
     password: form.get("password"),
     outputFormat: form.get("outputFormat"),
     autoImportGroups: form.get("autoImportGroups"),
+    syncIntervalMinutes: form.get("syncIntervalMinutes"),
   });
 
   if (intent === "test") {

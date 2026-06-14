@@ -23,7 +23,8 @@ export const env = {
   configPath,
   databasePath: join(configPath, "bouquet.db"),
   backupsPath: join(configPath, "backups"),
-  syncCron: process.env.SYNC_CRON ?? "0 4 * * *",
+  // Hourly tick; the endpoint syncs only sources whose interval has elapsed.
+  syncCron: process.env.SYNC_CRON ?? "0 * * * *",
   backupCron: process.env.BACKUP_CRON ?? "0 3 * * *",
   backupKeep: Number(process.env.BACKUP_KEEP ?? 14),
   port: Number(process.env.PORT ?? 3000),
