@@ -5,13 +5,20 @@ export function PageHeader({
   title,
   description,
   actions,
+  border = true,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  border?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 md:px-8 md:py-5">
+    <div
+      className={
+        "flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 md:px-8 md:py-5" +
+        (border ? " border-b border-border" : "")
+      }
+    >
       <div className="min-w-0 space-y-1">
         <h1 className="text-base font-semibold tracking-tight">{title}</h1>
         {description ? (

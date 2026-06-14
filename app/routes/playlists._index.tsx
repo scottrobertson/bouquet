@@ -107,9 +107,10 @@ export default function PlaylistsIndex({ loaderData }: Route.ComponentProps) {
       <PageHeader
         title="Playlists"
         description="Curated channel lists you publish to your IPTV player."
-        actions={<NewPlaylistDialog />}
+        border={false}
+        actions={<NewPlaylistDialog className="w-full sm:w-auto" />}
       />
-      <div className="px-4 py-5 md:px-8 md:py-6">
+      <div className="px-4 pb-5 pt-2 md:px-8 md:py-6">
         {rows.length === 0 ? (
           <EmptyState
             icon={ListVideo}
@@ -118,15 +119,15 @@ export default function PlaylistsIndex({ loaderData }: Route.ComponentProps) {
             action={<NewPlaylistDialog />}
           />
         ) : (
-          <div className="rounded-lg border border-border bg-card">
+          <div className="-mx-4 border-y border-border bg-card md:mx-0 md:rounded-lg md:border">
             <Table>
               <TableHeader>
                 <TableRow className="border-white/5 hover:bg-transparent">
-                  <Th>Name</Th>
+                  <Th className="pl-4 md:pl-2">Name</Th>
                   <Th className="text-right">Categories</Th>
                   <Th className="text-right">Channels</Th>
                   <Th>Created</Th>
-                  <Th className="w-10" />
+                  <Th className="w-10 pr-4 md:pr-2" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -164,7 +165,7 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
 
   return (
     <TableRow className="border-white/5 hover:bg-white/[0.02]">
-      <TableCell className="font-medium">
+      <TableCell className="pl-4 font-medium md:pl-2">
         <Link to={`/playlists/${playlist.id}`} className="hover:text-primary">
           {playlist.name}
         </Link>
@@ -178,7 +179,7 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
       <TableCell className="text-muted-foreground">
         {relativeTime(playlist.createdAt)}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="pr-4 text-right md:pr-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-7">
@@ -295,7 +296,7 @@ function RenameDialog({
   );
 }
 
-function NewPlaylistDialog() {
+function NewPlaylistDialog({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const navigation = useNavigation();
   const creating =
@@ -304,7 +305,7 @@ function NewPlaylistDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size="sm" className={className}>
           <Plus className="size-4" />
           New playlist
         </Button>

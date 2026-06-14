@@ -63,6 +63,54 @@ export function listSourceCategories(sourceId: number) {
     }));
 }
 
+/** Enabled/total category and disabled-channel counts for every source, in two
+    queries total. Used by the sources list so it doesn't run a pair of queries
+    per source. Uncategorized channels (no category name) are left out of the
+    category totals and always count as enabled, matching listSourceCategories. */
+export function sourceCategorySummaries(): Map<
+  number,
+  { categoriesTotal: number; categoriesOn: number; offChannels: number }
+> {
+  const counts = db
+    .select({
+      sourceId: sourceChannels.sourceId,
+      name: sourceChannels.categoryName,
+      n: count(),
+    })
+    .from(sourceChannels)
+    .groupBy(sourceChannels.sourceId, sourceChannels.categoryName)
+    .all();
+
+  const enabledByKey = new Map<string, boolean>();
+  for (const e of db
+    .select({
+      sourceId: sourceCategories.sourceId,
+      name: sourceCategories.name,
+      enabled: sourceCategories.enabled,
+    })
+    .from(sourceCategories)
+    .all()) {
+    enabledByKey.set(`${e.sourceId}:${e.name}`, e.enabled);
+  }
+
+  const out = new Map<
+    number,
+    { categoriesTotal: number; categoriesOn: number; offChannels: number }
+  >();
+  for (const c of counts) {
+    if (!c.name) continue;
+    let agg = out.get(c.sourceId);
+    if (!agg) {
+      agg = { categoriesTotal: 0, categoriesOn: 0, offChannels: 0 };
+      out.set(c.sourceId, agg);
+    }
+    agg.categoriesTotal++;
+    if (enabledByKey.get(`${c.sourceId}:${c.name}`) ?? true) agg.categoriesOn++;
+    else agg.offChannels += c.n;
+  }
+  return out;
+}
+
 export function setSourceCategoryEnabled(
   sourceId: number,
   name: string,

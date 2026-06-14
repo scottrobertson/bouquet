@@ -7,7 +7,11 @@ import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
-import { hostFromUrl, relativeTime } from "~/components/sources/source-shared";
+import {
+  hostFromUrl,
+  relativeTime,
+  syncIntervalLabel,
+} from "~/components/sources/source-shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +40,7 @@ import {
 } from "~/components/ui/table";
 import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
+import { sourceCategorySummaries } from "~/services/sources/categories.server";
 import { startSync } from "~/services/sync/sync.server";
 import type { Route } from "./+types/sources._index";
 
@@ -45,15 +50,28 @@ export function meta() {
 
 export async function loader() {
   const rows = db.select().from(sources).all();
+  // Enabled/total channel and category counts for all sources in two queries,
+  // rather than a pair per source.
+  const summaries = sourceCategorySummaries();
   return {
-    sources: rows.map((s) => ({
-      id: s.id,
-      name: s.name,
-      host: hostFromUrl(s.serverUrl),
-      syncStatus: s.syncStatus,
-      channelCount: s.channelCount,
-      lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.toISOString() : null,
-    })),
+    sources: rows.map((s) => {
+      const summary = summaries.get(s.id);
+      const offChannels = summary?.offChannels ?? 0;
+      return {
+        id: s.id,
+        name: s.name,
+        host: hostFromUrl(s.serverUrl),
+        username: s.username,
+        outputFormat: s.outputFormat,
+        syncIntervalMinutes: s.syncIntervalMinutes,
+        syncStatus: s.syncStatus,
+        channelCount: s.channelCount,
+        channelsOn: Math.max(0, s.channelCount - offChannels),
+        categoriesTotal: summary?.categoriesTotal ?? 0,
+        categoriesOn: summary?.categoriesOn ?? 0,
+        lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.toISOString() : null,
+      };
+    }),
   };
 }
 
@@ -120,12 +138,14 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
       <PageHeader
         title="Sources"
         description="IPTV providers feeding your playlists."
+        border={false}
         actions={
-          <>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             {rows.length > 0 ? (
               <Button
                 size="sm"
                 variant="outline"
+                className="w-full sm:w-auto"
                 disabled={startingAll || anySyncing}
                 onClick={() =>
                   syncAllFetcher.submit({ intent: "syncAll" }, { method: "post" })
@@ -139,16 +159,16 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
                 Sync all
               </Button>
             ) : null}
-            <Button asChild size="sm">
+            <Button asChild size="sm" className="w-full sm:w-auto">
               <Link to="/sources/new">
                 <Plus className="size-4" />
                 Add source
               </Link>
             </Button>
-          </>
+          </div>
         }
       />
-      <div className="px-4 py-5 md:px-8 md:py-6">
+      <div className="px-4 pb-5 pt-2 md:px-8 md:py-6">
         {rows.length === 0 ? (
           <EmptyState
             icon={Radio}
@@ -164,16 +184,20 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
             }
           />
         ) : (
-          <div className="rounded-lg border border-border bg-card">
+          <div className="-mx-4 border-y border-border bg-card md:mx-0 md:rounded-lg md:border">
             <Table>
               <TableHeader>
                 <TableRow className="border-white/5 hover:bg-transparent">
-                  <Th>Name</Th>
-                  <Th>Host</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right">Channels</Th>
-                  <Th>Last synced</Th>
-                  <Th className="w-10" />
+                  <Th className="pl-4 md:pl-2">Name</Th>
+                  <Th className="hidden md:table-cell">Host</Th>
+                  <Th className="hidden md:table-cell">Username</Th>
+                  <Th className="hidden md:table-cell">Format</Th>
+                  <Th className="hidden md:table-cell">Refresh</Th>
+                  <Th className="hidden md:table-cell">Status</Th>
+                  <Th className="hidden text-right md:table-cell">Channels</Th>
+                  <Th className="hidden text-right md:table-cell">Categories</Th>
+                  <Th className="text-right">Last synced</Th>
+                  <Th className="w-10 pr-4 md:pr-2" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -215,26 +239,45 @@ function SourceRow({ source }: { source: Row }) {
     }
   }, [fetcher.state, fetcher.data, source.name]);
 
+  const statusBadge = (
+    <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
+  );
+
   return (
     <TableRow className="border-white/5 hover:bg-white/[0.02]">
-      <TableCell className="font-medium">
+      <TableCell className="pl-4 font-medium md:pl-2">
         <Link to={`/sources/${source.id}`} className="hover:text-primary">
           {source.name}
         </Link>
       </TableCell>
-      <TableCell className="font-mono text-xs text-muted-foreground">
+      <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
         {source.host}
       </TableCell>
-      <TableCell>
-        {syncing ? <SyncStatusBadge status="syncing" /> : <SyncStatusBadge status={source.syncStatus} />}
+      <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
+        {source.username}
       </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {source.channelCount.toLocaleString()}
+      <TableCell className="hidden text-muted-foreground uppercase md:table-cell">
+        {source.outputFormat}
       </TableCell>
-      <TableCell className="text-muted-foreground">
-        {relativeTime(source.lastSyncedAt)}
+      <TableCell className="hidden text-muted-foreground md:table-cell">
+        {syncIntervalLabel(source.syncIntervalMinutes)}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="hidden md:table-cell">{statusBadge}</TableCell>
+      <TableCell className="hidden text-right tabular-nums md:table-cell">
+        <OnOfTotal on={source.channelsOn} total={source.channelCount} />
+      </TableCell>
+      <TableCell className="hidden text-right tabular-nums md:table-cell">
+        <OnOfTotal on={source.categoriesOn} total={source.categoriesTotal} />
+      </TableCell>
+      <TableCell className="text-right text-muted-foreground">
+        <div className="flex items-center justify-end gap-2">
+          {/* On mobile the status column is hidden, so show the badge here next
+              to the time. */}
+          <span className="md:hidden">{statusBadge}</span>
+          {relativeTime(source.lastSyncedAt)}
+        </div>
+      </TableCell>
+      <TableCell className="pr-4 text-right md:pr-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-7">
@@ -287,6 +330,16 @@ function SourceRow({ source }: { source: Row }) {
         </AlertDialog>
       </TableCell>
     </TableRow>
+  );
+}
+
+// Enabled out of total, e.g. "1,180 / 1,500". Total is muted.
+function OnOfTotal({ on, total }: { on: number; total: number }) {
+  return (
+    <span>
+      <span className="text-foreground">{on.toLocaleString()}</span>
+      <span className="text-muted-foreground"> / {total.toLocaleString()}</span>
+    </span>
   );
 }
 
