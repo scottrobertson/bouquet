@@ -10,10 +10,16 @@ export function buildM3u(rows: ResolvedChannel[], epgUrl: string): string {
 
   for (const c of rows) {
     const name = attr(c.displayName);
+    const catchup =
+      c.catchupDays > 0
+        ? ` catchup="default" catchup-days="${c.catchupDays}" catchup-source="${attr(
+            c.catchupSource,
+          )}"`
+        : "";
     lines.push(
       `#EXTINF:-1 tvg-id="${attr(c.tvgId)}" tvg-name="${name}" tvg-logo="${attr(
         c.logo,
-      )}" group-title="${attr(c.groupTitle)}",${name}`,
+      )}" group-title="${attr(c.groupTitle)}"${catchup},${name}`,
     );
     lines.push(c.streamUrl);
   }

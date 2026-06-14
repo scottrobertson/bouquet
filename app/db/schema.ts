@@ -61,6 +61,8 @@ export const sourceChannels = sqliteTable(
     tvArchive: integer("tv_archive", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Days of catchup the provider keeps for this channel. 0 when none.
+    tvArchiveDuration: integer("tv_archive_duration").notNull().default(0),
     available: integer("available", { mode: "boolean" })
       .notNull()
       .default(true),

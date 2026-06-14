@@ -128,6 +128,7 @@ export async function runSync(sourceId: number): Promise<void> {
           categoryName,
           position,
           tvArchive: stream.tvArchive,
+          tvArchiveDuration: stream.tvArchiveDuration,
           available: true,
           lastSeenAt: now,
         })
@@ -140,6 +141,7 @@ export async function runSync(sourceId: number): Promise<void> {
             categoryName,
             position,
             tvArchive: stream.tvArchive,
+            tvArchiveDuration: stream.tvArchiveDuration,
             available: true,
             lastSeenAt: now,
           },

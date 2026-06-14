@@ -20,6 +20,8 @@ export interface XtreamLiveStream {
   epgChannelId: string | null;
   categoryId: string | null;
   tvArchive: boolean;
+  // Days of catchup/archive the provider keeps. 0 when there's no archive.
+  tvArchiveDuration: number;
 }
 
 export interface XtreamEpgChannel {
@@ -159,6 +161,7 @@ export async function fetchLiveStreams(
     epgChannelId: asString(s.epg_channel_id),
     categoryId: asString(s.category_id),
     tvArchive: Number(s.tv_archive) === 1,
+    tvArchiveDuration: Math.max(0, Math.trunc(Number(s.tv_archive_duration)) || 0),
   }));
 }
 
@@ -172,6 +175,20 @@ export function buildStreamUrl(
   return `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(
     creds.password,
   )}/${streamId}.${ext}`;
+}
+
+/** Build the catchup-source template for a channel's archive. The {duration},
+    {Y}, {m}, {d}, {H}, {M} placeholders are filled in by the player when it
+    requests a past programme. */
+export function buildTimeshiftSource(
+  creds: XtreamCreds,
+  streamId: string,
+  ext: "ts" | "m3u8" = "ts",
+): string {
+  const base = normalizeServerUrl(creds.serverUrl);
+  return `${base}/timeshift/${encodeURIComponent(creds.username)}/${encodeURIComponent(
+    creds.password,
+  )}/{duration}/{Y}-{m}-{d}:{H}-{M}/${streamId}.${ext}`;
 }
 
 export function xmltvUrl(creds: XtreamCreds): string {

@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Catchup/archive support in the output M3U. Channels whose provider keeps an archive now
+  carry `catchup="default"`, `catchup-days` (the number of days the provider keeps), and a
+  `catchup-source` timeshift URL, so players can play back past programmes. The archive
+  duration is read from the provider on each sync. Existing channels show no archive until
+  the next sync repopulates them.
 - A "Sync all" button on the Sources page that kicks off a background sync for every
   source at once; the page polls until they finish.
 - Output stream URLs now use the provider's real base address from the API's
@@ -72,12 +77,19 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The source channels list is friendlier to tap on mobile: drag-to-add and the drag
+  handle are gone (they only worked on desktop where both panes show at once),
+  tapping anywhere on a channel row toggles its checkbox, and the category and
+  channel rows are taller.
 - Replaced the `DATABASE_PATH` env var with `CONFIG_PATH`, a directory (default
   `./data`, `/data` in Docker) that holds the SQLite database and, soon, backups.
   The database now lives at `<CONFIG_PATH>/bouquet.db`.
 
 ### Fixed
 
+- Renaming a playlist channel no longer flickers back to the old name for a frame
+  before settling on the new one. The editor was resyncing its optimistic copy in an
+  effect, leaving one stale frame; it now resyncs during render.
 - The playlist action bar now stays on one line and uses the full width available,
   instead of wrapping into a tall blob. Its centering was capping it at about half
   the pane width.

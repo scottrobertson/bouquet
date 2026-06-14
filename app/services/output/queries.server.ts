@@ -9,7 +9,7 @@ import {
   sourceChannels,
   sources,
 } from "~/db/schema";
-import { buildStreamUrl } from "~/services/xtream/client.server";
+import { buildStreamUrl, buildTimeshiftSource } from "~/services/xtream/client.server";
 
 export interface ResolvedChannel {
   displayName: string;
@@ -19,6 +19,10 @@ export interface ResolvedChannel {
   // Which source's xmltv this channel's guide comes from.
   epgSourceId: number;
   streamUrl: string;
+  // Days of catchup the channel offers, 0 when none. catchupSource is the
+  // timeshift URL template the player uses to play past programmes.
+  catchupDays: number;
+  catchupSource: string;
 }
 
 export interface PlaylistOutput {
@@ -61,6 +65,7 @@ export async function getPlaylistOutput(
       channelEpgId: sourceChannels.epgChannelId,
       streamId: sourceChannels.streamId,
       channelSourceId: sourceChannels.sourceId,
+      tvArchiveDuration: sourceChannels.tvArchiveDuration,
       serverUrl: sources.serverUrl,
       streamBaseUrl: sources.streamBaseUrl,
       username: sources.username,
@@ -108,6 +113,7 @@ export async function getPlaylistOutput(
         channelEpgId: sourceChannels.epgChannelId,
         streamId: sourceChannels.streamId,
         channelSourceId: sourceChannels.sourceId,
+        tvArchiveDuration: sourceChannels.tvArchiveDuration,
         serverUrl: sources.serverUrl,
         streamBaseUrl: sources.streamBaseUrl,
         username: sources.username,
@@ -131,40 +137,44 @@ export async function getPlaylistOutput(
   for (const cat of cats) {
     if (cat.autoSourceId != null && cat.autoCategoryName != null) {
       for (const r of autoRows(cat.autoSourceId, cat.autoCategoryName)) {
+        const creds = {
+          serverUrl: r.streamBaseUrl ?? r.serverUrl,
+          username: r.username,
+          password: r.password,
+        };
         channels.push({
           displayName: r.channelName,
           logo: r.channelLogo || "",
           groupTitle: cat.name,
           tvgId: r.channelEpgId ?? "",
           epgSourceId: r.channelSourceId,
-          streamUrl: buildStreamUrl(
-            {
-              serverUrl: r.streamBaseUrl ?? r.serverUrl,
-              username: r.username,
-              password: r.password,
-            },
-            r.streamId,
-            r.outputFormat,
-          ),
+          streamUrl: buildStreamUrl(creds, r.streamId, r.outputFormat),
+          catchupDays: r.tvArchiveDuration,
+          catchupSource:
+            r.tvArchiveDuration > 0
+              ? buildTimeshiftSource(creds, r.streamId, r.outputFormat)
+              : "",
         });
       }
     } else {
       for (const r of byCat.get(cat.id) ?? []) {
+        const creds = {
+          serverUrl: r.streamBaseUrl ?? r.serverUrl,
+          username: r.username,
+          password: r.password,
+        };
         channels.push({
           displayName: r.customName || r.channelName,
           logo: r.customLogo || r.channelLogo || "",
           groupTitle: cat.name,
           tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
           epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
-          streamUrl: buildStreamUrl(
-            {
-              serverUrl: r.streamBaseUrl ?? r.serverUrl,
-              username: r.username,
-              password: r.password,
-            },
-            r.streamId,
-            r.outputFormat,
-          ),
+          streamUrl: buildStreamUrl(creds, r.streamId, r.outputFormat),
+          catchupDays: r.tvArchiveDuration,
+          catchupSource:
+            r.tvArchiveDuration > 0
+              ? buildTimeshiftSource(creds, r.streamId, r.outputFormat)
+              : "",
         });
       }
     }

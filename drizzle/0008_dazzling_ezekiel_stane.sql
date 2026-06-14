@@ -1,0 +1,1 @@
+ALTER TABLE `source_channels` ADD `tv_archive_duration` integer DEFAULT 0 NOT NULL;

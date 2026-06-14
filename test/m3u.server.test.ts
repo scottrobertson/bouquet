@@ -10,6 +10,8 @@ function channel(over: Partial<ResolvedChannel> = {}): ResolvedChannel {
     tvgId: "bbc1.uk",
     epgSourceId: 1,
     streamUrl: "http://example.com/live/u/p/1.ts",
+    catchupDays: 0,
+    catchupSource: "",
     ...over,
   };
 }
@@ -45,6 +47,27 @@ describe("buildM3u", () => {
     expect(out).not.toContain(`"Sports"`);
     expect(out).toContain(`tvg-name="Sky  Sports"`);
     expect(out).toContain(`group-title="A  B"`);
+  });
+
+  it("writes catchup attributes when the channel has an archive", () => {
+    const out = buildM3u(
+      [
+        channel({
+          catchupDays: 7,
+          catchupSource:
+            "http://example.com/timeshift/u/p/{duration}/{Y}-{m}-{d}:{H}-{M}/1.ts",
+        }),
+      ],
+      "http://host/epg",
+    );
+    expect(out).toContain(
+      `catchup="default" catchup-days="7" catchup-source="http://example.com/timeshift/u/p/{duration}/{Y}-{m}-{d}:{H}-{M}/1.ts"`,
+    );
+  });
+
+  it("omits catchup attributes when there's no archive", () => {
+    const out = buildM3u([channel()], "http://host/epg");
+    expect(out).not.toContain("catchup");
   });
 
   it("ends with a trailing newline", () => {
