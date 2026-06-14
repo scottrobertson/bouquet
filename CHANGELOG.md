@@ -124,6 +124,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Guide programmes no longer draw on top of each other when a channel's EPG data has
+  overlapping or duplicate entries. Each channel's lane is now made non-overlapping
+  before it's rendered: overlapping programmes are trimmed back to where the next one
+  starts, and duplicates or ones nested inside a longer programme are dropped.
 - Renaming a playlist channel no longer flickers back to the old name for a frame
   before settling on the new one. The editor was resyncing its optimistic copy in an
   effect, leaving one stale frame; it now resyncs during render.

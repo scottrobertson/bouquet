@@ -53,6 +53,37 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+/** Make a channel's programmes a clean, non-overlapping lane. EPG data sometimes
+    has overlapping or duplicate entries, which the grid would otherwise draw on
+    top of each other. We trim each programme's end to where the next one starts,
+    and drop any that get squeezed to nothing (duplicates and fully-covered ones).
+    Start times are kept as-is since that's what people read off the guide. */
+export function resolveOverlaps(programmes: GuideProgramme[]): GuideProgramme[] {
+  // Earliest start first, and for equal starts the longer one wins so it's the
+  // one that survives.
+  const sorted = [...programmes].sort(
+    (a, b) => a.startTs - b.startTs || b.stopTs - a.stopTs,
+  );
+
+  // Drop anything that ends within a programme we've already kept: exact
+  // duplicates, and shorter entries nested inside a longer one.
+  const kept: GuideProgramme[] = [];
+  let maxStop = -Infinity;
+  for (const p of sorted) {
+    if (p.stopTs <= maxStop) continue;
+    kept.push(p);
+    maxStop = p.stopTs;
+  }
+
+  // Trim each remaining programme's end back to where the next one starts, so
+  // partial overlaps don't draw on top of each other.
+  return kept.map((p, i) => {
+    const next = kept[i + 1];
+    if (!next || next.startTs >= p.stopTs) return p;
+    return { ...p, stopTs: next.startTs };
+  });
+}
+
 /** Build the guide for a playlist over [fromTs, toTs): its channels in display
     order, grouped by category, each with the programmes overlapping the window.
     Reads only the local DB, so it's fast. */
@@ -137,7 +168,7 @@ export function getPlaylistGuide(
   const byName = new Map<string, GuideCategory>();
   for (const c of channels) {
     const programmes = c.tvgId
-      ? (progsByChannel.get(`${c.epgSourceId}:${c.tvgId}`) ?? [])
+      ? resolveOverlaps(progsByChannel.get(`${c.epgSourceId}:${c.tvgId}`) ?? [])
       : [];
 
     let cat = byName.get(c.groupTitle);
