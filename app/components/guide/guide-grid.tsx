@@ -259,7 +259,7 @@ const ChannelRow = memo(function ChannelRow({
       </div>
 
       <div
-        className="relative shrink-0 overflow-hidden border-b border-border"
+        className="relative shrink-0 border-b border-border"
         style={{ width: windowWidth, height: ROW_H }}
       >
         {row.programmes.length === 0 ? (
@@ -272,6 +272,7 @@ const ChannelRow = memo(function ChannelRow({
               key={i}
               programme={p}
               fromMs={fromMs}
+              windowWidth={windowWidth}
               nowMs={nowMs}
               onSelect={() =>
                 onSelect({ channelName: row.displayName, programme: p })
@@ -287,16 +288,21 @@ const ChannelRow = memo(function ChannelRow({
 function ProgrammeBlock({
   programme: p,
   fromMs,
+  windowWidth,
   nowMs,
   onSelect,
 }: {
   programme: ProgrammeView;
   fromMs: number;
+  windowWidth: number;
   nowMs: number;
   onSelect: () => void;
 }) {
   const left = xForMs(p.startMs, fromMs);
-  const width = Math.max(MIN_BLOCK_W, widthForMs(p.startMs, p.stopMs)) - 2;
+  const rawWidth = Math.max(MIN_BLOCK_W, widthForMs(p.startMs, p.stopMs)) - 2;
+  // Clamp so a programme running past the window's end doesn't overflow now that
+  // the row no longer clips.
+  const width = Math.min(rawWidth, windowWidth - left);
   const past = p.stopMs <= nowMs;
   const airing = p.startMs <= nowMs && nowMs < p.stopMs;
   const showTime = width > 64;
@@ -309,25 +315,32 @@ function ProgrammeBlock({
         p.description ? `\n\n${p.description}` : ""
       }`}
       className={cn(
-        "absolute top-1.5 bottom-1.5 flex flex-col justify-center overflow-hidden rounded-sm border border-border bg-card px-2 text-left hover:bg-white/[0.03]",
+        "absolute top-1.5 bottom-1.5 block rounded-sm border border-border bg-card text-left hover:bg-white/[0.03]",
         past && "opacity-50",
         airing && "border-primary/40 bg-primary/10 hover:bg-primary/15",
       )}
       style={{ left, width }}
     >
-      <div className="flex items-center gap-1">
-        {past && p.catchup ? (
-          <RotateCcw className="size-3 shrink-0 text-muted-foreground" />
+      {/* Sticky so the title stays visible while a long programme is scrolled
+          past; it slides along but is clamped to the block. */}
+      <span
+        className="sticky flex h-full w-fit max-w-full flex-col justify-center px-2"
+        style={{ left: CHANNEL_COL_W }}
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          {past && p.catchup ? (
+            <RotateCcw className="size-3 shrink-0 text-muted-foreground" />
+          ) : null}
+          <span className="truncate text-[12px] font-medium">
+            {p.title ?? "Unknown"}
+          </span>
+        </span>
+        {showTime ? (
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {fmtTime(p.startMs)}
+          </span>
         ) : null}
-        <span className="truncate text-[12px] font-medium">
-          {p.title ?? "Unknown"}
-        </span>
-      </div>
-      {showTime ? (
-        <span className="text-[11px] text-muted-foreground tabular-nums">
-          {fmtTime(p.startMs)}
-        </span>
-      ) : null}
+      </span>
     </button>
   );
 }
