@@ -107,6 +107,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The sidebar can now collapse to an icon rail on desktop, not just slide away on mobile.
+  A toggle button in the sidebar shrinks it to icons only (with tooltips for each link) and
+  the choice is remembered between visits. The mobile drawer opens and closes faster, and the
+  desktop collapse button has a larger hit area.
 - Backups are now a gzipped snapshot of the whole database instead of a JSON dump of
   selected tables. Restoring replaces everything and runs the database's migrations, so an
   older backup is upgraded to the current schema as part of the restore. This means a backup
