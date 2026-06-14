@@ -28,31 +28,51 @@ import {
 import { Button } from "~/components/ui/button";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
-import { SortableChannelRow } from "./channel-row";
+import { AlternateRow, PrimaryRow } from "./channel-row";
 import type { AutoChannelView, EditorCategory, EditorChannel } from "./types";
+
+/** Group actions wired up by the board, applied per primary/alternate here. */
+export type GroupApi = {
+  expandedGroups: Set<number>;
+  onToggleGroup: (primaryId: number) => void;
+  onUngroupPrimary: (primaryId: number) => void;
+  onUngroupAlternate: (channelId: number) => void;
+  onMoveAlternate: (primaryId: number, channelId: number, dir: -1 | 1) => void;
+  onPromoteAlternate: (channelId: number) => void;
+  onRemove: (channelId: number) => void;
+};
 
 export function CategoryGroup({
   category,
   channels,
+  alternatesByPrimary,
   autoChannels,
   playlistId,
   collapsed,
   onToggleCollapse,
   selectedChannels,
   onSelectChannel,
+  groupApi,
 }: {
   category: EditorCategory;
+  // Primary (non-alternate) channels in this category.
   channels: EditorChannel[];
+  alternatesByPrimary: Map<number, EditorChannel[]>;
   autoChannels: AutoChannelView[];
   playlistId: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
   selectedChannels: Set<number>;
   onSelectChannel: (id: number, shiftKey: boolean) => void;
+  groupApi: GroupApi;
 }) {
   const auto = category.auto;
   const isAuto = auto != null;
-  const count = isAuto ? autoChannels.length : channels.length;
+  const altTotal = channels.reduce(
+    (n, c) => n + (alternatesByPrimary.get(c.id)?.length ?? 0),
+    0,
+  );
+  const count = isAuto ? autoChannels.length : channels.length + altTotal;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: `cat-${category.id}`, data: { type: "categoryHeader", categoryId: category.id } });
@@ -139,18 +159,118 @@ export function CategoryGroup({
               </div>
             ) : (
               channels.map((ch) => (
-                <SortableChannelRow
+                <PrimaryGroup
                   key={ch.id}
-                  channel={ch}
+                  primary={ch}
+                  alternates={alternatesByPrimary.get(ch.id) ?? []}
+                  collapsed={!groupApi.expandedGroups.has(ch.id)}
                   playlistId={playlistId}
-                  selected={selectedChannels.has(ch.id)}
-                  onSelect={onSelectChannel}
+                  selectedChannels={selectedChannels}
+                  onSelectChannel={onSelectChannel}
+                  groupApi={groupApi}
                 />
               ))
             )}
           </SortableContext>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A primary channel and its alternates. The whole group is one sortable unit
+    so it drags together. Alternates are static; their menu reorders/ungroups. */
+function PrimaryGroup({
+  primary,
+  alternates,
+  collapsed,
+  playlistId,
+  selectedChannels,
+  onSelectChannel,
+  groupApi,
+}: {
+  primary: EditorChannel;
+  alternates: EditorChannel[];
+  collapsed: boolean;
+  playlistId: number;
+  selectedChannels: Set<number>;
+  onSelectChannel: (id: number, shiftKey: boolean) => void;
+  groupApi: GroupApi;
+}) {
+  const {
+    active,
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id: primary.id, data: { type: "channel", channel: primary } });
+
+  // Show the insert line only when adding from the source list (it lands above
+  // this group). Reordering already shows dnd-kit's gap.
+  const insertAbove = isOver && active?.data.current?.type === "source";
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(isDragging && "opacity-50")}
+    >
+      <PrimaryRow
+        channel={primary}
+        playlistId={playlistId}
+        selected={selectedChannels.has(primary.id)}
+        onSelect={onSelectChannel}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        insertAbove={insertAbove}
+        group={{
+          isAlternate: false,
+          hasAlternates: alternates.length > 0,
+          altCount: alternates.length,
+          collapsed,
+          onToggleCollapse: () => groupApi.onToggleGroup(primary.id),
+          onUngroupPrimary: () => groupApi.onUngroupPrimary(primary.id),
+          onUngroupAlternate: () => {},
+          canMoveUp: false,
+          canMoveDown: false,
+          onMove: () => {},
+          onDelete: () => groupApi.onRemove(primary.id),
+        }}
+      />
+      {/* Alternates stay mounted and are clipped (not display:none) when
+          collapsed, so their logo layers persist and Safari doesn't
+          re-rasterize them with a stray frame on the next expand. */}
+      <div className={cn("overflow-hidden", collapsed ? "max-h-0" : "max-h-none")}>
+        {alternates.map((alt, i) => (
+          <AlternateRow
+            key={alt.id}
+            channel={alt}
+            playlistId={playlistId}
+            selected={selectedChannels.has(alt.id)}
+            onSelect={onSelectChannel}
+            group={{
+              isAlternate: true,
+              hasAlternates: false,
+              altCount: 0,
+              collapsed: false,
+              onToggleCollapse: () => {},
+              onUngroupPrimary: () => {},
+              onUngroupAlternate: () => groupApi.onUngroupAlternate(alt.id),
+              // The top alternate moves up into the primary spot; others
+              // reorder within the alternates.
+              canMoveUp: true,
+              canMoveDown: i < alternates.length - 1,
+              onMove: (dir) => {
+                if (dir === -1 && i === 0) groupApi.onPromoteAlternate(alt.id);
+                else groupApi.onMoveAlternate(primary.id, alt.id, dir);
+              },
+              onDelete: () => groupApi.onRemove(alt.id),
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

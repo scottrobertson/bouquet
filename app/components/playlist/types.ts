@@ -16,6 +16,11 @@ export type EditorChannel = {
   sourceEpgChannelId: string | null;
   sourceProviderName: string;
   sourceCategoryEnabled: boolean;
+  // Set when this channel is an alternate of another channel (its primary).
+  primaryChannelId: number | null;
+  altPosition: number;
+  // The name an alternate falls back to when not manually renamed.
+  autoName: string;
 };
 
 export type EditorCategory = {

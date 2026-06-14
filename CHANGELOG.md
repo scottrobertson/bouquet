@@ -6,6 +6,21 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Alternates: group a channel with its backup feeds, whether from another provider, a
+  duplicate on the same provider, or a different quality (FHD/UHD/etc). The backups
+  still come out as separate channels in the M3U (no merging), but in the editor they nest
+  under their primary and are named automatically from a per-playlist template (default
+  `{name} (Alt {n})`, editable in Settings). Rename the primary and the alternates follow.
+  Select playlist channels and use "Make alternate of…" in the action bar to fold them into
+  a group under any channel (picking one of the selected channels starts a new group). The
+  Source Channels pane has the same "Add as alternate of…" alongside "Add to category", so
+  you can drop new backups straight into a group. Each alternate's menu reorders it within
+  the group, ungroups it, removes it, or (for the top one) moves it up into the primary
+  spot. A group drags as one unit when you reorder it. Alternates always take the primary's
+  name, logo and EPG: they can't be renamed or given their own guide (their logo is hidden in
+  the editor), and renaming or changing the primary updates them all. Promoting an alternate
+  (or deleting the primary, which promotes the first alternate) reverts the new primary to
+  its own name and re-derives the rest.
 - Catchup/archive support in the output M3U. Channels whose provider keeps an archive now
   carry `catchup="default"`, `catchup-days` (the number of days the provider keeps), and a
   `catchup-source` timeshift URL, so players can play back past programmes. The archive
@@ -68,19 +83,16 @@ All notable changes to this project are recorded here. Newest first.
   (`buildM3u`) and the Xtream client's URL building and EPG channel parsing. Run
   with `npm test` (or `npm run test:watch`).
 
-- Dragging a source channel into the playlist now drops it at the position you
-  release over (insert at that row), not just the bottom, with an insertion-line
-  indicator. Dropping on the category header or empty space still appends.
 - Drag a playlist channel out onto the Source Channels pane to remove it from the
   playlist (with a "drop here to remove" overlay). Removed channels reappear in
   the source list.
 
 ### Changed
 
-- The source channels list is friendlier to tap on mobile: drag-to-add and the drag
-  handle are gone (they only worked on desktop where both panes show at once),
-  tapping anywhere on a channel row toggles its checkbox, and the category and
-  channel rows are taller.
+- Source channels are added to the playlist from the action bar at the bottom of the
+  pane ("Add to category" and "Add as alternate of…"), not by dragging. Tapping
+  anywhere on a channel row toggles its checkbox. Dragging source channels into the
+  playlist is gone: it only worked outside alt groups, which felt inconsistent.
 - Replaced the `DATABASE_PATH` env var with `CONFIG_PATH`, a directory (default
   `./data`, `/data` in Docker) that holds the SQLite database and, soon, backups.
   The database now lives at `<CONFIG_PATH>/bouquet.db`.
@@ -100,8 +112,6 @@ All notable changes to this project are recorded here. Newest first.
 - Output URLs (the M3U/EPG links, and the `url-tvg` baked into the M3U) now come out
   `https` when the app runs behind a reverse proxy that terminates SSL, by trusting
   `X-Forwarded-Proto` / `X-Forwarded-Host`.
-- Dragging a source channel onto the last row of a playlist group can now drop it at
-  the very bottom (drop in the row's lower half), not only above it.
 - The "Unavailable" / "Category off" badges on playlist rows now sit vertically
   centered on the right with the row's controls, instead of pinned to the title line.
 - The playlist editor header no longer crowds on mobile: the Output URLs and Settings

@@ -1,9 +1,7 @@
-import { useDraggable } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronDown,
   ChevronRight,
-  GripVertical,
   ListFilter,
   Plus,
   Radio,
@@ -37,6 +35,7 @@ import {
 } from "~/components/ui/select";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
+import { PrimaryPicker } from "./primary-picker";
 import type { BrowserChannel, EditorCategory } from "./types";
 
 const NEW_CATEGORY = "__new__";
@@ -58,12 +57,14 @@ export function SourceBrowser({
   total,
   loading,
   playlistCategories,
+  primaries,
   selected,
   onSelect,
   onAdd,
   onAddGroup,
   onAutoSync,
   onAddMatching,
+  onAddAlternateOf,
   adding,
 }: {
   categories: string[];
@@ -71,12 +72,14 @@ export function SourceBrowser({
   total: number;
   loading: boolean;
   playlistCategories: EditorCategory[];
+  primaries: { id: number; name: string; hint?: string }[];
   selected: Set<number>;
   onSelect: (id: number, shiftKey: boolean, orderedIds: number[]) => void;
   onAdd: (ids: number[], target: AddTarget) => void;
   onAddGroup: (sourceId: number, categoryName: string) => void;
   onAutoSync: (sourceId: number, categoryName: string, name: string) => void;
   onAddMatching: (target: AddTarget) => void;
+  onAddAlternateOf: (primaryId: number) => void;
   adding: boolean;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -389,7 +392,7 @@ export function SourceBrowser({
                       />
                     </div>
                   ) : (
-                    <DraggableSourceRow
+                    <SourceRow
                       channel={row.channel}
                       checked={selected.has(row.channel.id)}
                       onSelect={(shiftKey) =>
@@ -416,7 +419,7 @@ export function SourceBrowser({
         <div className="space-y-2 border-t border-border bg-card px-4 py-3">
           <p className="text-[11px] text-muted-foreground">
             {mode === "selected"
-              ? `Drag a channel into a category, or add ${selected.size} selected to:`
+              ? `Add ${selected.size} selected to:`
               : `Add all ${total.toLocaleString()} matching channels to:`}
           </p>
           <div className="flex items-center gap-2">
@@ -454,6 +457,16 @@ export function SourceBrowser({
               placeholder="New category name"
               className="h-8"
             />
+          ) : null}
+          {mode === "selected" && primaries.length > 0 ? (
+            <div className="flex items-center gap-2 border-t border-border pt-2">
+              <span className="text-[11px] text-muted-foreground">or</span>
+              <PrimaryPicker
+                primaries={primaries}
+                onPick={onAddAlternateOf}
+                label="Add as alternate of…"
+              />
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -589,7 +602,9 @@ function AutoSyncButton({
   );
 }
 
-function DraggableSourceRow({
+/** A source channel row. Tapping anywhere selects it; adding to the playlist
+    happens from the action bar below. */
+function SourceRow({
   channel,
   checked,
   onSelect,
@@ -600,48 +615,16 @@ function DraggableSourceRow({
   onSelect: (shiftKey: boolean) => void;
   indented?: boolean;
 }) {
-  // Drag-to-add only makes sense on desktop, where both panes are visible. On
-  // mobile the panes are separate, so we drop the drag and let a tap anywhere on
-  // the row toggle its checkbox instead.
-  const isMobile = useIsMobile();
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `src-${channel.id}`,
-    data: { type: "source", channel },
-    disabled: isMobile,
-  });
-
   return (
-    // Desktop: the whole row is the drag handle, the checkbox selects. Mobile:
-    // the whole row selects.
     <div
-      ref={setNodeRef}
-      title={isMobile ? undefined : "Drag into a category"}
-      onClick={isMobile ? (e) => onSelect(e.shiftKey) : undefined}
+      onClick={(e) => onSelect(e.shiftKey)}
       className={cn(
-        "flex items-center gap-2 px-3 py-3.5 transition-colors hover:bg-white/[0.02] md:py-1.5",
-        isMobile ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        "flex cursor-pointer items-center gap-2 px-3 py-3.5 transition-colors hover:bg-white/[0.02] md:py-1.5",
         indented && "pl-4",
         checked && "bg-primary/5",
-        isDragging && "opacity-40",
       )}
-      {...(isMobile ? {} : attributes)}
-      {...(isMobile ? {} : listeners)}
     >
-      <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/40 md:block" />
-      {isMobile ? (
-        <Checkbox checked={checked} className="pointer-events-none" />
-      ) : (
-        <span
-          onClick={(e) => {
-            e.preventDefault();
-            onSelect(e.shiftKey);
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="flex cursor-pointer items-center"
-        >
-          <Checkbox checked={checked} className="pointer-events-none" />
-        </span>
-      )}
+      <Checkbox checked={checked} className="pointer-events-none" />
       {channel.logo ? (
         <img
           src={logoSrc(channel.logo)}
@@ -665,19 +648,4 @@ function DraggableSourceRow({
       </span>
     </div>
   );
-}
-
-// True below the md breakpoint, where the editor shows one pane at a time.
-// Starts false and updates after mount so it matches the server's desktop render
-// and avoids a hydration mismatch.
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mql = window.matchMedia("(max-width: 767px)");
-    const onChange = () => setIsMobile(mql.matches);
-    onChange();
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
-  return isMobile;
 }

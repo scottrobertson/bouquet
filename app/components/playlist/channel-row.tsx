@@ -1,11 +1,29 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Pencil, RotateCcw, Trash2, Tv } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
+  GripVertical,
+  MoreVertical,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  Tv,
+  Unlink,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { Switch } from "~/components/ui/switch";
 import {
   Tooltip,
@@ -17,50 +35,53 @@ import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import type { EditorChannel } from "./types";
 
-export function SortableChannelRow({
+/** Row actions in the ⋯ menu: ungroup on a primary, reorder/ungroup on an
+    alternate, and delete on both. */
+export type GroupControls = {
+  isAlternate: boolean;
+  // Primary that has alternates.
+  hasAlternates: boolean;
+  altCount: number;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onUngroupPrimary: () => void;
+  onUngroupAlternate: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMove: (dir: -1 | 1) => void;
+  onDelete: () => void;
+};
+
+/** The primary channel of a group (or a plain standalone channel). The whole
+    group drags as one unit, so the drag handle props come from the parent that
+    owns the sortable. */
+export function PrimaryRow({
   channel,
   playlistId,
   selected,
   onSelect,
+  group,
+  dragHandleProps,
+  insertAbove,
 }: {
   channel: EditorChannel;
   playlistId: number;
   selected: boolean;
   onSelect: (id: number, shiftKey: boolean) => void;
+  group?: GroupControls;
+  dragHandleProps?: Record<string, unknown>;
+  insertAbove?: boolean;
 }) {
-  const {
-    active,
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-    isOver,
-  } = useSortable({ id: channel.id, data: { type: "channel", channel } });
-
-  // Only show the insert line when adding from the source list (it lands above
-  // this row). For reordering, dnd-kit already shifts the rows to show the gap.
-  const insertAbove = isOver && active?.data.current?.type === "source";
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    boxShadow: insertAbove ? "inset 0 2px 0 0 var(--primary)" : undefined,
-  };
-
   return (
     // The whole row is the drag handle. Interactive controls below stop
     // propagation so they click/toggle instead of starting a drag.
     <div
-      ref={setNodeRef}
-      style={style}
       className={cn(
         "group/row flex cursor-grab items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors hover:bg-white/[0.02] active:cursor-grabbing sm:gap-2 sm:px-3",
         selected && "bg-primary/5",
-        isDragging && "opacity-50",
       )}
-      {...attributes}
-      {...listeners}
+      style={insertAbove ? { boxShadow: "inset 0 2px 0 0 var(--primary)" } : undefined}
+      {...dragHandleProps}
     >
       {/* The whole row is the drag handle; the grip is just an affordance, so
           hide it on mobile to claw back width. */}
@@ -75,8 +96,123 @@ export function SortableChannelRow({
       >
         <Checkbox checked={selected} className="pointer-events-none" />
       </span>
-      <ChannelRowBody channel={channel} playlistId={playlistId} />
+      <ChannelRowBody channel={channel} playlistId={playlistId} group={group} />
     </div>
+  );
+}
+
+/** An alternate channel: a static row nested under its primary. Its columns line
+    up with the primary's (the ↳ sits in the chevron slot, the name under the
+    primary's name) and it carries a subtle tint to read as part of the group.
+    Reordering, ungrouping and removing happen from its menu. */
+export function AlternateRow({
+  channel,
+  playlistId,
+  selected,
+  onSelect,
+  group,
+}: {
+  channel: EditorChannel;
+  playlistId: number;
+  selected: boolean;
+  onSelect: (id: number, shiftKey: boolean) => void;
+  group: GroupControls;
+}) {
+  return (
+    <div
+      className={cn(
+        "group/row flex items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors sm:gap-2 sm:px-3",
+        selected ? "bg-primary/10" : "bg-white/[0.025] hover:bg-white/[0.05]",
+      )}
+    >
+      {/* Spacer aligning with the primary's drag grip. */}
+      <span className="hidden size-4 shrink-0 sm:block" />
+      <span
+        onClick={(e) => {
+          e.preventDefault();
+          onSelect(channel.id, e.shiftKey);
+        }}
+        className="flex cursor-pointer items-center"
+      >
+        <Checkbox checked={selected} className="pointer-events-none" />
+      </span>
+      {/* In the primary's chevron column, marking this as a child. */}
+      <CornerDownRight className="size-4 shrink-0 text-muted-foreground/40" />
+      <ChannelRowBody channel={channel} playlistId={playlistId} group={group} />
+    </div>
+  );
+}
+
+const BOX = 28; // logo box in px (size-7)
+
+// Logos preloaded this session, with their decoded dimensions. Lets a row paint
+// its logo instantly on re-render/remount, and lets us size the <img> in exact
+// pixels (see ChannelLogo) instead of object-fit, which Safari mis-recomputes
+// on reflow.
+const logoDims = new Map<string, { w: number; h: number }>();
+
+/** Channel logo. Preloaded with a detached Image() (no <img> loading
+    placeholder), then rendered at an exact pixel size computed from its decoded
+    aspect — no object-fit / max-size, so Safari has nothing to recompute when
+    the list reflows on collapse/expand. TV icon on failure. */
+function ChannelLogo({ src }: { src: string | null }) {
+  const proxied = src ? logoSrc(src) : undefined;
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(() =>
+    proxied ? (logoDims.get(proxied) ?? null) : null,
+  );
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+    if (!proxied) return;
+    const cached = logoDims.get(proxied);
+    if (cached) {
+      setDims(cached);
+      return;
+    }
+    setDims(null);
+    const img = new Image();
+    img.onload = () => {
+      const d = { w: img.naturalWidth, h: img.naturalHeight };
+      if (d.w > 0 && d.h > 0) logoDims.set(proxied, d);
+      setDims(d.w > 0 ? d : null);
+      if (d.w === 0) setFailed(true);
+    };
+    img.onerror = () => setFailed(true);
+    img.src = proxied;
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [proxied]);
+
+  if (!proxied || failed) {
+    return (
+      <div className="hidden size-7 shrink-0 items-center justify-center sm:flex">
+        <Tv className="size-3.5 text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!dims) {
+    // Nothing painted while preloading.
+    return <div className="hidden size-7 shrink-0 sm:block" />;
+  }
+  // Exact pixel size that fits the box, preserving aspect. Fixed width/height
+  // means no intrinsic-size recompute on reflow, so the logo can't shrink.
+  const scale = Math.min(BOX / dims.w, BOX / dims.h);
+  const w = Math.round(dims.w * scale);
+  const h = Math.round(dims.h * scale);
+  return (
+    <span className="hidden size-7 shrink-0 items-center justify-center sm:flex">
+      <img
+        src={proxied}
+        alt=""
+        width={w}
+        height={h}
+        style={{ width: w, height: h }}
+        className="rounded"
+      />
+    </span>
   );
 }
 
@@ -85,14 +221,22 @@ export function ChannelRowBody({
   channel,
   playlistId,
   overlay,
+  group,
 }: {
   channel: EditorChannel;
   playlistId?: number;
   overlay?: boolean;
+  group?: GroupControls;
 }) {
   const fetcher = useFetcher();
   const logo = channel.customLogo ?? channel.sourceLogo;
-  const displayName = channel.customName ?? channel.sourceName;
+  const isAlternate = channel.primaryChannelId != null;
+  // Alternates are always auto-named from their primary (any stored custom name
+  // is ignored). Primaries use their custom name, falling back to the source.
+  const baseName = isAlternate ? channel.autoName : channel.sourceName;
+  const displayName = isAlternate
+    ? channel.autoName
+    : (channel.customName ?? channel.sourceName);
 
   // Optimistic enabled state so the toggle never waits on the server.
   const submittedEnabled =
@@ -101,31 +245,51 @@ export function ChannelRowBody({
       : undefined;
   const enabled = submittedEnabled ?? channel.enabled;
   const renamed =
-    !!channel.customName && channel.customName !== channel.sourceName;
+    !isAlternate && !!channel.customName && channel.customName !== baseName;
 
   return (
     <>
-      {/* Logo is hidden on mobile to give the name room. */}
-      {logo ? (
-        <img
-          src={logoSrc(logo)}
-          alt=""
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.style.visibility = "hidden";
-          }}
-          className="hidden size-7 shrink-0 rounded object-contain sm:block"
-        />
+      {/* Chevron slot. Always reserve its width on top-level rows so a single
+          channel's logo lines up with a group's logo, even between groups. */}
+      {group && !group.isAlternate ? (
+        group.hasAlternates ? (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={group.onToggleCollapse}
+            className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+            title={group.collapsed ? "Show alternates" : "Hide alternates"}
+          >
+            {group.collapsed ? (
+              <ChevronRight className="size-4" />
+            ) : (
+              <ChevronDown className="size-4" />
+            )}
+          </button>
+        ) : (
+          <span className="size-4 shrink-0" aria-hidden />
+        )
+      ) : null}
+
+      {/* Logo is hidden on mobile to give the name room. Alternates show no
+          logo (they use the primary's in output); a spacer keeps the name
+          aligned under the primary's. */}
+      {isAlternate ? (
+        <span className="hidden size-7 shrink-0 sm:block" />
       ) : (
-        <div className="hidden size-7 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground sm:flex">
-          <Tv className="size-3.5" />
-        </div>
+        <ChannelLogo src={logo} />
       )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-1.5">
-          <NameField channel={channel} displayName={displayName} disabled={overlay} />
-          {renamed ? (
+          <NameField
+            channel={channel}
+            displayName={displayName}
+            baseName={baseName}
+            disabled={overlay}
+            editable={!group?.isAlternate}
+          />
+          {renamed || group?.isAlternate ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
@@ -135,8 +299,17 @@ export function ChannelRowBody({
                   <Pencil className="size-3" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>Renamed from “{channel.sourceName}”</TooltipContent>
+              <TooltipContent>
+                {group?.isAlternate
+                  ? `Original: ${channel.sourceName}`
+                  : `Renamed from “${baseName}”`}
+              </TooltipContent>
             </Tooltip>
+          ) : null}
+          {group?.hasAlternates ? (
+            <Badge className="shrink-0 border-transparent bg-white/[0.06] text-muted-foreground">
+              {group.altCount} alt{group.altCount === 1 ? "" : "s"}
+            </Badge>
           ) : null}
         </div>
         <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
@@ -183,10 +356,15 @@ export function ChannelRowBody({
                 <RotateCcw className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Revert to source name</TooltipContent>
+            <TooltipContent>
+              {channel.primaryChannelId != null
+                ? "Revert to auto name"
+                : "Revert to source name"}
+            </TooltipContent>
           </Tooltip>
         ) : null}
-        {overlay || playlistId == null ? null : (
+        {/* Alternates always use the primary's guide, so no EPG picker. */}
+        {overlay || playlistId == null || isAlternate ? null : (
           <span
             onPointerDown={(e) => e.stopPropagation()}
             className="hidden sm:inline-flex"
@@ -205,37 +383,86 @@ export function ChannelRowBody({
             )
           }
         />
-        {overlay ? null : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 cursor-pointer text-muted-foreground hover:text-destructive"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() =>
-              fetcher.submit(
-                { intent: "removeChannel", channelId: channel.id },
-                { method: "post" },
-              )
-            }
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        )}
+        {!overlay && group ? <GroupMenu group={group} /> : null}
         </div>
       </div>
     </>
   );
 }
 
+/** The ⋯ menu of per-row actions: reorder/ungroup for alternates, ungroup-all
+    for a primary with alternates, and delete on every row. */
+function GroupMenu({ group }: { group: GroupControls }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+        {group.isAlternate ? (
+          <>
+            <DropdownMenuItem
+              disabled={!group.canMoveUp}
+              onClick={() => group.onMove(-1)}
+            >
+              <ArrowUp className="size-4" />
+              Move up
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!group.canMoveDown}
+              onClick={() => group.onMove(1)}
+            >
+              <ArrowDown className="size-4" />
+              Move down
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={group.onUngroupAlternate}>
+              <Unlink className="size-4" />
+              Remove from group
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : group.hasAlternates ? (
+          <>
+            <DropdownMenuItem onClick={group.onUngroupPrimary}>
+              <Unlink className="size-4" />
+              Ungroup all
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuItem
+          onClick={group.onDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="size-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function NameField({
   channel,
   displayName,
+  baseName,
   disabled,
+  editable = true,
 }: {
   channel: EditorChannel;
   displayName: string;
+  baseName: string;
   disabled?: boolean;
+  // Alternates are auto-named from their primary, so they can't be renamed.
+  editable?: boolean;
 }) {
   const fetcher = useFetcher();
   const [editing, setEditing] = useState(false);
@@ -257,7 +484,7 @@ function NameField({
       : undefined;
   const shown =
     submittedName !== undefined
-      ? submittedName.trim() || channel.sourceName
+      ? submittedName.trim() || baseName
       : displayName;
 
   function save() {
@@ -267,6 +494,12 @@ function NameField({
     fetcher.submit(
       { intent: "renameChannel", channelId: channel.id, customName: next },
       { method: "post" },
+    );
+  }
+
+  if (!editable) {
+    return (
+      <span className="min-w-0 truncate text-left text-[13px]">{displayName}</span>
     );
   }
 
@@ -297,7 +530,7 @@ function NameField({
       onClick={() => setEditing(true)}
       className={cn(
         "min-w-0 truncate text-left text-[13px]",
-        channel.customName && channel.customName !== channel.sourceName
+        channel.customName && channel.customName !== baseName
           ? "font-medium"
           : "",
       )}

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnySQLiteColumn,
   index,
   integer,
   sqliteTable,
@@ -118,6 +119,11 @@ export const playlists = sqliteTable("playlists", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   outputToken: text("output_token").notNull().unique(),
+  // Auto-name for a channel's alternates. {name} is the primary's name, {n} the
+  // alternate number.
+  altNameTemplate: text("alt_name_template")
+    .notNull()
+    .default("{name} (Alt {n})"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -168,11 +174,22 @@ export const playlistChannels = sqliteTable(
       onDelete: "set null",
     }),
     epgChannelId: text("epg_channel_id"),
+    // When set, this channel is an alternate of another playlist channel, its
+    // primary. Primaries leave this null. An alternate always sits in the same
+    // category as its primary. Set null on delete is a safety net; deleting a
+    // primary promotes its first alternate instead.
+    primaryChannelId: integer("primary_channel_id").references(
+      (): AnySQLiteColumn => playlistChannels.id,
+      { onDelete: "set null" },
+    ),
+    // Order among a primary's alternates. 0 for primaries.
+    altPosition: integer("alt_position").notNull().default(0),
   },
   (t) => [
     index("playlist_channels_playlist").on(t.playlistId),
     index("playlist_channels_category").on(t.categoryId),
     index("playlist_channels_source_channel").on(t.sourceChannelId),
+    index("playlist_channels_primary").on(t.primaryChannelId),
   ],
 );
 

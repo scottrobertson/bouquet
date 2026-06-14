@@ -1,8 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// Standalone config so the React Router plugin doesn't load during tests. We
-// only cover pure logic (no DB, no network), so a plain node environment is enough.
+// Standalone config so the React Router plugin doesn't load during tests. A
+// plain node environment is enough; DB-backed tests run against a temp database.
 export default defineConfig({
   resolve: {
     alias: {
@@ -12,5 +12,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts"],
+    // Redirect the DB to a temp dir before any app module loads. Harmless for
+    // the pure tests, which never open a connection.
+    setupFiles: ["test/setup-db.ts"],
   },
 });

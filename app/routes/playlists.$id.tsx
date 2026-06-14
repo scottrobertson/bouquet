@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import {
+  addAlternates,
   addChannels,
   bulkAddPrefix,
   bulkAddSuffix,
@@ -22,13 +23,18 @@ import {
   createAutoCategory,
   createCategory,
   deleteCategory,
+  makeAlternates,
+  promoteAlternate,
   removeChannel,
   renameCategory,
   renameChannel,
+  reorderAlternates,
   reorderCategories,
   reorderChannels,
   setEpg,
   toggleChannel,
+  ungroupAlternate,
+  ungroupPrimary,
 } from "~/services/playlist/mutations.server";
 import {
   getAutoChannels,
@@ -251,6 +257,51 @@ export async function action({ request, params }: Route.ActionArgs) {
 
     case "removeChannel": {
       removeChannel(playlistId, Number(form.get("channelId")));
+      return data({ ok: true, intent });
+    }
+
+    case "makeAlternates": {
+      const primaryId = Number(form.get("primaryId"));
+      const ids = form
+        .getAll("alternateIds")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n));
+      makeAlternates(playlistId, primaryId, ids);
+      return data({ ok: true, intent });
+    }
+
+    case "addAlternates": {
+      const primaryId = Number(form.get("primaryId"));
+      const ids = form
+        .getAll("sourceChannelIds")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n));
+      const added = addAlternates(playlistId, primaryId, ids);
+      return data({ ok: true, intent, added });
+    }
+
+    case "reorderAlternates": {
+      const primaryId = Number(form.get("primaryId"));
+      const ids = form
+        .getAll("alternateIds")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n));
+      reorderAlternates(playlistId, primaryId, ids);
+      return data({ ok: true, intent });
+    }
+
+    case "promoteAlternate": {
+      promoteAlternate(playlistId, Number(form.get("channelId")));
+      return data({ ok: true, intent });
+    }
+
+    case "ungroupAlternate": {
+      ungroupAlternate(playlistId, Number(form.get("channelId")));
+      return data({ ok: true, intent });
+    }
+
+    case "ungroupPrimary": {
+      ungroupPrimary(playlistId, Number(form.get("primaryId")));
       return data({ ok: true, intent });
     }
 

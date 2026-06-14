@@ -10,6 +10,7 @@ import {
   sources,
 } from "~/db/schema";
 import { buildStreamUrl, buildTimeshiftSource } from "~/services/xtream/client.server";
+import { altName } from "~/services/playlist/alt-name";
 
 export interface ResolvedChannel {
   displayName: string;
@@ -55,7 +56,10 @@ export async function getPlaylistOutput(
   // Materialized channels (normal categories), grouped by category id.
   const normalRows = db
     .select({
+      id: playlistChannels.id,
       categoryId: playlistChannels.categoryId,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      altPosition: playlistChannels.altPosition,
       customName: playlistChannels.customName,
       customLogo: playlistChannels.customLogo,
       pcEpgSourceId: playlistChannels.epgSourceId,
@@ -103,6 +107,98 @@ export async function getPlaylistOutput(
     if (list) list.push(r);
     else byCat.set(r.categoryId, [r]);
   }
+
+  // Resolved name and EPG for every channel in the playlist (including disabled
+  // ones), so an alternate can take its primary's name and guide even when the
+  // primary is hidden from output.
+  const primaryNameById = new Map<number, string>();
+  const primaryEpgById = new Map<number, { tvgId: string; epgSourceId: number }>();
+  const primaryLogoById = new Map<number, string>();
+  for (const r of db
+    .select({
+      id: playlistChannels.id,
+      customName: playlistChannels.customName,
+      customLogo: playlistChannels.customLogo,
+      pcEpgSourceId: playlistChannels.epgSourceId,
+      pcEpgChannelId: playlistChannels.epgChannelId,
+      channelName: sourceChannels.name,
+      channelLogo: sourceChannels.logo,
+      channelEpgId: sourceChannels.epgChannelId,
+      channelSourceId: sourceChannels.sourceId,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .where(eq(playlistChannels.playlistId, playlist.id))
+    .all()) {
+    primaryNameById.set(r.id, r.customName || r.channelName);
+    primaryEpgById.set(r.id, {
+      tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
+      epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
+    });
+    primaryLogoById.set(r.id, r.customLogo || r.channelLogo || "");
+  }
+
+  // Order each category so every primary is immediately followed by its
+  // alternates. Alternates whose primary is filtered out of output stay where
+  // they fall in position order.
+  const sequenceCategory = (rows: typeof normalRows): typeof normalRows => {
+    const altsByPrimary = new Map<number, typeof normalRows>();
+    for (const r of rows) {
+      if (r.primaryChannelId == null) continue;
+      const list = altsByPrimary.get(r.primaryChannelId);
+      if (list) list.push(r);
+      else altsByPrimary.set(r.primaryChannelId, [r]);
+    }
+    for (const list of altsByPrimary.values())
+      list.sort((a, b) => a.altPosition - b.altPosition);
+
+    const present = new Set(rows.map((r) => r.id));
+    const out: typeof normalRows = [];
+    for (const r of rows) {
+      if (r.primaryChannelId != null) {
+        if (!present.has(r.primaryChannelId)) out.push(r);
+        continue;
+      }
+      out.push(r);
+      for (const alt of altsByPrimary.get(r.id) ?? []) out.push(alt);
+    }
+    return out;
+  };
+
+  const resolveName = (r: (typeof normalRows)[number]): string => {
+    // Alternates are always auto-named from their primary; a stored custom name
+    // is ignored so they can never drift from the primary's name.
+    if (r.primaryChannelId != null) {
+      const primaryName = primaryNameById.get(r.primaryChannelId) ?? r.channelName;
+      return altName(playlist.altNameTemplate, primaryName, r.altPosition + 1);
+    }
+    if (r.customName) return r.customName;
+    return r.channelName;
+  };
+
+  const resolveEpg = (r: (typeof normalRows)[number]) => {
+    // Alternates always use their primary's guide; their own EPG is ignored.
+    if (r.primaryChannelId != null) {
+      const pe = primaryEpgById.get(r.primaryChannelId);
+      if (pe) return pe;
+    }
+    return {
+      tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
+      epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
+    };
+  };
+
+  const resolveLogo = (r: (typeof normalRows)[number]): string => {
+    // Alternates always use their primary's logo; their own is ignored.
+    if (r.primaryChannelId != null) {
+      const pl = primaryLogoById.get(r.primaryChannelId);
+      if (pl != null) return pl;
+    }
+    return r.customLogo || r.channelLogo || "";
+  };
 
   // Live channels for an auto-sync category, straight from the source catalog.
   const autoRows = (sourceId: number, categoryName: string) =>
@@ -157,18 +253,19 @@ export async function getPlaylistOutput(
         });
       }
     } else {
-      for (const r of byCat.get(cat.id) ?? []) {
+      for (const r of sequenceCategory(byCat.get(cat.id) ?? [])) {
         const creds = {
           serverUrl: r.streamBaseUrl ?? r.serverUrl,
           username: r.username,
           password: r.password,
         };
+        const epg = resolveEpg(r);
         channels.push({
-          displayName: r.customName || r.channelName,
-          logo: r.customLogo || r.channelLogo || "",
+          displayName: resolveName(r),
+          logo: resolveLogo(r),
           groupTitle: cat.name,
-          tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
-          epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
+          tvgId: epg.tvgId,
+          epgSourceId: epg.epgSourceId,
           streamUrl: buildStreamUrl(creds, r.streamId, r.outputFormat),
           catchupDays: r.tvArchiveDuration,
           catchupSource:

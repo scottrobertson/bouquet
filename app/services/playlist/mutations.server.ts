@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -44,6 +44,117 @@ function channelInPlaylist(playlistId: number, channelId: number) {
       ),
     )
     .get();
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Renumber a primary's alternates to a gap-free 0..n by current order. */
+function renumberAlternates(tx: Tx, primaryId: number) {
+  const alts = tx
+    .select({ id: playlistChannels.id })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.primaryChannelId, primaryId))
+    .orderBy(asc(playlistChannels.altPosition), asc(playlistChannels.id))
+    .all();
+  alts.forEach((a, i) => {
+    tx.update(playlistChannels)
+      .set({ altPosition: i })
+      .where(eq(playlistChannels.id, a.id))
+      .run();
+  });
+}
+
+/** Snap every alternate in the playlist into its primary's category, so a
+    primary moving categories drags its alternates along. */
+function keepAlternatesWithPrimary(tx: Tx, playlistId: number) {
+  const catById = new Map(
+    tx
+      .select({
+        id: playlistChannels.id,
+        categoryId: playlistChannels.categoryId,
+        primaryChannelId: playlistChannels.primaryChannelId,
+      })
+      .from(playlistChannels)
+      .where(eq(playlistChannels.playlistId, playlistId))
+      .all()
+      .map((r) => [r.id, r]),
+  );
+  for (const r of catById.values()) {
+    if (r.primaryChannelId == null) continue;
+    const target = catById.get(r.primaryChannelId)?.categoryId;
+    if (target != null && target !== r.categoryId) {
+      tx.update(playlistChannels)
+        .set({ categoryId: target })
+        .where(eq(playlistChannels.id, r.id))
+        .run();
+    }
+  }
+}
+
+/** Delete the given channels. When a deleted channel is a primary with a
+    surviving alternate, the first alternate is promoted to primary and keeps
+    the old primary's name and position, so the channel stays put. */
+function performRemove(idList: number[]) {
+  const deleteSet = new Set(idList);
+  if (!deleteSet.size) return;
+  db.transaction((tx) => {
+    const rows = tx
+      .select({
+        id: playlistChannels.id,
+        primaryChannelId: playlistChannels.primaryChannelId,
+        position: playlistChannels.position,
+      })
+      .from(playlistChannels)
+      .where(inArray(playlistChannels.id, idList))
+      .all();
+
+    // Promote a surviving alternate for each deleted primary.
+    for (const r of rows) {
+      const alts = tx
+        .select({ id: playlistChannels.id })
+        .from(playlistChannels)
+        .where(eq(playlistChannels.primaryChannelId, r.id))
+        .orderBy(asc(playlistChannels.altPosition), asc(playlistChannels.id))
+        .all()
+        .filter((a) => !deleteSet.has(a.id));
+      if (!alts.length) continue;
+      const newPrimaryId = alts[0].id;
+      // The promoted alternate reverts to its own name (it had none as an
+      // alternate); it takes the deleted primary's list position.
+      tx.update(playlistChannels)
+        .set({
+          primaryChannelId: null,
+          altPosition: 0,
+          position: r.position,
+          customName: null,
+        })
+        .where(eq(playlistChannels.id, newPrimaryId))
+        .run();
+      alts.slice(1).forEach((a, i) => {
+        tx.update(playlistChannels)
+          .set({ primaryChannelId: newPrimaryId, altPosition: i })
+          .where(eq(playlistChannels.id, a.id))
+          .run();
+      });
+    }
+
+    // Clear any links among the rows being deleted so deleting a primary and
+    // its alternates together never trips the foreign key.
+    tx.update(playlistChannels)
+      .set({ primaryChannelId: null })
+      .where(inArray(playlistChannels.id, idList))
+      .run();
+    tx.delete(playlistChannels).where(inArray(playlistChannels.id, idList)).run();
+
+    // Renumber alternates of any surviving primary that lost one.
+    const affected = new Set<number>();
+    for (const r of rows) {
+      if (r.primaryChannelId != null && !deleteSet.has(r.primaryChannelId)) {
+        affected.add(r.primaryChannelId);
+      }
+    }
+    for (const pid of affected) renumberAlternates(tx, pid);
+  });
 }
 
 export function createCategory(playlistId: number, name: string) {
@@ -246,6 +357,8 @@ export function reorderChannels(
           .run();
       });
     }
+
+    keepAlternatesWithPrimary(tx, playlistId);
   });
 }
 
@@ -258,7 +371,10 @@ export function renameChannel(
   const trimmed = customName.trim();
   // Renaming back to the source name clears the custom name (not a real rename).
   const row = db
-    .select({ sourceName: sourceChannels.name })
+    .select({
+      sourceName: sourceChannels.name,
+      primaryChannelId: playlistChannels.primaryChannelId,
+    })
     .from(playlistChannels)
     .innerJoin(
       sourceChannels,
@@ -266,7 +382,9 @@ export function renameChannel(
     )
     .where(eq(playlistChannels.id, channelId))
     .get();
-  const next = trimmed && trimmed !== row?.sourceName ? trimmed : null;
+  // Alternates are auto-named from their primary; they can't be renamed.
+  if (!row || row.primaryChannelId != null) return;
+  const next = trimmed && trimmed !== row.sourceName ? trimmed : null;
   db.update(playlistChannels)
     .set({ customName: next })
     .where(eq(playlistChannels.id, channelId))
@@ -292,6 +410,13 @@ export function setEpg(
   epgChannelId: string | null,
 ) {
   if (!channelInPlaylist(playlistId, channelId)) return;
+  // Alternates always use their primary's guide; their own EPG can't be set.
+  const row = db
+    .select({ primaryChannelId: playlistChannels.primaryChannelId })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.id, channelId))
+    .get();
+  if (row?.primaryChannelId != null) return;
   db.update(playlistChannels)
     .set({ epgSourceId, epgChannelId })
     .where(eq(playlistChannels.id, channelId))
@@ -300,9 +425,7 @@ export function setEpg(
 
 export function removeChannel(playlistId: number, channelId: number) {
   if (!channelInPlaylist(playlistId, channelId)) return;
-  db.delete(playlistChannels)
-    .where(eq(playlistChannels.id, channelId))
-    .run();
+  performRemove([channelId]);
 }
 
 /** Scope a set of channel ids to the ones that belong to the playlist. */
@@ -339,7 +462,7 @@ export function bulkToggle(
 export function bulkRemove(playlistId: number, channelIds: number[]) {
   const ids = [...ownedChannels(playlistId, channelIds)];
   if (!ids.length) return;
-  db.delete(playlistChannels).where(inArray(playlistChannels.id, ids)).run();
+  performRemove(ids);
 }
 
 export function bulkMove(
@@ -360,6 +483,7 @@ export function bulkMove(
         .where(eq(playlistChannels.id, id))
         .run();
     }
+    keepAlternatesWithPrimary(tx, playlistId);
   });
 }
 
@@ -379,6 +503,7 @@ function bulkRename(
         id: playlistChannels.id,
         customName: playlistChannels.customName,
         sourceName: sourceChannels.name,
+        primaryChannelId: playlistChannels.primaryChannelId,
       })
       .from(playlistChannels)
       .innerJoin(
@@ -388,6 +513,8 @@ function bulkRename(
       .where(inArray(playlistChannels.id, ids))
       .all();
     for (const r of rows) {
+      // Alternates are auto-named from their primary; skip them.
+      if (r.primaryChannelId != null) continue;
       const current = r.customName ?? r.sourceName;
       const result = transform(current).trim();
       const next = result && result !== r.sourceName ? result : null;
@@ -421,6 +548,293 @@ export function bulkReplace(
   bulkRename(playlistId, ids, (current) => current.split(search).join(replace));
 }
 
+/** A channel that can be the primary of a group: in the playlist, not itself
+    an alternate, and not in an auto category. Returns its row or null. */
+function primaryCandidate(playlistId: number, channelId: number) {
+  const row = db
+    .select({
+      id: playlistChannels.id,
+      categoryId: playlistChannels.categoryId,
+      position: playlistChannels.position,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      epgSourceId: playlistChannels.epgSourceId,
+      epgChannelId: playlistChannels.epgChannelId,
+    })
+    .from(playlistChannels)
+    .where(
+      and(
+        eq(playlistChannels.id, channelId),
+        eq(playlistChannels.playlistId, playlistId),
+      ),
+    )
+    .get();
+  if (!row || row.primaryChannelId != null) return null;
+  if (categoryIsAuto(row.categoryId)) return null;
+  return row;
+}
+
+/** Highest alt position currently used under a primary, or -1 if none. */
+function maxAltPosition(tx: Tx, primaryId: number) {
+  const row = tx
+    .select({ max: sql<number | null>`max(${playlistChannels.altPosition})` })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.primaryChannelId, primaryId))
+    .get();
+  return row?.max ?? -1;
+}
+
+/** Turn existing playlist channels into alternates of a primary. They move into
+    the primary's category, inherit its EPG, and drop their custom name so they
+    pick up the auto-name. */
+export function makeAlternates(
+  playlistId: number,
+  primaryId: number,
+  alternateIds: number[],
+) {
+  const primary = primaryCandidate(playlistId, primaryId);
+  if (!primary) return;
+  const owned = ownedChannels(playlistId, alternateIds);
+  // Keep the given order, drop the primary itself and anything not owned.
+  const candidates = alternateIds.filter(
+    (id) => id !== primaryId && owned.has(id),
+  );
+  if (!candidates.length) return;
+
+  db.transaction((tx) => {
+    let next = maxAltPosition(tx, primaryId) + 1;
+    // Groups an alternate leaves get renumbered so their numbering stays tidy.
+    const formerPrimaries = new Set<number>();
+    for (const id of candidates) {
+      const row = tx
+        .select({ primaryChannelId: playlistChannels.primaryChannelId })
+        .from(playlistChannels)
+        .where(eq(playlistChannels.id, id))
+        .get();
+      if (!row) continue;
+      // A primary with its own alternates can't become an alternate, or we'd
+      // nest a group inside a group.
+      const hasOwnAlternates = !!tx
+        .select({ id: playlistChannels.id })
+        .from(playlistChannels)
+        .where(eq(playlistChannels.primaryChannelId, id))
+        .get();
+      if (hasOwnAlternates) continue;
+
+      if (row.primaryChannelId != null && row.primaryChannelId !== primaryId) {
+        formerPrimaries.add(row.primaryChannelId);
+      }
+
+      tx.update(playlistChannels)
+        .set({
+          primaryChannelId: primaryId,
+          categoryId: primary.categoryId,
+          altPosition: next++,
+          epgSourceId: primary.epgSourceId,
+          epgChannelId: primary.epgChannelId,
+          customName: null,
+        })
+        .where(eq(playlistChannels.id, id))
+        .run();
+    }
+    for (const former of formerPrimaries) renumberAlternates(tx, former);
+  });
+}
+
+/** Add source channels as new alternates of a primary, inheriting its EPG. */
+export function addAlternates(
+  playlistId: number,
+  primaryId: number,
+  sourceChannelIds: number[],
+) {
+  const primary = primaryCandidate(playlistId, primaryId);
+  if (!primary || sourceChannelIds.length === 0) return 0;
+
+  const order = new Map(sourceChannelIds.map((id, i) => [id, i]));
+  const channels = db
+    .select({ id: sourceChannels.id })
+    .from(sourceChannels)
+    .where(inArray(sourceChannels.id, sourceChannelIds))
+    .all()
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
+  // Don't duplicate a source channel already in the primary's category.
+  const existing = new Set(
+    db
+      .select({ sourceChannelId: playlistChannels.sourceChannelId })
+      .from(playlistChannels)
+      .where(eq(playlistChannels.categoryId, primary.categoryId))
+      .all()
+      .map((r) => r.sourceChannelId),
+  );
+  const toAdd = channels.filter((ch) => !existing.has(ch.id));
+  if (!toAdd.length) return 0;
+
+  db.transaction((tx) => {
+    let next = maxAltPosition(tx, primaryId) + 1;
+    for (const ch of toAdd) {
+      tx.insert(playlistChannels)
+        .values({
+          playlistId,
+          categoryId: primary.categoryId,
+          sourceChannelId: ch.id,
+          position: primary.position,
+          primaryChannelId: primaryId,
+          altPosition: next++,
+          epgSourceId: primary.epgSourceId,
+          epgChannelId: primary.epgChannelId,
+        })
+        .run();
+    }
+  });
+  return toAdd.length;
+}
+
+/** Persist the order of a primary's alternates. */
+export function reorderAlternates(
+  playlistId: number,
+  primaryId: number,
+  orderedIds: number[],
+) {
+  if (!channelInPlaylist(playlistId, primaryId)) return;
+  const alts = new Set(
+    db
+      .select({ id: playlistChannels.id })
+      .from(playlistChannels)
+      .where(eq(playlistChannels.primaryChannelId, primaryId))
+      .all()
+      .map((r) => r.id),
+  );
+  db.transaction((tx) => {
+    orderedIds.forEach((id, i) => {
+      if (!alts.has(id)) return;
+      tx.update(playlistChannels)
+        .set({ altPosition: i })
+        .where(eq(playlistChannels.id, id))
+        .run();
+    });
+  });
+}
+
+/** Promote an alternate to be the group's primary. The old primary becomes an
+    alternate at the top of the list; the other alternates follow. */
+export function promoteAlternate(playlistId: number, channelId: number) {
+  const alt = db
+    .select({
+      id: playlistChannels.id,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      position: playlistChannels.position,
+    })
+    .from(playlistChannels)
+    .where(
+      and(
+        eq(playlistChannels.id, channelId),
+        eq(playlistChannels.playlistId, playlistId),
+      ),
+    )
+    .get();
+  if (!alt || alt.primaryChannelId == null) return;
+  const oldPrimaryId = alt.primaryChannelId;
+  const oldPrimary = db
+    .select({ position: playlistChannels.position })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.id, oldPrimaryId))
+    .get();
+  if (!oldPrimary) return;
+
+  // Other alternates of the old primary, in order, excluding the one promoted.
+  const others = db
+    .select({ id: playlistChannels.id })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.primaryChannelId, oldPrimaryId))
+    .orderBy(asc(playlistChannels.altPosition), asc(playlistChannels.id))
+    .all()
+    .map((r) => r.id)
+    .filter((id) => id !== channelId);
+
+  db.transaction((tx) => {
+    // Promoted alternate becomes the primary: reverts to its own name (clear any
+    // custom name) and takes the group's list position.
+    tx.update(playlistChannels)
+      .set({
+        primaryChannelId: null,
+        altPosition: 0,
+        position: oldPrimary.position,
+        customName: null,
+      })
+      .where(eq(playlistChannels.id, channelId))
+      .run();
+    // Old primary becomes the first alternate: drop its custom name so it's
+    // auto-named from the new primary like every other alternate.
+    tx.update(playlistChannels)
+      .set({ primaryChannelId: channelId, altPosition: 0, customName: null })
+      .where(eq(playlistChannels.id, oldPrimaryId))
+      .run();
+    // Remaining alternates follow, under the new primary.
+    others.forEach((id, i) => {
+      tx.update(playlistChannels)
+        .set({ primaryChannelId: channelId, altPosition: i + 1 })
+        .where(eq(playlistChannels.id, id))
+        .run();
+    });
+  });
+}
+
+/** Detach an alternate so it becomes a standalone channel again. */
+export function ungroupAlternate(playlistId: number, channelId: number) {
+  const row = db
+    .select({
+      categoryId: playlistChannels.categoryId,
+      primaryChannelId: playlistChannels.primaryChannelId,
+    })
+    .from(playlistChannels)
+    .where(
+      and(
+        eq(playlistChannels.id, channelId),
+        eq(playlistChannels.playlistId, playlistId),
+      ),
+    )
+    .get();
+  if (!row || row.primaryChannelId == null) return;
+  const formerPrimary = row.primaryChannelId;
+  db.transaction((tx) => {
+    tx.update(playlistChannels)
+      .set({
+        primaryChannelId: null,
+        altPosition: 0,
+        position: nextChannelPosition(row.categoryId),
+      })
+      .where(eq(playlistChannels.id, channelId))
+      .run();
+    renumberAlternates(tx, formerPrimary);
+  });
+}
+
+/** Detach every alternate of a primary, leaving standalone channels. */
+export function ungroupPrimary(playlistId: number, primaryId: number) {
+  if (!channelInPlaylist(playlistId, primaryId)) return;
+  const alts = db
+    .select({
+      id: playlistChannels.id,
+      categoryId: playlistChannels.categoryId,
+    })
+    .from(playlistChannels)
+    .where(eq(playlistChannels.primaryChannelId, primaryId))
+    .all();
+  if (!alts.length) return;
+  db.transaction((tx) => {
+    for (const a of alts) {
+      tx.update(playlistChannels)
+        .set({
+          primaryChannelId: null,
+          altPosition: 0,
+          position: nextChannelPosition(a.categoryId),
+        })
+        .where(eq(playlistChannels.id, a.id))
+        .run();
+    }
+  });
+}
+
 /** Reset EPG on each channel to its own source's default. */
 export function bulkResetEpg(playlistId: number, channelIds: number[]) {
   const ids = [...ownedChannels(playlistId, channelIds)];
@@ -431,6 +845,7 @@ export function bulkResetEpg(playlistId: number, channelIds: number[]) {
         id: playlistChannels.id,
         sourceId: sourceChannels.sourceId,
         epgChannelId: sourceChannels.epgChannelId,
+        primaryChannelId: playlistChannels.primaryChannelId,
       })
       .from(playlistChannels)
       .innerJoin(
@@ -440,6 +855,8 @@ export function bulkResetEpg(playlistId: number, channelIds: number[]) {
       .where(inArray(playlistChannels.id, ids))
       .all();
     for (const r of rows) {
+      // Alternates always follow their primary's guide; skip them.
+      if (r.primaryChannelId != null) continue;
       tx.update(playlistChannels)
         .set({ epgSourceId: r.sourceId, epgChannelId: r.epgChannelId })
         .where(eq(playlistChannels.id, r.id))

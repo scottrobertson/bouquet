@@ -15,8 +15,39 @@ Built with [Claude](https://claude.com/claude-code).
 - Merge channels from multiple sources into playlists
 - Categories, per-playlist renaming, custom logos, drag-and-drop ordering
 - Per-channel EPG selection, defaulting to the channel's own source
+- Group a channel with backup sources as [alternates](#alternates-backup-channels)
 - Channels stay in sync with the source; removed ones are kept and flagged
 - Outputs a standard `m3u_plus` playlist and a merged XMLTV guide
+
+## Alternates (backup channels)
+
+The same channel often shows up more than once: backups from a second provider,
+duplicates on the same provider, or different quality feeds (FHD, UHD, and so
+on). You can group a primary channel with one or more alternates so you have a
+fallback when one source dies.
+
+Alternates still come out as their own separate channels in the M3U. Bouquet
+does not merge them or proxy anything. Grouping is about keeping these tidy in
+the editor and keeping their names and metadata in step with the primary.
+
+How it works:
+
+- Create a group from the action bar. Select channels already in the playlist
+  and choose "Make alternate of…", or select channels in the Source Channels
+  pane and choose "Add as alternate of…", then pick the channel they sit under.
+  Picking one of the selected channels as the target starts a new group.
+- Alternates nest under their primary in the editor. A group collapses by
+  default; use the chevron to expand it.
+- Alternates always take the primary's name, logo and EPG. They are named
+  automatically from a per-playlist template (default `{name} (Alt {n})`,
+  editable in playlist Settings). Rename the primary and every alternate follows.
+- You cannot rename an alternate or give it its own logo or guide. Those
+  controls are hidden for alternates, and only the primary is editable.
+- Each alternate's menu reorders it, removes it from the group, or deletes it.
+  The top alternate's "Move up" promotes it into the primary spot, and the old
+  primary becomes an alternate.
+- Promoting an alternate, or deleting a primary (which promotes the first
+  alternate), reverts the new primary to its own name and re-derives the rest.
 
 ## Tech
 

@@ -19,6 +19,7 @@ import {
   sourceEpgChannels,
   sources,
 } from "~/db/schema";
+import { altName } from "~/services/playlist/alt-name";
 
 // The source browser is virtualized, so this just bounds the payload, not what
 // gets rendered. High enough to cover a full provider in one fetch.
@@ -129,6 +130,8 @@ export function getPlaylistChannels(playlistId: number) {
       customName: playlistChannels.customName,
       customLogo: playlistChannels.customLogo,
       position: playlistChannels.position,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      altPosition: playlistChannels.altPosition,
       enabled: playlistChannels.enabled,
       epgSourceId: playlistChannels.epgSourceId,
       epgChannelId: playlistChannels.epgChannelId,
@@ -168,10 +171,33 @@ export function getPlaylistChannels(playlistId: number) {
     )
     .all();
 
+  const template =
+    db
+      .select({ t: playlists.altNameTemplate })
+      .from(playlists)
+      .where(eq(playlists.id, playlistId))
+      .get()?.t ?? "{name} (Alt {n})";
+
+  // Resolved name of every channel, so an alternate's auto-name can reference
+  // its primary.
+  const nameById = new Map<number, string>();
+  for (const r of rows) nameById.set(r.id, r.customName || r.sourceName);
+
   // No category row (null category, or unseeded) counts as enabled.
   return rows.map(({ categoryEnabled, ...r }) => ({
     ...r,
     sourceCategoryEnabled: categoryEnabled ?? true,
+    // For an alternate, the name it falls back to when not manually renamed.
+    // For a primary it's just the source name, so existing rename logic is
+    // unchanged.
+    autoName:
+      r.primaryChannelId != null
+        ? altName(
+            template,
+            nameById.get(r.primaryChannelId) ?? r.sourceName,
+            r.altPosition + 1,
+          )
+        : r.sourceName,
   }));
 }
 
