@@ -247,8 +247,7 @@ export function EditorBoard({
     const fd = new FormData();
     fd.set("intent", "addChannels");
     for (const id of ids) fd.append("sourceChannelIds", String(id));
-    if ("categoryId" in target) fd.set("categoryId", String(target.categoryId));
-    else fd.set("newCategoryName", target.newCategoryName);
+    fd.set("categoryId", String(target.categoryId));
     if (insertIndex != null) fd.set("index", String(insertIndex));
     addFetcher.submit(fd, { method: "post" });
     setHiddenIds((prev) => new Set([...prev, ...ids]));
@@ -277,8 +276,7 @@ export function EditorBoard({
     fd.set("intent", "addMatching");
     if (fCategories) fd.set("categories", fCategories);
     if (fQ) fd.set("q", fQ);
-    if ("categoryId" in target) fd.set("categoryId", String(target.categoryId));
-    else fd.set("newCategoryName", target.newCategoryName);
+    fd.set("categoryId", String(target.categoryId));
     addFetcher.submit(fd, { method: "post" });
     setSelected(new Set());
   }

@@ -112,13 +112,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         .getAll("sourceChannelIds")
         .map((v) => Number(v))
         .filter((n) => Number.isFinite(n));
-      let categoryId = Number(form.get("categoryId"));
-      const newName = (form.get("newCategoryName") as string | null)?.trim();
-      if (!Number.isFinite(categoryId) && newName) {
-        const cat = createCategory(playlistId, newName);
-        if (!cat) return data({ ok: false, error: "Could not create category" }, { status: 400 });
-        categoryId = cat.id;
-      }
+      const categoryId = Number(form.get("categoryId"));
       if (!Number.isFinite(categoryId)) {
         return data({ ok: false, error: "Pick a category" }, { status: 400 });
       }
@@ -161,15 +155,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         q: q || undefined,
         excludePlaylistId: playlistId,
       });
-      let categoryId = Number(form.get("categoryId"));
-      const newName = (form.get("newCategoryName") as string | null)?.trim();
-      if (!Number.isFinite(categoryId) && newName) {
-        const cat = createCategory(playlistId, newName);
-        if (!cat) {
-          return data({ ok: false, error: "Could not create category" }, { status: 400 });
-        }
-        categoryId = cat.id;
-      }
+      const categoryId = Number(form.get("categoryId"));
       if (!Number.isFinite(categoryId)) {
         return data({ ok: false, error: "Pick a category" }, { status: 400 });
       }

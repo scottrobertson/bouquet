@@ -38,10 +38,9 @@ import { cn } from "~/lib/utils";
 import { PrimaryPicker } from "./primary-picker";
 import type { BrowserChannel, EditorCategory } from "./types";
 
-const NEW_CATEGORY = "__new__";
 const UNCATEGORISED = "Uncategorised";
 
-export type AddTarget = { categoryId: number } | { newCategoryName: string };
+export type AddTarget = { categoryId: number };
 
 type CatGroup = { name: string; channels: BrowserChannel[] };
 type SourceGroup = { sourceId: number; sourceName: string; cats: CatGroup[] };
@@ -110,13 +109,11 @@ export function SourceBrowser({
   const addTargets = playlistCategories.filter((c) => !c.auto);
 
   const [target, setTarget] = useState<string>(
-    addTargets[0] ? String(addTargets[0].id) : NEW_CATEGORY,
+    addTargets[0] ? String(addTargets[0].id) : "",
   );
-  const [newName, setNewName] = useState("");
   useEffect(() => {
-    if (target === NEW_CATEGORY) return;
     if (!addTargets.some((c) => String(c.id) === target)) {
-      setTarget(addTargets[0] ? String(addTargets[0].id) : NEW_CATEGORY);
+      setTarget(addTargets[0] ? String(addTargets[0].id) : "");
     }
   }, [playlistCategories, target]);
 
@@ -253,17 +250,12 @@ export function SourceBrowser({
   const hasFilter = q.trim().length > 0 || selectedCategories.length > 0;
   const mode: "selected" | "matching" | null =
     selected.size > 0 ? "selected" : hasFilter && total > 0 ? "matching" : null;
-  const targetValid = target !== NEW_CATEGORY || newName.trim().length > 0;
-  const canAdd = mode !== null && targetValid;
+  const canAdd = mode !== null && target !== "";
 
   function add() {
-    const t: AddTarget =
-      target === NEW_CATEGORY
-        ? { newCategoryName: newName.trim() }
-        : { categoryId: Number(target) };
+    const t: AddTarget = { categoryId: Number(target) };
     if (mode === "selected") onAdd(Array.from(selected), t);
     else if (mode === "matching") onAddMatching(t);
-    setNewName("");
   }
 
   return (
@@ -426,10 +418,8 @@ export function SourceBrowser({
             <Select value={target} onValueChange={setTarget}>
               <SelectTrigger size="sm" className="flex-1">
                 <span className="truncate">
-                  {target === NEW_CATEGORY
-                    ? "+ New category"
-                    : (addTargets.find((c) => String(c.id) === target)?.name ??
-                      "Target category")}
+                  {addTargets.find((c) => String(c.id) === target)?.name ??
+                    "Target category"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -438,7 +428,6 @@ export function SourceBrowser({
                     {cat.name}
                   </SelectItem>
                 ))}
-                <SelectItem value={NEW_CATEGORY}>+ New category</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" onClick={add} disabled={!canAdd || adding}>
@@ -450,14 +439,6 @@ export function SourceBrowser({
                   : "Add all"}
             </Button>
           </div>
-          {target === NEW_CATEGORY ? (
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="New category name"
-              className="h-8"
-            />
-          ) : null}
           {mode === "selected" && primaries.length > 0 ? (
             <div className="flex items-center gap-2 border-t border-border pt-2">
               <span className="text-[11px] text-muted-foreground">or</span>

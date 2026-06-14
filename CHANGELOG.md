@@ -107,6 +107,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The "Add to" picker in the source browser no longer has a "+ New category" option.
+  You add channels to an existing category here; create categories with the dedicated
+  add-category flow instead.
 - The sidebar can now collapse to an icon rail on desktop, not just slide away on mobile.
   A toggle button in the sidebar shrinks it to icons only (with tooltips for each link) and
   the choice is remembered between visits. The mobile drawer opens and closes faster, and the
