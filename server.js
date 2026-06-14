@@ -36,7 +36,10 @@ function scheduleInternal(label, expression, path) {
 const build = await import("./build/server/index.js");
 
 const app = express();
-app.use(compression());
+// Skip compressing tiny responses. React Router streams SSR in small chunks,
+// and running each through brotli piled up enough drain listeners to trip
+// Node's leak warning. Assets (JS/CSS) are well over this and still get compressed.
+app.use(compression({ threshold: "1kb" }));
 app.disable("x-powered-by");
 
 app.use(
