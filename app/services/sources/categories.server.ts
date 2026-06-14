@@ -1,6 +1,15 @@
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
-import { sourceCategories, sourceChannels } from "~/db/schema";
+import { sourceCategories, sourceChannels, sources } from "~/db/schema";
+
+/** Flag the source so the UI nudges a resync: stored programmes only cover the
+    channels that were in enabled categories at the last sync. */
+function markEpgStale(sourceId: number) {
+  db.update(sources)
+    .set({ epgStale: true })
+    .where(eq(sources.id, sourceId))
+    .run();
+}
 
 /** Seed category rows for a source. New categories default to `enabledDefault`
     (the source's auto-import setting); existing rows keep their enabled state. */
@@ -66,6 +75,7 @@ export function setSourceCategoryEnabled(
       set: { enabled },
     })
     .run();
+  markEpgStale(sourceId);
 }
 
 /** Enable or disable every category of a source at once. */
@@ -89,6 +99,7 @@ export function setAllSourceCategories(sourceId: number, enabled: boolean) {
         .run();
     }
   });
+  markEpgStale(sourceId);
 }
 
 /** Names of disabled categories for a source. Used to exclude their channels. */

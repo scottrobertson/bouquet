@@ -17,6 +17,7 @@ export default [
 
     route("playlists", "routes/playlists._index.tsx"),
     route("playlists/:id", "routes/playlists.$id.tsx"),
+    route("playlists/:id/guide", "routes/playlists.$id.guide.tsx"),
     route("playlists/:id/epg-channels", "routes/playlists.$id.epg-channels.tsx"),
     route(
       "playlists/:id/source-channels",

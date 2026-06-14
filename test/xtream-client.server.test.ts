@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildStreamUrl,
   normalizeServerUrl,
-  parseEpgChannels,
-  xmltvUrl,
+  parseSimpleDataTable,
 } from "~/services/xtream/client.server";
 
 const creds = {
@@ -44,53 +43,62 @@ describe("buildStreamUrl", () => {
   });
 });
 
-describe("xmltvUrl", () => {
-  it("builds the xmltv.php url with credentials", () => {
-    expect(xmltvUrl(creds)).toBe(
-      "http://example.com:8080/xmltv.php?username=user&password=pass",
-    );
-  });
-});
+const b64 = (s: string) => Buffer.from(s, "utf-8").toString("base64");
 
-describe("parseEpgChannels", () => {
-  it("pulls id, display name, and icon from channel blocks", () => {
-    const xml = `<?xml version="1.0"?><tv>
-      <channel id="bbc1.uk">
-        <display-name>BBC One</display-name>
-        <icon src="http://logos/bbc1.png" />
-      </channel>
-      <channel id="itv.uk">
-        <display-name>ITV</display-name>
-      </channel>
-    </tv>`;
-    expect(parseEpgChannels(xml)).toEqual([
-      { channelId: "bbc1.uk", displayName: "BBC One", icon: "http://logos/bbc1.png" },
-      { channelId: "itv.uk", displayName: "ITV", icon: null },
+describe("parseSimpleDataTable", () => {
+  it("decodes base64 fields and uses the unix timestamps", () => {
+    const data = {
+      epg_listings: [
+        {
+          title: b64("The News"),
+          description: b64("Headlines & weather."),
+          start_timestamp: "1705327200",
+          stop_timestamp: "1705330800",
+          has_archive: 1,
+        },
+      ],
+    };
+    expect(parseSimpleDataTable(data, "bbc1.uk")).toEqual([
+      {
+        channelId: "bbc1.uk",
+        startTs: 1705327200,
+        stopTs: 1705330800,
+        title: "The News",
+        description: "Headlines & weather.",
+        hasArchive: true,
+      },
     ]);
   });
 
-  it("decodes xml entities in ids and names", () => {
-    const xml = `<channel id="a&amp;b"><display-name>Tom &amp; Jerry</display-name></channel>`;
-    expect(parseEpgChannels(xml)).toEqual([
-      { channelId: "a&b", displayName: "Tom & Jerry", icon: null },
-    ]);
+  it("flags programmes without an archive", () => {
+    const data = {
+      epg_listings: [
+        {
+          title: b64("Soap"),
+          description: "",
+          start_timestamp: "100",
+          stop_timestamp: "200",
+          has_archive: 0,
+        },
+      ],
+    };
+    const progs = parseSimpleDataTable(data, "itv.uk");
+    expect(progs[0].hasArchive).toBe(false);
+    expect(progs[0].description).toBeNull();
   });
 
-  it("keeps the first definition when a channel id repeats", () => {
-    const xml = `
-      <channel id="dup"><display-name>First</display-name></channel>
-      <channel id="dup"><display-name>Second</display-name></channel>`;
-    const result = parseEpgChannels(xml);
-    expect(result).toHaveLength(1);
-    expect(result[0].displayName).toBe("First");
+  it("drops listings with missing or backwards times", () => {
+    const data = {
+      epg_listings: [
+        { title: b64("No times") },
+        { title: b64("Backwards"), start_timestamp: "200", stop_timestamp: "100" },
+      ],
+    };
+    expect(parseSimpleDataTable(data, "x")).toEqual([]);
   });
 
-  it("skips channels with an empty id", () => {
-    const xml = `<channel id=""><display-name>Nameless</display-name></channel>`;
-    expect(parseEpgChannels(xml)).toEqual([]);
-  });
-
-  it("returns nothing for xml with no channels", () => {
-    expect(parseEpgChannels("<tv></tv>")).toEqual([]);
+  it("returns nothing when there are no listings", () => {
+    expect(parseSimpleDataTable({}, "x")).toEqual([]);
+    expect(parseSimpleDataTable(null, "x")).toEqual([]);
   });
 });

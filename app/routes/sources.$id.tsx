@@ -58,6 +58,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       lastSyncedAt: source.lastSyncedAt ? source.lastSyncedAt.toISOString() : null,
       channelCount: source.channelCount,
       lastError: source.lastError,
+      epgStale: source.epgStale,
     },
     categories: listSourceCategories(id),
   };
@@ -184,6 +185,13 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
         {source.syncStatus === "error" && source.lastError ? (
           <div className="rounded-md border border-transparent bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
             {source.lastError}
+          </div>
+        ) : null}
+
+        {source.epgStale ? (
+          <div className="rounded-md border border-transparent bg-warning/10 px-3 py-2 text-[13px] text-warning">
+            Categories changed since the last sync. Sync again to update the
+            guide for the channels you turned on.
           </div>
         ) : null}
 

@@ -1,0 +1,1 @@
+ALTER TABLE `sources` ADD `epg_stale` integer DEFAULT false NOT NULL;

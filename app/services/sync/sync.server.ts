@@ -1,6 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "~/db/index.server";
-import { sourceChannels, sourceEpgChannels, sources } from "~/db/schema";
+import {
+  epgProgrammes,
+  sourceCategories,
+  sourceChannels,
+  sourceEpgChannels,
+  sources,
+} from "~/db/schema";
 import { invalidateAll } from "~/services/output/cache.server";
 import {
   recordSyncChanges,
@@ -10,14 +16,42 @@ import {
 import type { XtreamCreds } from "~/services/xtream/client.server";
 import { syncSourceCategories } from "~/services/sources/categories.server";
 import {
-  fetchEpgChannels,
   fetchLiveCategories,
   fetchLiveStreams,
+  fetchSimpleDataTable,
   validateAccount,
 } from "~/services/xtream/client.server";
 
 // SQLite caps bound variables per statement, so insert EPG rows in batches.
 const EPG_INSERT_CHUNK = 200;
+// Programme rows have more columns, so use a smaller batch to stay under the cap.
+const PROGRAMME_INSERT_CHUNK = 200;
+// How long to keep programmes for sources that stop syncing.
+const GUIDE_RETENTION_DAYS = 7;
+// EPG is now one request per channel, so fetch a handful at a time instead of
+// hammering the provider with all of them at once.
+const EPG_FETCH_CONCURRENCY = 10;
+
+/** Run `fn` over `items` with at most `limit` in flight at once. */
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  );
+  return out;
+}
 
 /** Kick a sync without waiting for it. Marks the source as syncing right away
     so the UI updates immediately, then runs the (slow) fetch in the background.
@@ -187,26 +221,109 @@ export async function runSync(sourceId: number): Promise<void> {
     return;
   }
 
-  // Step 2: EPG channels. Best effort. A failure here keeps the sync "ok" but
-  // records a note, so the catalog stays usable even if the guide is missing.
+  // Step 2: EPG. Best effort. A failure here keeps the sync "ok" but records a
+  // note, so the catalog stays usable even if the guide is missing. We pull the
+  // guide per channel from get_simple_data_table, which (unlike xmltv.php)
+  // includes recently-aired programmes, and replace each channel's stored rows
+  // so the guide mirrors what the provider currently serves.
   try {
-    const epgChannels = await fetchEpgChannels(creds);
-    db.delete(sourceEpgChannels)
-      .where(eq(sourceEpgChannels.sourceId, sourceId))
-      .run();
-    for (let i = 0; i < epgChannels.length; i += EPG_INSERT_CHUNK) {
-      const chunk = epgChannels.slice(i, i + EPG_INSERT_CHUNK);
-      db.insert(sourceEpgChannels)
-        .values(
-          chunk.map((c) => ({
-            sourceId,
-            channelId: c.channelId,
-            displayName: c.displayName,
-            icon: c.icon,
-          })),
-        )
-        .run();
+    // Only fetch channels that can actually show up in output: those in an
+    // enabled category (or with no category at all), matching the output query.
+    // Channels sharing an epg id share a guide, so fetch each id only once.
+    const eligible = db
+      .select({
+        streamId: sourceChannels.streamId,
+        epgChannelId: sourceChannels.epgChannelId,
+      })
+      .from(sourceChannels)
+      .leftJoin(
+        sourceCategories,
+        and(
+          eq(sourceCategories.sourceId, sourceChannels.sourceId),
+          eq(sourceCategories.name, sourceChannels.categoryName),
+        ),
+      )
+      .where(
+        and(
+          eq(sourceChannels.sourceId, sourceId),
+          eq(sourceChannels.available, true),
+          or(isNull(sourceCategories.id), eq(sourceCategories.enabled, true)),
+        ),
+      )
+      .all();
+
+    const streamByEpgId = new Map<string, string>();
+    for (const r of eligible) {
+      if (r.epgChannelId && !streamByEpgId.has(r.epgChannelId)) {
+        streamByEpgId.set(r.epgChannelId, r.streamId);
+      }
     }
+
+    // The matching dropdown lists the source's epg ids; rebuild it from the
+    // catalog now that we no longer fetch xmltv.php for channel definitions.
+    refreshSourceEpgChannels(sourceId);
+
+    const targets = [...streamByEpgId.entries()];
+    let failures = 0;
+    const perChannel = await mapPool(
+      targets,
+      EPG_FETCH_CONCURRENCY,
+      async ([epgId, streamId]) => {
+        try {
+          return await fetchSimpleDataTable(creds, streamId, epgId);
+        } catch {
+          failures++;
+          return null;
+        }
+      },
+    );
+
+    // If we couldn't reach the provider for any channel, treat EPG as failed
+    // and leave the existing rows untouched.
+    if (targets.length > 0 && failures === targets.length) {
+      throw new Error("every channel's EPG request failed");
+    }
+
+    // Replace stored rows for the channels we did fetch. Channels whose fetch
+    // failed keep their previous programmes rather than going blank.
+    db.transaction((tx) => {
+      for (let i = 0; i < perChannel.length; i++) {
+        const programmes = perChannel[i];
+        if (programmes === null) continue;
+        const epgId = targets[i][0];
+        tx.delete(epgProgrammes)
+          .where(
+            and(
+              eq(epgProgrammes.sourceId, sourceId),
+              eq(epgProgrammes.channelId, epgId),
+            ),
+          )
+          .run();
+        for (let j = 0; j < programmes.length; j += PROGRAMME_INSERT_CHUNK) {
+          tx.insert(epgProgrammes)
+            .values(
+              programmes.slice(j, j + PROGRAMME_INSERT_CHUNK).map((p) => ({
+                sourceId,
+                channelId: p.channelId,
+                startTs: p.startTs,
+                stopTs: p.stopTs,
+                title: p.title,
+                subTitle: null,
+                description: p.description,
+                category: null,
+                hasArchive: p.hasArchive,
+              })),
+            )
+            .run();
+        }
+      }
+    });
+
+    // Stored programmes now match the current enabled categories.
+    db.update(sources)
+      .set({ epgStale: false })
+      .where(eq(sources.id, sourceId))
+      .run();
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
     db.update(sources)
@@ -216,6 +333,59 @@ export async function runSync(sourceId: number): Promise<void> {
   }
 }
 
+/** Rebuild a source's epg channel list (the matching dropdown) from its
+    catalog: one entry per distinct epg id, named after the channel. */
+function refreshSourceEpgChannels(sourceId: number): void {
+  const rows = db
+    .select({
+      epgChannelId: sourceChannels.epgChannelId,
+      name: sourceChannels.name,
+      logo: sourceChannels.logo,
+    })
+    .from(sourceChannels)
+    .where(
+      and(
+        eq(sourceChannels.sourceId, sourceId),
+        eq(sourceChannels.available, true),
+      ),
+    )
+    .orderBy(asc(sourceChannels.position), asc(sourceChannels.id))
+    .all();
+
+  const byId = new Map<string, { displayName: string; icon: string | null }>();
+  for (const r of rows) {
+    if (!r.epgChannelId || byId.has(r.epgChannelId)) continue;
+    byId.set(r.epgChannelId, { displayName: r.name, icon: r.logo });
+  }
+
+  const entries = [...byId.entries()];
+  db.transaction((tx) => {
+    tx.delete(sourceEpgChannels)
+      .where(eq(sourceEpgChannels.sourceId, sourceId))
+      .run();
+    for (let i = 0; i < entries.length; i += EPG_INSERT_CHUNK) {
+      tx.insert(sourceEpgChannels)
+        .values(
+          entries.slice(i, i + EPG_INSERT_CHUNK).map(([channelId, v]) => ({
+            sourceId,
+            channelId,
+            displayName: v.displayName,
+            icon: v.icon,
+          })),
+        )
+        .run();
+    }
+  });
+}
+
+/** Drop programmes that ended more than the retention window ago. Each sync
+    already replaces a source's rows, so this only matters for sources that have
+    stopped syncing. */
+export function pruneOldProgrammes(): void {
+  const cutoff = Math.floor(Date.now() / 1000) - GUIDE_RETENTION_DAYS * 86400;
+  db.delete(epgProgrammes).where(lt(epgProgrammes.stopTs, cutoff)).run();
+}
+
 /** Sync every source one at a time so we don't hammer providers in parallel.
     Used by the scheduled cron job, which waits for completion. */
 export async function syncAllSources(): Promise<void> {
@@ -223,4 +393,5 @@ export async function syncAllSources(): Promise<void> {
   for (const s of all) {
     await runSync(s.id);
   }
+  pruneOldProgrammes();
 }

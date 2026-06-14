@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Link2, Loader2, Settings } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Settings, Tv } from "lucide-react";
 import { Link, data, useFetchers } from "react-router";
 import { z } from "zod";
 import { CopyField } from "~/components/copy-field";
@@ -389,6 +389,12 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
             </PopoverContent>
           </Popover>
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/playlists/${playlist.id}/guide`}>
+              <Tv className="size-4" />
+              <span className="hidden sm:inline">Guide</span>
+            </Link>
+          </Button>
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/settings`}>
               <Settings className="size-4" />

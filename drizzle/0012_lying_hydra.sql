@@ -1,0 +1,1 @@
+ALTER TABLE `epg_programmes` ADD `has_archive` integer DEFAULT false NOT NULL;

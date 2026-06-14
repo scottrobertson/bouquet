@@ -6,6 +6,18 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- TV guide per playlist. A "Guide" button on the playlist opens a TiViMate style grid:
+  channels down the left, a scrollable timeline across the top, programmes laid out by
+  time with the airing one highlighted and a "now" line. It loads instantly because
+  programmes are read from the database, not fetched live. The guide and the EPG output
+  now come from the same stored data, so they always match. Past programmes are dimmed,
+  and ones the provider marks as available from the archive are flagged for catchup.
+  Scroll horizontally for past and future, or jump by day. Programmes are fetched during
+  sync from the provider's per-channel EPG endpoint (get_simple_data_table), the same one
+  TiViMate uses, so recently-aired programmes show up too, not just what's upcoming. Only
+  channels in enabled categories are fetched, to keep it quick. Change which categories are
+  enabled and the source shows a reminder to sync, since the guide for the newly enabled
+  channels won't be there until then.
 - Alternates: group a channel with its backup feeds, whether from another provider, a
   duplicate on the same provider, or a different quality (FHD/UHD/etc). The backups
   still come out as separate channels in the M3U (no merging), but in the editor they nest

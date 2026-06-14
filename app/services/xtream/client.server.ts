@@ -24,10 +24,14 @@ export interface XtreamLiveStream {
   tvArchiveDuration: number;
 }
 
-export interface XtreamEpgChannel {
+export interface XtreamProgramme {
   channelId: string;
-  displayName: string | null;
-  icon: string | null;
+  startTs: number;
+  stopTs: number;
+  title: string | null;
+  description: string | null;
+  // Provider flags this programme as available from the archive (catchup).
+  hasArchive: boolean;
 }
 
 export interface XtreamAccount {
@@ -43,8 +47,6 @@ export interface XtreamAccount {
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 const TIMEOUT_MS = 30000;
-// The full EPG (xmltv.php) can be tens of MB, so give it much longer.
-const EPG_TIMEOUT_MS = 180000;
 
 /** Strip trailing slashes so we can append paths cleanly. */
 export function normalizeServerUrl(url: string): string {
@@ -191,57 +193,52 @@ export function buildTimeshiftSource(
   )}/{duration}/{Y}-{m}-{d}:{H}-{M}/${streamId}.${ext}`;
 }
 
-export function xmltvUrl(creds: XtreamCreds): string {
-  const base = normalizeServerUrl(creds.serverUrl);
-  const qs = new URLSearchParams({
-    username: creds.username,
-    password: creds.password,
-  });
-  return `${base}/xmltv.php?${qs.toString()}`;
+function decodeBase64(s: string): string {
+  try {
+    return Buffer.from(s, "base64").toString("utf-8");
+  } catch {
+    return s;
+  }
 }
 
-/** Fetch xmltv.php and pull out just the <channel> definitions. We regex the
-    channel blocks rather than parse the whole guide, which can be tens of MB
-    of programme data we don't need here. */
-export async function fetchEpgChannels(
-  creds: XtreamCreds,
-): Promise<XtreamEpgChannel[]> {
-  const res = await fetchWithTimeout(
-    xmltvUrl(creds),
-    "application/xml",
-    EPG_TIMEOUT_MS,
-  );
-  if (!res.ok) throw new Error(`EPG returned HTTP ${res.status}`);
-  const xml = await res.text();
-  return parseEpgChannels(xml);
-}
-
-export function parseEpgChannels(xml: string): XtreamEpgChannel[] {
-  const channels: XtreamEpgChannel[] = [];
-  const seen = new Set<string>();
-  const channelRe = /<channel\b[^>]*\bid="([^"]*)"[^>]*>([\s\S]*?)<\/channel>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = channelRe.exec(xml)) !== null) {
-    const channelId = decodeXml(m[1]).trim();
-    if (!channelId || seen.has(channelId)) continue;
-    seen.add(channelId);
-    const body = m[2];
-    const nameMatch = body.match(/<display-name[^>]*>([\s\S]*?)<\/display-name>/i);
-    const iconMatch = body.match(/<icon\b[^>]*\bsrc="([^"]*)"/i);
-    channels.push({
+/** Pull programmes out of a get_simple_data_table response. Titles and
+    descriptions come back base64 encoded; times come as unix seconds. The
+    channelId we store is the one we asked for, so it lines up with tvgId. */
+export function parseSimpleDataTable(
+  data: unknown,
+  channelId: string,
+): XtreamProgramme[] {
+  const listings = (data as any)?.epg_listings;
+  if (!Array.isArray(listings)) return [];
+  const out: XtreamProgramme[] = [];
+  for (const l of listings) {
+    const startTs = Math.trunc(Number(l?.start_timestamp));
+    const stopTs = Math.trunc(Number(l?.stop_timestamp));
+    if (!Number.isFinite(startTs) || !Number.isFinite(stopTs)) continue;
+    if (stopTs <= startTs) continue;
+    out.push({
       channelId,
-      displayName: nameMatch ? decodeXml(nameMatch[1]).trim() : null,
-      icon: iconMatch ? decodeXml(iconMatch[1]).trim() : null,
+      startTs,
+      stopTs,
+      title: asString(decodeBase64(asString(l?.title) ?? "")),
+      description: asString(decodeBase64(asString(l?.description) ?? "")),
+      hasArchive: Number(l?.has_archive) === 1,
     });
   }
-  return channels;
+  return out;
 }
 
-function decodeXml(s: string): string {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+/** Fetch a single channel's EPG via get_simple_data_table. Unlike xmltv.php
+    this returns recently-aired programmes too, plus a per-programme archive
+    flag, which is how players like TiviMate show catchup history. */
+export async function fetchSimpleDataTable(
+  creds: XtreamCreds,
+  streamId: string,
+  channelId: string,
+): Promise<XtreamProgramme[]> {
+  const data = await playerApi(creds, {
+    action: "get_simple_data_table",
+    stream_id: streamId,
+  });
+  return parseSimpleDataTable(data, channelId);
 }

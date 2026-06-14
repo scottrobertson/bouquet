@@ -1,69 +1,81 @@
-import { xmltvUrl, type XtreamCreds } from "~/services/xtream/client.server";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "~/db/index.server";
-import { sources } from "~/db/schema";
-import { inArray } from "drizzle-orm";
+import { epgProgrammes, sourceEpgChannels } from "~/db/schema";
 import type { ResolvedChannel } from "./queries.server";
 
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-const TIMEOUT_MS = 60000;
+// SQLite caps bound variables per statement, so query channel ids in batches.
+const ID_CHUNK = 500;
 
-async function fetchEpgXml(creds: XtreamCreds): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(xmltvUrl(creds), {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/xml" },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    if (!res.ok) throw new Error(`EPG returned HTTP ${res.status}`);
-    return await res.text();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function decodeXmlAttr(s: string): string {
+function escapeXml(s: string): string {
   return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-// Pull out the <channel> and <programme> blocks whose id is in `needed`,
-// keeping the raw inner XML so it round-trips into the merged document.
-function extractBlocks(
-  xml: string,
-  needed: Set<string>,
-): { channels: Map<string, string>; programmes: string[] } {
-  const channels = new Map<string, string>();
-  const programmes: string[] = [];
-
-  const channelRe = /<channel\b[^>]*\bid="([^"]*)"[^>]*>[\s\S]*?<\/channel>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = channelRe.exec(xml)) !== null) {
-    const id = decodeXmlAttr(m[1]).trim();
-    if (!needed.has(id) || channels.has(id)) continue;
-    channels.set(id, m[0]);
-  }
-
-  const progRe =
-    /<programme\b[^>]*\bchannel="([^"]*)"[^>]*>[\s\S]*?<\/programme>/gi;
-  while ((m = progRe.exec(xml)) !== null) {
-    const id = decodeXmlAttr(m[1]).trim();
-    if (!needed.has(id)) continue;
-    programmes.push(m[0]);
-  }
-
-  return { channels, programmes };
+/** Format unix seconds as an xmltv UTC timestamp, e.g. "20240115140000 +0000". */
+export function formatXmltvTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+    `${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())} +0000`
+  );
 }
 
+export interface StoredProgramme {
+  channelId: string;
+  startTs: number;
+  stopTs: number;
+  title: string | null;
+  subTitle: string | null;
+  description: string | null;
+  category: string | null;
+}
+
+// Build a <programme> element from a stored row. We rebuild it from columns
+// rather than keep provider markup, the same as channelBlock does.
+export function programmeBlock(p: StoredProgramme): string {
+  const lines = [
+    `  <programme start="${formatXmltvTime(p.startTs)}" stop="${formatXmltvTime(
+      p.stopTs,
+    )}" channel="${escapeXml(p.channelId)}">`,
+  ];
+  if (p.title) lines.push(`    <title>${escapeXml(p.title)}</title>`);
+  if (p.subTitle) lines.push(`    <sub-title>${escapeXml(p.subTitle)}</sub-title>`);
+  if (p.description) lines.push(`    <desc>${escapeXml(p.description)}</desc>`);
+  if (p.category) lines.push(`    <category>${escapeXml(p.category)}</category>`);
+  lines.push(`  </programme>`);
+  return lines.join("\n");
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// Re-emit a <channel> from its stored definition. We rebuild it rather than keep
+// the provider's raw markup so channel and programme data come from one place.
+function channelBlock(
+  id: string,
+  displayName: string | null,
+  icon: string | null,
+): string {
+  const lines = [`  <channel id="${escapeXml(id)}">`];
+  if (displayName)
+    lines.push(`    <display-name>${escapeXml(displayName)}</display-name>`);
+  if (icon) lines.push(`    <icon src="${escapeXml(icon)}" />`);
+  lines.push(`  </channel>`);
+  return lines.join("\n");
+}
+
+// Build the merged XMLTV guide straight from the DB. Both the channel
+// definitions and the programmes were stored at sync time, so there's no live
+// fetch here and the output matches what the in-app guide shows.
 export async function buildXmltv(rows: ResolvedChannel[]): Promise<string> {
-  // Group the needed channel ids per source so each source's xmltv.php is
-  // fetched at most once.
+  // The channel ids each source needs to contribute, deduped per source.
   const neededBySource = new Map<number, Set<string>>();
   for (const r of rows) {
     if (!r.tvgId) continue;
@@ -75,50 +87,56 @@ export async function buildXmltv(rows: ResolvedChannel[]): Promise<string> {
     set.add(r.tvgId);
   }
 
-  const sourceIds = [...neededBySource.keys()];
   const channelParts: string[] = [];
   const programmeParts: string[] = [];
+  // First source to define a given channel id wins, so a channel shared across
+  // sources is only emitted once.
+  const seenChannels = new Set<string>();
 
-  if (sourceIds.length > 0) {
-    const sourceRows = db
-      .select({
-        id: sources.id,
-        serverUrl: sources.serverUrl,
-        username: sources.username,
-        password: sources.password,
-      })
-      .from(sources)
-      .where(inArray(sources.id, sourceIds))
-      .all();
+  for (const [sourceId, idSet] of neededBySource) {
+    const ids = [...idSet];
+    for (const ids_ of chunk(ids, ID_CHUNK)) {
+      const defs = db
+        .select({
+          channelId: sourceEpgChannels.channelId,
+          displayName: sourceEpgChannels.displayName,
+          icon: sourceEpgChannels.icon,
+        })
+        .from(sourceEpgChannels)
+        .where(
+          and(
+            eq(sourceEpgChannels.sourceId, sourceId),
+            inArray(sourceEpgChannels.channelId, ids_),
+          ),
+        )
+        .all();
+      for (const d of defs) {
+        if (seenChannels.has(d.channelId)) continue;
+        seenChannels.add(d.channelId);
+        channelParts.push(channelBlock(d.channelId, d.displayName, d.icon));
+      }
 
-    // First source to define a given channel id wins, so a channel shared
-    // across sources is only emitted once.
-    const seenChannels = new Set<string>();
-
-    await Promise.all(
-      sourceRows.map(async (s) => {
-        const needed = neededBySource.get(s.id);
-        if (!needed) return;
-        let xml: string;
-        try {
-          xml = await fetchEpgXml({
-            serverUrl: s.serverUrl,
-            username: s.username,
-            password: s.password,
-          });
-        } catch {
-          // A source whose EPG fetch fails just contributes no guide data.
-          return;
-        }
-        const { channels, programmes } = extractBlocks(xml, needed);
-        for (const [id, block] of channels) {
-          if (seenChannels.has(id)) continue;
-          seenChannels.add(id);
-          channelParts.push(block);
-        }
-        programmeParts.push(...programmes);
-      }),
-    );
+      const progs = db
+        .select({
+          channelId: epgProgrammes.channelId,
+          startTs: epgProgrammes.startTs,
+          stopTs: epgProgrammes.stopTs,
+          title: epgProgrammes.title,
+          subTitle: epgProgrammes.subTitle,
+          description: epgProgrammes.description,
+          category: epgProgrammes.category,
+        })
+        .from(epgProgrammes)
+        .where(
+          and(
+            eq(epgProgrammes.sourceId, sourceId),
+            inArray(epgProgrammes.channelId, ids_),
+          ),
+        )
+        .orderBy(asc(epgProgrammes.channelId), asc(epgProgrammes.startTs))
+        .all();
+      for (const p of progs) programmeParts.push(programmeBlock(p));
+    }
   }
 
   return (

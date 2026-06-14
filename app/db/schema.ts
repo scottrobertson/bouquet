@@ -37,6 +37,9 @@ export const sources = sqliteTable("sources", {
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
   lastError: text("last_error"),
   channelCount: integer("channel_count").notNull().default(0),
+  // Set when categories are toggled, since stored programmes only cover the
+  // channels in enabled categories. Cleared on the next successful sync.
+  epgStale: integer("epg_stale", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -193,6 +196,38 @@ export const playlistChannels = sqliteTable(
   ],
 );
 
+/** Programmes pulled per channel from the provider's get_simple_data_table at
+    sync time. Unlike xmltv.php this includes already-aired programmes, so the
+    guide and catchup can show recent history. Powers the guide and the EPG
+    output, so both read the same data. Each sync replaces a channel's rows, so
+    stored EPG mirrors what the provider currently serves. */
+export const epgProgrammes = sqliteTable(
+  "epg_programmes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sourceId: integer("source_id")
+      .notNull()
+      .references(() => sources.id, { onDelete: "cascade" }),
+    // The channel's epg id. Matches ResolvedChannel.tvgId.
+    channelId: text("channel_id").notNull(),
+    // Unix seconds. Range queries hit these.
+    startTs: integer("start_ts").notNull(),
+    stopTs: integer("stop_ts").notNull(),
+    title: text("title"),
+    subTitle: text("sub_title"),
+    description: text("description"),
+    category: text("category"),
+    // Provider says this past programme can be replayed from the archive.
+    hasArchive: integer("has_archive", { mode: "boolean" })
+      .notNull()
+      .default(false),
+  },
+  (t) => [
+    index("epg_programmes_lookup").on(t.sourceId, t.channelId, t.startTs),
+    index("epg_programmes_source_stop").on(t.sourceId, t.stopTs),
+  ],
+);
+
 /** Append-only log of what a sync added/removed for a source, for history. */
 export const sourceChanges = sqliteTable(
   "source_changes",
@@ -230,6 +265,7 @@ export type SourceChannel = typeof sourceChannels.$inferSelect;
 export type SourceChange = typeof sourceChanges.$inferSelect;
 export type SourceEpgChannel = typeof sourceEpgChannels.$inferSelect;
 export type SourceCategory = typeof sourceCategories.$inferSelect;
+export type EpgProgramme = typeof epgProgrammes.$inferSelect;
 export type Playlist = typeof playlists.$inferSelect;
 export type PlaylistCategory = typeof playlistCategories.$inferSelect;
 export type PlaylistChannel = typeof playlistChannels.$inferSelect;

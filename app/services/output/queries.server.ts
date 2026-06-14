@@ -40,7 +40,13 @@ export async function getPlaylistOutput(
     .where(eq(playlists.outputToken, token))
     .get();
   if (!playlist) return null;
+  return { playlist, channels: resolvePlaylistChannels(playlist) };
+}
 
+/** Resolve a playlist's channels in display order: names, logos, EPG (with
+    alternates inheriting their primary's), stream and catchup URLs. Shared by
+    the M3U/EPG output and the in-app guide so they always agree. */
+export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
   const cats = db
     .select({
       id: playlistCategories.id,
@@ -277,5 +283,5 @@ export async function getPlaylistOutput(
     }
   }
 
-  return { playlist, channels };
+  return channels;
 }
