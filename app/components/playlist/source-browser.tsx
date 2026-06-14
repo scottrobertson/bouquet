@@ -352,7 +352,7 @@ export function SourceBrowser({
                   ) : row.kind === "category" ? (
                     <div
                       className={cn(
-                        "group/grp flex w-full items-center gap-1.5 border-b border-white/5 bg-card px-3 py-2.5 md:py-1.5",
+                        "group/grp flex w-full items-center gap-1.5 border-b border-white/5 bg-card px-3 py-3.5 md:py-1.5",
                         multiSource && "pl-4",
                       )}
                     >
@@ -600,37 +600,48 @@ function DraggableSourceRow({
   onSelect: (shiftKey: boolean) => void;
   indented?: boolean;
 }) {
+  // Drag-to-add only makes sense on desktop, where both panes are visible. On
+  // mobile the panes are separate, so we drop the drag and let a tap anywhere on
+  // the row toggle its checkbox instead.
+  const isMobile = useIsMobile();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `src-${channel.id}`,
     data: { type: "source", channel },
+    disabled: isMobile,
   });
 
   return (
-    // The whole row is the drag handle. The checkbox stops propagation so it
-    // selects instead of starting a drag.
+    // Desktop: the whole row is the drag handle, the checkbox selects. Mobile:
+    // the whole row selects.
     <div
       ref={setNodeRef}
-      title="Drag into a category"
+      title={isMobile ? undefined : "Drag into a category"}
+      onClick={isMobile ? (e) => onSelect(e.shiftKey) : undefined}
       className={cn(
-        "flex cursor-grab items-center gap-2 px-3 py-2.5 transition-colors hover:bg-white/[0.02] active:cursor-grabbing md:py-1.5",
+        "flex items-center gap-2 px-3 py-3.5 transition-colors hover:bg-white/[0.02] md:py-1.5",
+        isMobile ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         indented && "pl-4",
         checked && "bg-primary/5",
         isDragging && "opacity-40",
       )}
-      {...attributes}
-      {...listeners}
+      {...(isMobile ? {} : attributes)}
+      {...(isMobile ? {} : listeners)}
     >
-      <GripVertical className="size-4 shrink-0 text-muted-foreground/40" />
-      <span
-        onClick={(e) => {
-          e.preventDefault();
-          onSelect(e.shiftKey);
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="flex cursor-pointer items-center"
-      >
+      <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/40 md:block" />
+      {isMobile ? (
         <Checkbox checked={checked} className="pointer-events-none" />
-      </span>
+      ) : (
+        <span
+          onClick={(e) => {
+            e.preventDefault();
+            onSelect(e.shiftKey);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex cursor-pointer items-center"
+        >
+          <Checkbox checked={checked} className="pointer-events-none" />
+        </span>
+      )}
       {channel.logo ? (
         <img
           src={logoSrc(channel.logo)}
@@ -639,10 +650,10 @@ function DraggableSourceRow({
           onError={(e) => {
             e.currentTarget.style.visibility = "hidden";
           }}
-          className="size-6 shrink-0 rounded object-contain"
+          className="hidden size-6 shrink-0 rounded object-contain md:block"
         />
       ) : (
-        <div className="flex size-6 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
+        <div className="hidden size-6 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground md:flex">
           <Tv className="size-3.5" />
         </div>
       )}
@@ -654,4 +665,19 @@ function DraggableSourceRow({
       </span>
     </div>
   );
+}
+
+// True below the md breakpoint, where the editor shows one pane at a time.
+// Starts false and updates after mount so it matches the server's desktop render
+// and avoids a hydration mismatch.
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 767px)");
+    const onChange = () => setIsMobile(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isMobile;
 }
