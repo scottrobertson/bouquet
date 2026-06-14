@@ -289,6 +289,20 @@ export function EditorBoard({
     else if (d?.type === "categoryHeader") setActive({ type: "category" });
   }
 
+  // After a reorder the rows shift under a stationary cursor, but the browser
+  // only re-evaluates CSS :hover on pointer movement, so the highlight sticks to
+  // the row that used to be there. Briefly dropping pointer-events forces it to
+  // re-hit-test the real cursor position.
+  const listRef = useRef<HTMLDivElement>(null);
+  function clearStuckHover() {
+    const el = listRef.current;
+    if (!el) return;
+    el.style.pointerEvents = "none";
+    setTimeout(() => {
+      if (listRef.current) listRef.current.style.pointerEvents = "";
+    }, 0);
+  }
+
   function handleDragEnd(e: DragEndEvent) {
     setActive(null);
     const { active: a, over } = e;
@@ -297,14 +311,17 @@ export function EditorBoard({
 
     if (type === "categoryHeader") {
       reorderCats(a.id, over.id);
+      clearStuckHover();
       return;
     }
     if (type === "channel") {
       if (over.data.current?.type === "removeZone") {
         removeFromPlaylist(Number(a.id));
+        clearStuckHover();
         return;
       }
       reorderChannels(Number(a.id), over);
+      clearStuckHover();
     }
   }
 
@@ -480,8 +497,11 @@ export function EditorBoard({
 
   const adding = addFetcher.state !== "idle";
 
-  // Collapsing categories keeps the DOM small for big playlists.
-  const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
+  // Collapsing categories keeps the DOM small for big playlists. Auto-sync
+  // categories start collapsed, since they're read-only mirrors of a source.
+  const [collapsedCats, setCollapsedCats] = useState<Set<number>>(
+    () => new Set(categories.filter((c) => c.auto).map((c) => c.id)),
+  );
   function toggleCatCollapse(id: number) {
     setCollapsedCats((prev) => {
       const next = new Set(prev);
@@ -587,7 +607,6 @@ export function EditorBoard({
     fd.set("primaryId", String(primaryId));
     for (const id of ids) fd.append("alternateIds", String(id));
     bulkFetcher.submit(fd, { method: "post" });
-    expandGroup(primaryId);
     setSelectedPl(new Set());
   }
 
@@ -851,7 +870,7 @@ export function EditorBoard({
             </div>
           ) : null}
 
-          <div className="flex-1 overflow-y-auto">
+          <div ref={listRef} className="flex-1 overflow-y-auto">
             {cats.length === 0 ? (
               <div className="px-4 py-12 text-center">
                 <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-lg bg-secondary text-muted-foreground">

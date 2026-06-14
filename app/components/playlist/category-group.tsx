@@ -239,11 +239,10 @@ function PrimaryGroup({
           onDelete: () => groupApi.onRemove(primary.id),
         }}
       />
-      {/* Alternates stay mounted and are clipped (not display:none) when
-          collapsed, so their logo layers persist and Safari doesn't
-          re-rasterize them with a stray frame on the next expand. */}
-      <div className={cn("overflow-hidden", collapsed ? "max-h-0" : "max-h-none")}>
-        {alternates.map((alt, i) => (
+      {/* Only render alternates when expanded. Clipping them while collapsed
+          left zero-height rows that overlapped the next row's hit area. */}
+      {!collapsed &&
+        alternates.map((alt, i) => (
           <AlternateRow
             key={alt.id}
             channel={alt}
@@ -270,7 +269,6 @@ function PrimaryGroup({
             }}
           />
         ))}
-      </div>
     </div>
   );
 }
