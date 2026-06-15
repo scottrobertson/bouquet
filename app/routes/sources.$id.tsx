@@ -141,21 +141,22 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
           </span>
         }
+        actionsClassName="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
         actions={
           <>
-            <Form method="post">
-              <Button type="submit" name="intent" value="sync" size="sm" variant="secondary" disabled={syncing}>
+            <Form method="post" className="contents">
+              <Button type="submit" name="intent" value="sync" size="sm" variant="secondary" disabled={syncing} className="w-full sm:w-auto">
                 <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} />
                 {syncing ? "Syncing..." : "Sync now"}
               </Button>
             </Form>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
               <Link to={`/sources/${source.id}/changes`}>
                 <History className="size-4" />
                 Changes
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
               <Link to={`/sources/${source.id}/edit`}>
                 <Pencil className="size-4" />
                 Edit
@@ -167,7 +168,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
       />
 
       <div className="space-y-5 px-4 py-5 md:px-8 md:py-6">
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-[13px]">
+        <div className="grid grid-cols-2 gap-2 text-[13px] sm:flex sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-2">
           <MetaCount
             label="Channels"
             total={source.channelCount}
@@ -228,38 +229,42 @@ function CategoriesPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search categories..."
-          className="h-8 w-64"
+          className="h-9 w-full sm:h-8 sm:w-64"
         />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            allFetcher.submit(
-              { intent: "setAllCategories", enabled: "true" },
-              { method: "post" },
-            )
-          }
-        >
-          Enable all
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            allFetcher.submit(
-              { intent: "setAllCategories", enabled: "false" },
-              { method: "post" },
-            )
-          }
-        >
-          Disable all
-        </Button>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 flex-1 sm:h-8 sm:flex-none"
+            onClick={() =>
+              allFetcher.submit(
+                { intent: "setAllCategories", enabled: "true" },
+                { method: "post" },
+              )
+            }
+          >
+            Enable all
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 flex-1 sm:h-8 sm:flex-none"
+            onClick={() =>
+              allFetcher.submit(
+                { intent: "setAllCategories", enabled: "false" },
+                { method: "post" },
+              )
+            }
+          >
+            Disable all
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-3 sm:ml-auto sm:justify-end">
           <SaveStatus />
           <span className="text-xs text-muted-foreground tabular-nums">
             {categories.length - offCount} of {categories.length} enabled
@@ -291,7 +296,7 @@ function CategoryRow({
       : category.enabled;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2">
+    <label className="flex cursor-pointer items-center gap-3 px-3 py-3 sm:py-2.5">
       <Switch
         checked={enabled}
         onCheckedChange={(v) =>
@@ -301,13 +306,13 @@ function CategoryRow({
           )
         }
       />
-      <span className={cn("text-[13px]", !enabled && "text-muted-foreground")}>
+      <span className={cn("text-sm sm:text-[13px]", !enabled && "text-muted-foreground")}>
         {category.name}
       </span>
       <span className="ml-auto text-xs tabular-nums text-muted-foreground">
         {category.count.toLocaleString()}
       </span>
-    </div>
+    </label>
   );
 }
 
@@ -332,9 +337,13 @@ function SaveStatus() {
   );
 }
 
+// Cards on mobile, plain inline text from sm up.
+const statCell =
+  "flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 sm:flex-row sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0";
+
 function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className={cn(statCell, "sm:gap-2")}>
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
     </div>
@@ -354,20 +363,22 @@ function MetaCount({
   off: number;
 }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className={cn(statCell, "sm:gap-2.5")}>
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{total.toLocaleString()}</span>
-      <span className="flex items-center gap-2 text-xs">
-        <span className="flex items-center gap-1 text-success">
-          <span className="size-1.5 rounded-full bg-success" />
-          {on.toLocaleString()} on
-        </span>
-        {off > 0 ? (
-          <span className="flex items-center gap-1 text-warning">
-            <span className="size-1.5 rounded-full bg-warning" />
-            {off.toLocaleString()} off
+      <span className="flex items-center gap-2.5">
+        <span className="font-medium tabular-nums">{total.toLocaleString()}</span>
+        <span className="flex items-center gap-2 text-xs">
+          <span className="flex items-center gap-1 text-success">
+            <span className="size-1.5 rounded-full bg-success" />
+            {on.toLocaleString()} on
           </span>
-        ) : null}
+          {off > 0 ? (
+            <span className="flex items-center gap-1 text-warning">
+              <span className="size-1.5 rounded-full bg-warning" />
+              {off.toLocaleString()} off
+            </span>
+          ) : null}
+        </span>
       </span>
     </div>
   );
@@ -377,7 +388,7 @@ function DeleteSourceButton({ name }: { name: string }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+        <Button size="sm" variant="ghost" className="w-full text-destructive hover:text-destructive sm:w-auto">
           Delete
         </Button>
       </AlertDialogTrigger>

@@ -5,11 +5,13 @@ export function PageHeader({
   title,
   description,
   actions,
+  actionsClassName,
   border = true,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  actionsClassName?: string;
   border?: boolean;
 }) {
   return (
@@ -26,7 +28,9 @@ export function PageHeader({
         ) : null}
       </div>
       {actions ? (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        <div className={actionsClassName ?? "flex flex-wrap items-center gap-2"}>
+          {actions}
+        </div>
       ) : null}
     </div>
   );
