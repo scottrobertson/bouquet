@@ -6,6 +6,16 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Sort tool in the playlist editor. Select channels, open Tools, and pick A→Z or Z→A to
+  sort them by name within their category. They drop back into the slots they already
+  occupied, so unselected channels don't move and selections spanning categories sort each
+  category on its own. Numbers sort naturally (ESPN 2 before ESPN 10), and alternates stay
+  grouped under their primary.
+- Tidied the bulk-action bar: Move to… and Make alternate of… stay top-level, and the rest
+  (enable, disable, sort, rename, EPG) live under Tools.
+- Moved "Add category" from the bottom of the playlist into its header, as a row that
+  mirrors the source browser's filter/search row. The channel list now runs the full height
+  of the pane.
 - Per-source refresh frequency on the source form: every hour, 6 hours, 12 hours, daily,
   or manual only. The scheduler now checks every hour and syncs only the sources whose
   interval has elapsed, so each provider refreshes on its own schedule. "Manual only"

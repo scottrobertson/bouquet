@@ -548,6 +548,68 @@ export function bulkReplace(
   bulkRename(playlistId, ids, (current) => current.split(search).join(replace));
 }
 
+/** Sort the selected channels by name within each category, filling the slots
+    they already sit in. Unselected channels stay put, and alternates are left
+    to their primary's group. */
+export function bulkSort(
+  playlistId: number,
+  channelIds: number[],
+  direction: "asc" | "desc",
+) {
+  const owned = ownedChannels(playlistId, channelIds);
+  if (!owned.size) return;
+
+  const rows = db
+    .select({
+      id: playlistChannels.id,
+      categoryId: playlistChannels.categoryId,
+      position: playlistChannels.position,
+      customName: playlistChannels.customName,
+      sourceName: sourceChannels.name,
+      primaryChannelId: playlistChannels.primaryChannelId,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .where(inArray(playlistChannels.id, [...owned]))
+    .all();
+
+  const byCat = new Map<number, typeof rows>();
+  for (const r of rows) {
+    // Alternates follow their primary, so they don't sort on their own.
+    if (r.primaryChannelId != null) continue;
+    const list = byCat.get(r.categoryId);
+    if (list) list.push(r);
+    else byCat.set(r.categoryId, [r]);
+  }
+
+  const dir = direction === "desc" ? -1 : 1;
+  db.transaction((tx) => {
+    for (const list of byCat.values()) {
+      // The slots these channels occupy now, lowest first. Sorting just
+      // reshuffles the same channels back into the same slots.
+      const slots = list.map((r) => r.position).sort((a, b) => a - b);
+      const sorted = [...list].sort(
+        (a, b) =>
+          dir *
+          (a.customName ?? a.sourceName).localeCompare(
+            b.customName ?? b.sourceName,
+            undefined,
+            { numeric: true, sensitivity: "base" },
+          ),
+      );
+      sorted.forEach((r, i) => {
+        tx.update(playlistChannels)
+          .set({ position: slots[i] })
+          .where(eq(playlistChannels.id, r.id))
+          .run();
+      });
+    }
+  });
+}
+
 /** A channel that can be the primary of a group: in the playlist, not itself
     an alternate, and not in an auto category. Returns its row or null. */
 function primaryCandidate(playlistId: number, channelId: number) {

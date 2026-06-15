@@ -19,6 +19,7 @@ import {
   bulkRemove,
   bulkReplace,
   bulkResetEpg,
+  bulkSort,
   bulkToggle,
   createAutoCategory,
   createCategory,
@@ -310,6 +311,12 @@ export async function action({ request, params }: Route.ActionArgs) {
 
     case "bulkResetEpg": {
       bulkResetEpg(playlistId, bulkIds(form));
+      return data({ ok: true, intent });
+    }
+
+    case "bulkSort": {
+      const direction = form.get("direction") === "desc" ? "desc" : "asc";
+      bulkSort(playlistId, bulkIds(form), direction);
       return data({ ok: true, intent });
     }
 

@@ -754,55 +754,69 @@ export function EditorBoard({
             view === "playlist" ? "flex flex-1" : "hidden",
           )}
         >
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Playlist
-              {adding ? (
-                <span className="flex items-center gap-1 normal-case tracking-normal text-primary">
-                  <Loader2 className="size-3 animate-spin" />
-                  adding
+          <div className="border-b border-border px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Playlist
+                {adding ? (
+                  <span className="flex items-center gap-1 normal-case tracking-normal text-primary">
+                    <Loader2 className="size-3 animate-spin" />
+                    adding
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-3">
+                {cats.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsedCats(
+                        allCollapsed
+                          ? new Set()
+                          : new Set(cats.map((c) => c.id)),
+                      )
+                    }
+                    className="cursor-pointer text-[11px] font-medium normal-case tracking-normal text-muted-foreground hover:text-foreground"
+                  >
+                    {allCollapsed ? "Expand all" : "Collapse all"}
+                  </button>
+                ) : null}
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {cats.length} categories · {items.length} channels
                 </span>
-              ) : null}
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              {cats.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsedCats(
-                      allCollapsed ? new Set() : new Set(cats.map((c) => c.id)),
-                    )
+            <div className="flex gap-2">
+              <Input
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    createCategory();
                   }
-                  className="cursor-pointer text-[11px] font-medium normal-case tracking-normal text-muted-foreground hover:text-foreground"
-                >
-                  {allCollapsed ? "Expand all" : "Collapse all"}
-                </button>
-              ) : null}
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {cats.length} categories · {items.length} channels
-              </span>
+                }}
+                placeholder="New category name"
+                className="h-8 flex-1"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={createCategory}
+                disabled={!newCategory.trim() || creatingCat}
+              >
+                <Plus className="size-4" />
+                Add
+              </Button>
             </div>
           </div>
 
           {selectedPl.size > 0 ? (
-            <div className="absolute inset-x-0 bottom-20 z-30 mx-auto flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2 rounded-2xl border border-border bg-card/95 px-4 py-2.5 text-[13px] shadow-lg shadow-black/40 backdrop-blur duration-150 animate-in fade-in slide-in-from-bottom-2">
+            <div className="absolute inset-x-0 bottom-6 z-30 mx-auto flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2 rounded-2xl border border-border bg-card/95 px-4 py-2.5 text-[13px] shadow-lg shadow-black/40 backdrop-blur duration-150 animate-in fade-in slide-in-from-bottom-2">
               <span className="text-muted-foreground">
                 {selectedPl.size} selected
               </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => bulkSubmit("bulkToggle", { enabled: "true" })}
-              >
-                Enable
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => bulkSubmit("bulkToggle", { enabled: "false" })}
-              >
-                Disable
-              </Button>
               <Select
                 value=""
                 onValueChange={(v) => bulkSubmit("bulkMove", { toCategoryId: v })}
@@ -826,6 +840,7 @@ export function EditorBoard({
                 label="Make alternate of…"
               />
               <ChannelTools count={selectedPl.size} onRun={bulkSubmit} />
+              <div className="mx-0.5 h-5 w-px bg-border" />
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
@@ -875,7 +890,7 @@ export function EditorBoard({
                   <ListVideo className="size-5" />
                 </div>
                 <p className="text-[13px] text-muted-foreground">
-                  Add a category below, then drag channels in from the left.
+                  Add a category above, then drag channels in from the left.
                 </p>
               </div>
             ) : (
@@ -901,33 +916,6 @@ export function EditorBoard({
               </SortableContext>
             )}
           </div>
-
-          <div className="border-t border-border px-4 py-3">
-            <div className="flex gap-2">
-              <Input
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    createCategory();
-                  }
-                }}
-                placeholder="New category name"
-                className="h-8"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={createCategory}
-                disabled={!newCategory.trim() || creatingCat}
-              >
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -951,6 +939,7 @@ const BULK_TOAST: Record<string, string> = {
   bulkToggle: "Channels updated",
   bulkMove: "Channels moved",
   bulkRemove: "Channels removed",
+  bulkSort: "Channels sorted",
   bulkResetEpg: "EPG reset to source default",
   bulkPrefix: "Names updated",
   bulkSuffix: "Names updated",

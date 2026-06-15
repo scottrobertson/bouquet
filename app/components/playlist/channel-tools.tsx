@@ -1,5 +1,9 @@
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
   ChevronLeft,
+  Eye,
+  EyeOff,
   Replace,
   TextCursorInput,
   Tv2,
@@ -32,15 +36,53 @@ type Tool = {
   icon: LucideIcon;
   // The bulk action intent this tool submits.
   intent: string;
+  // Fixed values submitted with the intent, e.g. the sort direction.
+  params?: Record<string, string>;
   // Text inputs the tool needs. None means it runs straight away.
   fields?: ToolField[];
+  // Draw a divider above this tool to start a new group.
+  separator?: boolean;
 };
 
 // Add a tool here and it shows up in the Action Bar. Each maps to a bulk intent
 // handled in playlists.$id.tsx.
 const TOOLS: Tool[] = [
   {
+    id: "enable",
+    label: "Enable",
+    description: "Include the selected channels in the output.",
+    icon: Eye,
+    intent: "bulkToggle",
+    params: { enabled: "true" },
+  },
+  {
+    id: "disable",
+    label: "Disable",
+    description: "Leave them out of the output.",
+    icon: EyeOff,
+    intent: "bulkToggle",
+    params: { enabled: "false" },
+  },
+  {
+    id: "sort-asc",
+    separator: true,
+    label: "Sort A → Z",
+    description: "Order the selected channels by name.",
+    icon: ArrowDownAZ,
+    intent: "bulkSort",
+    params: { direction: "asc" },
+  },
+  {
+    id: "sort-desc",
+    label: "Sort Z → A",
+    description: "Order them by name, reversed.",
+    icon: ArrowDownZA,
+    intent: "bulkSort",
+    params: { direction: "desc" },
+  },
+  {
     id: "prefix",
+    separator: true,
     label: "Add prefix",
     description: "Put text before every selected name.",
     icon: Type,
@@ -100,7 +142,7 @@ export function ChannelTools({
 
   function pick(t: Tool) {
     if (!t.fields?.length) {
-      onRun(t.intent);
+      onRun(t.intent, t.params);
       setOpen(false);
       return;
     }
@@ -114,7 +156,7 @@ export function ChannelTools({
       (f) => !f.optional && !values[f.name]?.trim(),
     );
     if (missing) return;
-    onRun(tool.intent, values);
+    onRun(tool.intent, { ...tool.params, ...values });
     setOpen(false);
     reset();
   }
@@ -137,22 +179,24 @@ export function ChannelTools({
         {!tool ? (
           <div className="flex flex-col">
             {TOOLS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => pick(t)}
-                className="flex cursor-pointer items-start gap-2.5 rounded-sm px-2 py-2 text-left hover:bg-accent"
-              >
-                <t.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div className="flex flex-col">
-                  <span className="text-[13px]">{t.label}</span>
-                  {t.description ? (
-                    <span className="text-[11px] text-muted-foreground">
-                      {t.description}
-                    </span>
-                  ) : null}
-                </div>
-              </button>
+              <div key={t.id} className="contents">
+                {t.separator ? <div className="my-1 h-px bg-border" /> : null}
+                <button
+                  type="button"
+                  onClick={() => pick(t)}
+                  className="flex cursor-pointer items-start gap-2.5 rounded-sm px-2 py-2 text-left hover:bg-accent"
+                >
+                  <t.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="flex flex-col">
+                    <span className="text-[13px]">{t.label}</span>
+                    {t.description ? (
+                      <span className="text-[11px] text-muted-foreground">
+                        {t.description}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              </div>
             ))}
           </div>
         ) : (
