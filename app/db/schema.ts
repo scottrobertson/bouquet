@@ -39,6 +39,12 @@ export const sources = sqliteTable("sources", {
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
   lastError: text("last_error"),
   channelCount: integer("channel_count").notNull().default(0),
+  // Account details read from the provider on each sync. Null when the provider
+  // doesn't report them.
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
+  maxConnections: integer("max_connections"),
+  // Provider's account status, e.g. "Active" or "Expired".
+  accountStatus: text("account_status"),
   // Set when categories are toggled, since stored programmes only cover the
   // channels in enabled categories. Cleared on the next successful sync.
   epgStale: integer("epg_stale", { mode: "boolean" }).notNull().default(false),

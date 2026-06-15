@@ -195,6 +195,9 @@ export async function runSync(sourceId: number): Promise<void> {
         lastSyncedAt: now,
         lastError: null,
         channelCount: streams.length,
+        expiresAt: account.expiresAt ?? null,
+        maxConnections: account.maxConnections ?? null,
+        accountStatus: account.status ?? null,
         ...(account.streamBaseUrl ? { streamBaseUrl: account.streamBaseUrl } : {}),
       })
       .where(eq(sources.id, sourceId))

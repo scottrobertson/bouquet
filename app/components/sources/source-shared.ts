@@ -42,6 +42,26 @@ export function hostFromUrl(url: string): string {
   }
 }
 
+/** Account expiry as a short date like "12 Jul 2026". "Never" when the provider
+    sets no expiry, "Unknown" before the first sync reads it. `expired` is true
+    once the date has passed, so the UI can flag it. */
+export function expiryLabel(date: Date | string | null | undefined): {
+  text: string;
+  expired: boolean;
+} {
+  if (date === undefined) return { text: "Unknown", expired: false };
+  if (date === null) return { text: "Never", expired: false };
+  const d = typeof date === "string" ? new Date(date) : date;
+  return {
+    text: d.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+    expired: d.getTime() < Date.now(),
+  };
+}
+
 /** Short relative time like "2h ago". Falls back to the date for old stuff. */
 export function relativeTime(date: Date | string | null): string {
   if (!date) return "Never";

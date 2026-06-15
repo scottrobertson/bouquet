@@ -8,6 +8,7 @@ import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
 import {
+  expiryLabel,
   hostFromUrl,
   relativeTime,
   syncIntervalLabel,
@@ -70,6 +71,12 @@ export async function loader() {
         categoriesTotal: summary?.categoriesTotal ?? 0,
         categoriesOn: summary?.categoriesOn ?? 0,
         lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.toISOString() : null,
+        // Undefined before the first sync reads these, so the UI can say
+        // "Unknown" rather than "Never"/"—".
+        expiresAt: s.lastSyncedAt
+          ? (s.expiresAt ? s.expiresAt.toISOString() : null)
+          : undefined,
+        maxConnections: s.lastSyncedAt ? s.maxConnections : undefined,
       };
     }),
   };
@@ -196,6 +203,8 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
                   <Th className="hidden md:table-cell">Status</Th>
                   <Th className="hidden text-right md:table-cell">Channels</Th>
                   <Th className="hidden text-right md:table-cell">Categories</Th>
+                  <Th className="hidden text-right md:table-cell">Expires</Th>
+                  <Th className="hidden text-right md:table-cell">Connections</Th>
                   <Th className="text-right">Last synced</Th>
                   <Th className="w-10 pr-4 md:pr-2" />
                 </TableRow>
@@ -269,6 +278,12 @@ function SourceRow({ source }: { source: Row }) {
       <TableCell className="hidden text-right tabular-nums md:table-cell">
         <OnOfTotal on={source.categoriesOn} total={source.categoriesTotal} />
       </TableCell>
+      <TableCell className="hidden text-right text-muted-foreground md:table-cell">
+        <ExpiresCell expiresAt={source.expiresAt} />
+      </TableCell>
+      <TableCell className="hidden text-right tabular-nums text-muted-foreground md:table-cell">
+        {connectionsLabel(source.maxConnections)}
+      </TableCell>
       <TableCell className="text-right text-muted-foreground">
         <div className="flex items-center justify-end gap-2">
           {/* On mobile the status column is hidden, so show the badge here next
@@ -331,6 +346,20 @@ function SourceRow({ source }: { source: Row }) {
       </TableCell>
     </TableRow>
   );
+}
+
+// Connection limit, or "—" when the provider doesn't report one. Undefined
+// before the first sync.
+function connectionsLabel(max: number | null | undefined): string {
+  if (max === undefined) return "Unknown";
+  if (max === null) return "—";
+  return max.toLocaleString();
+}
+
+// Expiry date, tinted red once it's passed.
+function ExpiresCell({ expiresAt }: { expiresAt: string | null | undefined }) {
+  const { text, expired } = expiryLabel(expiresAt);
+  return <span className={expired ? "text-destructive" : undefined}>{text}</span>;
 }
 
 // Enabled out of total, e.g. "1,180 / 1,500". Total is muted.

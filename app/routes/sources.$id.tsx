@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Check, History, Loader2, Pencil, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
@@ -14,7 +15,11 @@ import {
 import { toast } from "sonner";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
-import { relativeTime, syncIntervalLabel } from "~/components/sources/source-shared";
+import {
+  expiryLabel,
+  relativeTime,
+  syncIntervalLabel,
+} from "~/components/sources/source-shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,6 +65,13 @@ export async function loader({ params }: Route.LoaderArgs) {
       lastError: source.lastError,
       epgStale: source.epgStale,
       syncIntervalMinutes: source.syncIntervalMinutes,
+      // Undefined before the first sync reads these, so the UI can say
+      // "Unknown" rather than "Never"/"—".
+      expiresAt: source.lastSyncedAt
+        ? (source.expiresAt ? source.expiresAt.toISOString() : null)
+        : undefined,
+      maxConnections: source.lastSyncedAt ? source.maxConnections : undefined,
+      accountStatus: source.accountStatus,
     },
     categories: listSourceCategories(id),
   };
@@ -184,6 +196,15 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
           />
           <Meta label="Last synced" value={relativeTime(source.lastSyncedAt)} />
           <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
+          <ExpiresMeta expiresAt={source.expiresAt} />
+          <Meta label="Connections" value={connectionsLabel(source.maxConnections)} />
+          {source.accountStatus ? (
+            <Meta
+              label="Status"
+              value={source.accountStatus}
+              className="hidden sm:flex"
+            />
+          ) : null}
         </div>
 
         {source.syncStatus === "error" && source.lastError ? (
@@ -347,12 +368,42 @@ const statLabel = "text-xs text-muted-foreground sm:text-[13px]";
 // Value is prominent on the mobile card, normal inline text on desktop.
 const statValue = "text-base font-semibold tabular-nums sm:text-[13px] sm:font-medium";
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({
+  label,
+  value,
+  valueClassName,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  valueClassName?: string;
+  className?: string;
+}) {
   return (
-    <div className={statCell}>
+    <div className={cn(statCell, className)}>
       <span className={statLabel}>{label}</span>
-      <span className={statValue}>{value}</span>
+      <span className={cn(statValue, valueClassName)}>{value}</span>
     </div>
+  );
+}
+
+// Connection limit, or "—" when the provider doesn't report one. Undefined
+// before the first sync.
+function connectionsLabel(max: number | null | undefined): string {
+  if (max === undefined) return "Unknown";
+  if (max === null) return "—";
+  return max.toLocaleString();
+}
+
+// Expiry date, tinted red once passed.
+function ExpiresMeta({ expiresAt }: { expiresAt: string | null | undefined }) {
+  const { text, expired } = expiryLabel(expiresAt);
+  return (
+    <Meta
+      label="Expires"
+      value={text}
+      valueClassName={expired ? "text-destructive" : undefined}
+    />
   );
 }
 

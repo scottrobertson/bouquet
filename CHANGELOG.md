@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Account details on sources: expiry date and connection limit show on the sources list and
+  the source page, read from the provider on each sync. The source page also shows the
+  account status (desktop only). Expired dates are flagged in red. The account columns are
+  hidden on the list on mobile. Before a source's first sync these read "Unknown".
 - Sort tool in the playlist editor. Select channels, open Tools, and pick A→Z or Z→A to
   sort them by name within their category. They drop back into the slots they already
   occupied, so unselected channels don't move and selections spanning categories sort each
