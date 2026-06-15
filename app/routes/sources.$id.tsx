@@ -135,6 +135,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
   return (
     <div>
       <PageHeader
+        border={false}
         title={
           <span className="flex items-center gap-2.5">
             {source.name}
@@ -167,7 +168,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
         }
       />
 
-      <div className="space-y-5 px-4 py-5 md:px-8 md:py-6">
+      <div className="space-y-5 px-4 pb-5 pt-2 md:px-8 md:py-6">
         <div className="grid grid-cols-2 gap-2 text-[13px] sm:flex sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-2">
           <MetaCount
             label="Channels"
