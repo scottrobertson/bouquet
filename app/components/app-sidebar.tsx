@@ -71,7 +71,7 @@ export function SidebarContent({
 
       <nav
         className={cn(
-          "flex flex-col gap-0.5 px-2 py-2",
+          "flex flex-col gap-1 px-2 py-2 md:gap-0.5",
           collapsed && "items-center",
         )}
       >
@@ -84,7 +84,7 @@ export function SidebarContent({
               onClick={onNavigate}
               className={cn(
                 "group flex items-center gap-2.5 rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.03] hover:text-foreground aria-[current=page]:bg-white/[0.06] aria-[current=page]:text-foreground",
-                collapsed ? "size-9 justify-center" : "h-9 px-2.5 md:h-8",
+                collapsed ? "size-9 justify-center" : "h-11 px-2.5 md:h-8",
               )}
             >
               <item.icon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-aria-[current=page]:text-primary" />
