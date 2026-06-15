@@ -272,7 +272,7 @@ function CategoriesPanel({
         </div>
       </div>
 
-      <div className="divide-y divide-white/5 rounded-lg border border-border bg-card">
+      <div className="-mx-4 divide-y divide-white/5 border-y border-border bg-card md:mx-0 md:rounded-lg md:border">
         {filtered.map((c) => (
           <CategoryRow key={c.name} category={c} />
         ))}
@@ -296,7 +296,7 @@ function CategoryRow({
       : category.enabled;
 
   return (
-    <label className="flex cursor-pointer items-center gap-3 px-3 py-3 sm:py-2.5">
+    <label className="flex cursor-pointer items-center gap-3 px-4 py-3 sm:px-3 sm:py-2.5">
       <Switch
         checked={enabled}
         onCheckedChange={(v) =>
@@ -339,18 +339,24 @@ function SaveStatus() {
 
 // Cards on mobile, plain inline text from sm up.
 const statCell =
-  "flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 sm:flex-row sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0";
+  "flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 sm:flex-row sm:items-center sm:gap-2 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0";
+
+// Label sits above the value on mobile, muted; inline from sm up.
+const statLabel = "text-xs text-muted-foreground sm:text-[13px]";
+// Value is prominent on the mobile card, normal inline text on desktop.
+const statValue = "text-base font-semibold tabular-nums sm:text-[13px] sm:font-medium";
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className={cn(statCell, "sm:gap-2")}>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{value}</span>
+    <div className={statCell}>
+      <span className={statLabel}>{label}</span>
+      <span className={statValue}>{value}</span>
     </div>
   );
 }
 
-// A total with an enabled/disabled (on/off) breakdown.
+// A total with an enabled/disabled (on/off) breakdown. The breakdown sits on
+// its own line under the number so big channel counts never get cramped.
 function MetaCount({
   label,
   total,
@@ -364,16 +370,16 @@ function MetaCount({
 }) {
   return (
     <div className={cn(statCell, "sm:gap-2.5")}>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="flex items-center gap-2.5">
-        <span className="font-medium tabular-nums">{total.toLocaleString()}</span>
-        <span className="flex items-center gap-2 text-xs">
-          <span className="flex items-center gap-1 text-success">
+      <span className={statLabel}>{label}</span>
+      <span className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2.5">
+        <span className={statValue}>{total.toLocaleString()}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+          <span className="flex items-center gap-1 whitespace-nowrap text-success">
             <span className="size-1.5 rounded-full bg-success" />
             {on.toLocaleString()} on
           </span>
           {off > 0 ? (
-            <span className="flex items-center gap-1 text-warning">
+            <span className="flex items-center gap-1 whitespace-nowrap text-warning">
               <span className="size-1.5 rounded-full bg-warning" />
               {off.toLocaleString()} off
             </span>
@@ -388,7 +394,7 @@ function DeleteSourceButton({ name }: { name: string }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="w-full text-destructive hover:text-destructive sm:w-auto">
+        <Button size="sm" variant="ghost" className="w-full border bg-background text-destructive hover:text-destructive dark:border-input dark:bg-input/30 sm:w-auto sm:border-0 sm:bg-transparent sm:shadow-none">
           Delete
         </Button>
       </AlertDialogTrigger>
