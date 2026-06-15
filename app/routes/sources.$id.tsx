@@ -228,8 +228,8 @@ function CategoriesPanel({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+    <div className="space-y-4 sm:space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
