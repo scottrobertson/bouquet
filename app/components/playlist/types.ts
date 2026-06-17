@@ -16,6 +16,14 @@ export type EditorChannel = {
   sourceEpgChannelId: string | null;
   sourceProviderName: string;
   sourceCategoryEnabled: boolean;
+  // Latest ffprobe result for the underlying stream. Null status = never probed.
+  probeStatus: "ok" | "error" | "timeout" | null;
+  probeWidth: number | null;
+  probeHeight: number | null;
+  probeFps: number | null;
+  probeVideoCodec: string | null;
+  probeAudioCodec: string | null;
+  probeBitrate: number | null;
   // Set when this channel is an alternate of another channel (its primary).
   primaryChannelId: number | null;
   altPosition: number;

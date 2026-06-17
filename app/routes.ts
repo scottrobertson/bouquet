@@ -34,6 +34,7 @@ export default [
 
   // Public, no layout. Hit by IPTV players and the cron job.
   route("internal/sync", "routes/internal.sync.tsx"),
+  route("internal/probe", "routes/internal.probe.tsx"),
   route("internal/backup", "routes/internal.backup.tsx"),
   route("output/m3u/:token", "routes/output.m3u.$token.tsx"),
   route("output/epg/:token", "routes/output.epg.$token.tsx"),

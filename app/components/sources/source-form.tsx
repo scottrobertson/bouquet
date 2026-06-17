@@ -13,7 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { SYNC_INTERVAL_OPTIONS } from "~/components/sources/source-shared";
+import {
+  PROBE_INTERVAL_OPTIONS,
+  PROBE_TIMEOUT_OPTIONS,
+  SYNC_INTERVAL_OPTIONS,
+} from "~/components/sources/source-shared";
 
 export interface SourceFormValues {
   name: string;
@@ -23,6 +27,11 @@ export interface SourceFormValues {
   outputFormat: "ts" | "m3u8";
   autoImportGroups: boolean;
   syncIntervalMinutes: number;
+  probeEnabled: boolean;
+  probeConcurrency: number;
+  probeIntervalMinutes: number;
+  probeTimeoutSeconds: number;
+  probeMeasureBitrate: boolean;
 }
 
 export interface TestResult {
@@ -35,6 +44,8 @@ export interface TestResult {
 
 interface SourceFormProps {
   defaults?: Partial<SourceFormValues>;
+  // The provider's connection limit, shown as guidance for probe concurrency.
+  maxConnections?: number | null;
   submitLabel: string;
   submitIntent: "create" | "update";
   cancelHref: string;
@@ -49,6 +60,7 @@ type TestFetcherData = {
 
 export function SourceForm({
   defaults,
+  maxConnections,
   submitLabel,
   submitIntent,
   cancelHref,
@@ -200,6 +212,103 @@ export function SourceForm({
             When on, categories found on a sync start enabled. When off, new
             categories arrive disabled and you turn them on from the Categories list.
           </p>
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="probeEnabled"
+            name="probeEnabled"
+            defaultChecked={defaults?.probeEnabled ?? false}
+            className="mt-0.5"
+          />
+          <div className="space-y-1">
+            <Label htmlFor="probeEnabled" className="font-medium">
+              Probe stream quality
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Runs ffprobe against each stream to record its resolution, frame
+              rate and codecs. Only channels used in a playlist are probed.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="probeConcurrency">Concurrency</Label>
+            <Input
+              id="probeConcurrency"
+              name="probeConcurrency"
+              type="number"
+              min={1}
+              max={20}
+              defaultValue={defaults?.probeConcurrency ?? 1}
+            />
+            <p className="text-xs text-muted-foreground">
+              Streams probed at once.
+              {maxConnections != null
+                ? ` This provider allows ${maxConnections}.`
+                : ""}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="probeIntervalMinutes">Frequency</Label>
+            <Select
+              name="probeIntervalMinutes"
+              defaultValue={String(defaults?.probeIntervalMinutes ?? 1440)}
+            >
+              <SelectTrigger id="probeIntervalMinutes" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROBE_INTERVAL_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="probeTimeoutSeconds">Read time</Label>
+            <Select
+              name="probeTimeoutSeconds"
+              defaultValue={String(defaults?.probeTimeoutSeconds ?? 10)}
+            >
+              <SelectTrigger id="probeTimeoutSeconds" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROBE_TIMEOUT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="probeMeasureBitrate"
+            name="probeMeasureBitrate"
+            defaultChecked={defaults?.probeMeasureBitrate ?? false}
+            className="mt-0.5"
+          />
+          <div className="space-y-1">
+            <Label htmlFor="probeMeasureBitrate" className="font-medium">
+              Measure bitrate
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Reads each stream for the full read time to measure its real data
+              rate, the best signal of actual quality. Much slower, since it
+              downloads several MB per channel instead of just the header.
+            </p>
+          </div>
         </div>
       </div>
 

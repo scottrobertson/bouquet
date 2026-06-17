@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { MoreHorizontal, Plus, Radio, RefreshCw } from "lucide-react";
+import { Gauge, MoreHorizontal, Plus, Radio, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link, data, useFetcher, useRevalidator } from "react-router";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
+import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
 import {
   expiryLabel,
   hostFromUrl,
@@ -43,6 +44,7 @@ import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
 import { sourceCategorySummaries } from "~/services/sources/categories.server";
 import { startSync } from "~/services/sync/sync.server";
+import { startProbe } from "~/services/probe/probe.server";
 import type { Route } from "./+types/sources._index";
 
 export function meta() {
@@ -66,6 +68,9 @@ export async function loader() {
         outputFormat: s.outputFormat,
         syncIntervalMinutes: s.syncIntervalMinutes,
         syncStatus: s.syncStatus,
+        probeStatus: s.probeStatus,
+        probeDone: s.probeDone,
+        probeTotal: s.probeTotal,
         channelCount: s.channelCount,
         channelsOn: Math.max(0, s.channelCount - offChannels),
         categoriesTotal: summary?.categoriesTotal ?? 0,
@@ -102,6 +107,11 @@ export async function action({ request }: Route.ActionArgs) {
     return data({ intent: "sync" as const, started: true });
   }
 
+  if (intent === "probe") {
+    startProbe(id);
+    return data({ intent: "probe" as const, started: true });
+  }
+
   if (intent === "delete") {
     db.delete(sources).where(eq(sources.id, id)).run();
     return data({ intent: "delete" as const, ok: true });
@@ -113,16 +123,17 @@ export async function action({ request }: Route.ActionArgs) {
 export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
   const { sources: rows } = loaderData;
 
-  // Syncs run in the background, so poll while any source is still syncing.
+  // Syncs and probes run in the background, so poll while either is going.
   const revalidator = useRevalidator();
   const anySyncing = rows.some((s) => s.syncStatus === "syncing");
+  const anyProbing = rows.some((s) => s.probeStatus === "probing");
   useEffect(() => {
-    if (!anySyncing) return;
+    if (!anySyncing && !anyProbing) return;
     const t = setInterval(() => {
       if (revalidator.state === "idle") revalidator.revalidate();
     }, 2500);
     return () => clearInterval(t);
-  }, [anySyncing, revalidator]);
+  }, [anySyncing, anyProbing, revalidator]);
 
   // Sync every source at once.
   const syncAllFetcher = useFetcher<typeof action>();
@@ -230,6 +241,9 @@ function SourceRow({ source }: { source: Row }) {
   const submitting =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sync";
   const syncing = submitting || source.syncStatus === "syncing";
+  const probing =
+    (fetcher.state !== "idle" && fetcher.formData?.get("intent") === "probe") ||
+    source.probeStatus === "probing";
 
   // Report sync results once the fetcher settles.
   const handled = useRef<typeof fetcher.data>(undefined);
@@ -243,13 +257,26 @@ function SourceRow({ source }: { source: Row }) {
       toast(`Syncing ${source.name}`, {
         description: "Pulling channels in the background.",
       });
+    } else if (res.intent === "probe") {
+      toast(`Probing ${source.name}`, {
+        description: "Checking stream quality in the background.",
+      });
     } else if (res.intent === "delete" && res.ok) {
       toast.success(`Deleted ${source.name}`);
     }
   }, [fetcher.state, fetcher.data, source.name]);
 
   const statusBadge = (
-    <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
+    <div className="flex flex-wrap items-center gap-1.5">
+      <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
+      {source.probeStatus === "probing" ? (
+        <ProbeStatusBadge
+          status="probing"
+          done={source.probeDone}
+          total={source.probeTotal}
+        />
+      ) : null}
+    </div>
   );
 
   return (
@@ -306,6 +333,13 @@ function SourceRow({ source }: { source: Row }) {
             >
               <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} />
               Sync now
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => fetcher.submit({ intent: "probe", id: source.id }, { method: "post" })}
+              disabled={probing}
+            >
+              <Gauge className={probing ? "size-4 animate-pulse" : "size-4"} />
+              Probe now
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to={`/sources/${source.id}/edit`}>Edit</Link>

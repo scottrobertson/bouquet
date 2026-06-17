@@ -11,6 +11,7 @@ const port = Number(process.env.PORT ?? 3000);
 // Ticks hourly and the endpoint syncs only sources whose interval has elapsed,
 // so the per-source refresh frequency is what actually controls timing.
 const syncCron = process.env.SYNC_CRON ?? "0 * * * *";
+const probeCron = process.env.PROBE_CRON ?? "0 * * * *";
 const backupCron = process.env.BACKUP_CRON ?? "0 3 * * *";
 const internalToken = process.env.SESSION_SECRET ?? "dev-insecure-session-secret";
 
@@ -55,4 +56,5 @@ app.listen(port, () => {
 });
 
 scheduleInternal("sync", syncCron, "/internal/sync");
+scheduleInternal("probe", probeCron, "/internal/probe");
 scheduleInternal("backup", backupCron, "/internal/backup");

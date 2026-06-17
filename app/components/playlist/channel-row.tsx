@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   CornerDownRight,
+  Gauge,
   GripVertical,
   MoreVertical,
   Pencil,
@@ -31,9 +32,43 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { logoSrc } from "~/lib/logo";
+import { qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import type { EditorChannel } from "./types";
+
+/** Stream quality below the provider/category line. Shows the probe result when
+    we have one, a quiet note when the last probe failed, and nothing when the
+    channel was never probed (so unprobed lists stay clean). */
+function QualityLine({ channel }: { channel: EditorChannel }) {
+  if (channel.probeStatus === "error" || channel.probeStatus === "timeout") {
+    return (
+      <div className="text-[11px] text-muted-foreground/60">
+        {channel.probeStatus === "timeout" ? "Probe timed out" : "Probe failed"}
+      </div>
+    );
+  }
+
+  const meta = qualityMeta(channel);
+  if (!meta) return null;
+
+  const parts = [
+    ...(meta.resolution ? [meta.resolution.label] : []),
+    ...meta.details,
+    ...(meta.bitrate ? [meta.bitrate] : []),
+  ];
+
+  return (
+    <div className="flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground">
+      {parts.map((p, i) => (
+        <span key={i} className="flex shrink-0 items-center gap-1">
+          {i > 0 ? <span className="text-muted-foreground/50">·</span> : null}
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /** Row actions in the ⋯ menu: ungroup on a primary, reorder/ungroup on an
     alternate, and delete on both. */
@@ -319,6 +354,7 @@ export function ChannelRowBody({
             {channel.sourceCategoryName ?? "Uncategorised"}
           </span>
         </div>
+        <QualityLine channel={channel} />
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -383,16 +419,47 @@ export function ChannelRowBody({
             )
           }
         />
-        {!overlay && group ? <GroupMenu group={group} /> : null}
+        {!overlay && group ? (
+          <GroupMenu
+            group={group}
+            probing={fetcher.formData?.get("intent") === "probeChannel"}
+            onProbe={() =>
+              fetcher.submit(
+                { intent: "probeChannel", sourceChannelId: channel.sourceChannelId },
+                { method: "post" },
+              )
+            }
+            onProbeGroup={
+              group.hasAlternates && !group.isAlternate
+                ? () =>
+                    fetcher.submit(
+                      { intent: "probeGroup", primaryId: channel.id },
+                      { method: "post" },
+                    )
+                : undefined
+            }
+          />
+        ) : null}
         </div>
       </div>
     </>
   );
 }
 
-/** The ⋯ menu of per-row actions: reorder/ungroup for alternates, ungroup-all
-    for a primary with alternates, and delete on every row. */
-function GroupMenu({ group }: { group: GroupControls }) {
+/** The ⋯ menu of per-row actions: probe, reorder/ungroup for alternates,
+    ungroup-all for a primary with alternates, and delete on every row. */
+function GroupMenu({
+  group,
+  onProbe,
+  onProbeGroup,
+  probing,
+}: {
+  group: GroupControls;
+  onProbe: () => void;
+  // Set on a primary that has alternates: probe the whole group.
+  onProbeGroup?: () => void;
+  probing: boolean;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -407,6 +474,17 @@ function GroupMenu({ group }: { group: GroupControls }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={onProbe} disabled={probing}>
+          <Gauge className="size-4" />
+          {probing ? "Probing…" : "Probe quality"}
+        </DropdownMenuItem>
+        {onProbeGroup ? (
+          <DropdownMenuItem onClick={onProbeGroup}>
+            <Gauge className="size-4" />
+            Probe group
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
         {group.isAlternate ? (
           <>
             <DropdownMenuItem

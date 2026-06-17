@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Check, History, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { Check, Gauge, History, Loader2, Pencil, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -44,6 +44,8 @@ import {
   setSourceCategoryEnabled,
 } from "~/services/sources/categories.server";
 import { startSync } from "~/services/sync/sync.server";
+import { startProbe } from "~/services/probe/probe.server";
+import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
 import type { Route } from "./+types/sources.$id";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -72,6 +74,13 @@ export async function loader({ params }: Route.LoaderArgs) {
         : undefined,
       maxConnections: source.lastSyncedAt ? source.maxConnections : undefined,
       accountStatus: source.accountStatus,
+      probeEnabled: source.probeEnabled,
+      probeStatus: source.probeStatus,
+      probeIntervalMinutes: source.probeIntervalMinutes,
+      lastProbedAt: source.lastProbedAt ? source.lastProbedAt.toISOString() : null,
+      probeTotal: source.probeTotal,
+      probeDone: source.probeDone,
+      probeError: source.probeError,
     },
     categories: listSourceCategories(id),
   };
@@ -85,6 +94,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (intent === "sync") {
     startSync(id);
     return data({ intent: "sync" as const, started: true });
+  }
+
+  if (intent === "probe") {
+    startProbe(id);
+    return data({ intent: "probe" as const, started: true });
   }
 
   if (intent === "delete") {
@@ -120,27 +134,36 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
     .reduce((sum, c) => sum + c.count, 0);
   const onChannels = Math.max(0, source.channelCount - offChannels);
   const navigation = useNavigation();
-  const submitting =
-    navigation.state !== "idle" && navigation.formData?.get("intent") === "sync";
+  const navIntent = navigation.formData?.get("intent");
+  const submitting = navigation.state !== "idle" && navIntent === "sync";
   const syncing = submitting || source.syncStatus === "syncing";
+  const probing =
+    (navigation.state !== "idle" && navIntent === "probe") ||
+    source.probeStatus === "probing";
 
-  // Sync runs in the background, so poll the loader until it finishes.
+  // Sync and probe both run in the background, so poll the loader while either
+  // is still going.
   const revalidator = useRevalidator();
   useEffect(() => {
-    if (source.syncStatus !== "syncing") return;
+    if (source.syncStatus !== "syncing" && source.probeStatus !== "probing")
+      return;
     const t = setInterval(() => {
       if (revalidator.state === "idle") revalidator.revalidate();
     }, 2500);
     return () => clearInterval(t);
-  }, [source.syncStatus, revalidator]);
+  }, [source.syncStatus, source.probeStatus, revalidator]);
 
-  // Toast once when a background sync is kicked off.
+  // Toast once when a background sync or probe is kicked off.
   const handled = useRef<typeof actionData>(undefined);
   useEffect(() => {
     if (!actionData || actionData === handled.current) return;
     handled.current = actionData;
     if ("intent" in actionData && actionData.intent === "sync") {
       toast("Sync started", { description: "Pulling the latest channels." });
+    } else if ("intent" in actionData && actionData.intent === "probe") {
+      toast("Probe started", {
+        description: "Checking the quality of channels used in playlists.",
+      });
     }
   }, [actionData]);
 
@@ -149,9 +172,16 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
       <PageHeader
         border={false}
         title={
-          <span className="flex items-center gap-2.5">
+          <span className="flex flex-wrap items-center gap-2.5">
             {source.name}
             <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
+            {probing || source.probeStatus !== "idle" ? (
+              <ProbeStatusBadge
+                status={probing ? "probing" : source.probeStatus}
+                done={source.probeDone}
+                total={source.probeTotal}
+              />
+            ) : null}
           </span>
         }
         actionsClassName="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
@@ -161,6 +191,12 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
               <Button type="submit" name="intent" value="sync" size="sm" variant="secondary" disabled={syncing} className="w-full sm:w-auto">
                 <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} />
                 {syncing ? "Syncing..." : "Sync now"}
+              </Button>
+            </Form>
+            <Form method="post" className="contents">
+              <Button type="submit" name="intent" value="probe" size="sm" variant="outline" disabled={probing} className="w-full sm:w-auto">
+                <Gauge className={probing ? "size-4 animate-pulse" : "size-4"} />
+                {probing ? "Probing..." : "Probe now"}
               </Button>
             </Form>
             <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
@@ -196,6 +232,14 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
           />
           <Meta label="Last synced" value={relativeTime(source.lastSyncedAt)} />
           <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
+          <Meta
+            label="Last probed"
+            value={
+              source.probeEnabled || source.lastProbedAt
+                ? relativeTime(source.lastProbedAt)
+                : "Off"
+            }
+          />
           <ExpiresMeta expiresAt={source.expiresAt} />
           <Meta label="Connections" value={connectionsLabel(source.maxConnections)} />
           {source.accountStatus ? (
@@ -210,6 +254,12 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
         {source.syncStatus === "error" && source.lastError ? (
           <div className="rounded-md border border-transparent bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
             {source.lastError}
+          </div>
+        ) : null}
+
+        {source.probeStatus === "error" && source.probeError ? (
+          <div className="rounded-md border border-transparent bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+            Probe failed: {source.probeError}
           </div>
         ) : null}
 

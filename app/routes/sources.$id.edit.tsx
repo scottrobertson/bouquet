@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { data, redirect } from "react-router";
 import { PageHeader } from "~/components/page-header";
 import { SourceForm } from "~/components/sources/source-form";
-import { sourceSchema } from "~/components/sources/source-shared";
+import { parseSourceForm } from "~/components/sources/source-shared";
 import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
 import { validateAccount } from "~/services/xtream/client.server";
@@ -25,7 +25,14 @@ export async function loader({ params }: Route.LoaderArgs) {
       outputFormat: source.outputFormat,
       autoImportGroups: source.autoImportGroups,
       syncIntervalMinutes: source.syncIntervalMinutes,
+      probeEnabled: source.probeEnabled,
+      probeConcurrency: source.probeConcurrency,
+      probeIntervalMinutes: source.probeIntervalMinutes,
+      probeTimeoutSeconds: source.probeTimeoutSeconds,
+      probeMeasureBitrate: source.probeMeasureBitrate,
     },
+    // Shown as guidance next to the probe concurrency field.
+    maxConnections: source.lastSyncedAt ? source.maxConnections : undefined,
   };
 }
 
@@ -37,15 +44,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = form.get("intent");
 
-  const parsed = sourceSchema.safeParse({
-    name: form.get("name"),
-    serverUrl: form.get("serverUrl"),
-    username: form.get("username"),
-    password: form.get("password"),
-    outputFormat: form.get("outputFormat"),
-    autoImportGroups: form.get("autoImportGroups"),
-    syncIntervalMinutes: form.get("syncIntervalMinutes"),
-  });
+  const parsed = parseSourceForm(form);
 
   if (intent === "test") {
     if (!parsed.success) {
@@ -90,6 +89,7 @@ export default function SourceEdit({ loaderData, actionData, params }: Route.Com
       <div className="px-4 py-5 md:px-8 md:py-6">
         <SourceForm
           defaults={loaderData.source}
+          maxConnections={loaderData.maxConnections}
           submitLabel="Save changes"
           submitIntent="update"
           cancelHref={`/sources/${params.id}`}

@@ -8,6 +8,7 @@ import {
   sources,
 } from "~/db/schema";
 import { invalidateAll } from "~/services/output/cache.server";
+import { isIntervalDue, mapPool } from "~/lib/pool";
 import {
   recordSyncChanges,
   type BeforeChannel,
@@ -31,27 +32,6 @@ const GUIDE_RETENTION_DAYS = 7;
 // EPG is now one request per channel, so fetch a handful at a time instead of
 // hammering the provider with all of them at once.
 const EPG_FETCH_CONCURRENCY = 10;
-
-/** Run `fn` over `items` with at most `limit` in flight at once. */
-async function mapPool<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) return;
-      out[i] = await fn(items[i]);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
-  );
-  return out;
-}
 
 /** Kick a sync without waiting for it. Marks the source as syncing right away
     so the UI updates immediately, then runs the (slow) fetch in the background.
@@ -389,17 +369,9 @@ export function pruneOldProgrammes(): void {
   db.delete(epgProgrammes).where(lt(epgProgrammes.stopTs, cutoff)).run();
 }
 
-/** Has this source's refresh interval elapsed since its last sync? A 0 interval
-    means manual only, so it's never due from the scheduler. */
-export function isSyncDue(
-  lastSyncedAt: Date | null,
-  intervalMinutes: number,
-  now: number,
-): boolean {
-  if (intervalMinutes <= 0) return false;
-  if (!lastSyncedAt) return true;
-  return now - lastSyncedAt.getTime() >= intervalMinutes * 60_000;
-}
+/** Has this source's refresh interval elapsed since its last sync? Shared with
+    probing via isIntervalDue. */
+export const isSyncDue = isIntervalDue;
 
 /** Sync the sources whose interval has elapsed, one at a time so we don't hammer
     providers in parallel. Run hourly by the cron job; most ticks sync nothing. */

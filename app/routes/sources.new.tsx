@@ -1,6 +1,6 @@
 import { data, redirect } from "react-router";
 import { SourceForm } from "~/components/sources/source-form";
-import { sourceSchema } from "~/components/sources/source-shared";
+import { parseSourceForm } from "~/components/sources/source-shared";
 import { PageHeader } from "~/components/page-header";
 import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
@@ -16,15 +16,7 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = form.get("intent");
 
-  const parsed = sourceSchema.safeParse({
-    name: form.get("name"),
-    serverUrl: form.get("serverUrl"),
-    username: form.get("username"),
-    password: form.get("password"),
-    outputFormat: form.get("outputFormat"),
-    autoImportGroups: form.get("autoImportGroups"),
-    syncIntervalMinutes: form.get("syncIntervalMinutes"),
-  });
+  const parsed = parseSourceForm(form);
 
   if (intent === "test") {
     if (!parsed.success) {

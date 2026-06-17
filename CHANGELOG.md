@@ -6,6 +6,21 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Stream probing. Bouquet can now run ffprobe against each stream to record its
+  resolution, frame rate, video/audio codec and bitrate, shown as a quality line under each
+  channel in the playlist editor. Turn it on per source and set the concurrency (how many
+  streams to probe at once), how often it runs, and how long ffprobe reads each stream. Only
+  channels used in a playlist are probed, since each probe opens a real connection to the
+  provider. Probe a source by hand with "Probe now", or let the hourly scheduler handle it
+  per the source's frequency (`PROBE_CRON` sets how often the check runs). Progress shows
+  live on the sources pages and the editor fills in as results land. The Docker image now
+  includes ffmpeg; set `FFPROBE_PATH`/`FFMPEG_PATH` if the binaries live somewhere unusual.
+  Probe a single channel from its ⋯ menu in the editor, or "Probe all" to probe every
+  channel in a playlist at once. Both run even for channels whose source has probing turned
+  off, or that are unavailable or in a disabled category, unlike the scheduled probe.
+  Optionally measure real bitrate per source: it reads each stream for the read time and
+  weighs the data, since ffprobe can't report a bitrate for live streams. Off by default
+  because it makes probing much slower (it downloads several MB per channel).
 - Account details on sources: expiry date and connection limit show on the sources list and
   the source page, read from the provider on each sync. The source page also shows the
   account status (desktop only). Expired dates are flagged in red. The account columns are

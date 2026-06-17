@@ -1,5 +1,12 @@
-import { ArrowLeft, Check, Link2, Loader2, Settings, Tv } from "lucide-react";
-import { Link, data, useFetchers } from "react-router";
+import { ArrowLeft, Check, Gauge, Link2, Loader2, Settings, Tv } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Link, data, useFetcher, useFetchers, useRevalidator } from "react-router";
+import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { z } from "zod";
 import { CopyField } from "~/components/copy-field";
 import { externalOrigin } from "~/lib/url.server";
@@ -43,8 +50,14 @@ import {
   getPlaylist,
   getPlaylistChannels,
   matchingSourceChannelIds,
+  playlistHasProbingSource,
 } from "~/services/playlist/queries.server";
 import { invalidate } from "~/services/output/cache.server";
+import {
+  probeSingleChannel,
+  startProbeGroup,
+  startProbePlaylist,
+} from "~/services/probe/probe.server";
 import type { Route } from "./+types/playlists.$id";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -80,6 +93,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     })),
     channels: getPlaylistChannels(id),
     autoChannels: getAutoChannels(cats),
+    anyProbing: playlistHasProbingSource(id),
   };
 }
 
@@ -230,6 +244,26 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: true, intent });
     }
 
+    case "probeChannel": {
+      // Probe one channel on demand, even if its source has probing off or the
+      // channel is unavailable/hidden. Foreground so the row updates on return.
+      await probeSingleChannel(Number(form.get("sourceChannelId")));
+      return data({ ok: true, intent });
+    }
+
+    case "probeGroup": {
+      // Probe a primary and all its alternates at once.
+      const queued = startProbeGroup(playlistId, Number(form.get("primaryId")));
+      return data({ ok: true, intent, queued });
+    }
+
+    case "probeAll": {
+      // Probe every channel in this playlist, across all its sources, ignoring
+      // the source probe setting and the available/category filters.
+      const queued = startProbePlaylist(playlistId);
+      return data({ ok: true, intent, queued });
+    }
+
     case "setEpg": {
       const epgSourceRaw = String(form.get("epgSourceId") ?? "");
       const epgChannelRaw = String(form.get("epgChannelId") ?? "");
@@ -346,7 +380,19 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
-  const { playlist, categories, channels, autoChannels, output } = loaderData;
+  const { playlist, categories, channels, autoChannels, output, anyProbing } =
+    loaderData;
+
+  // A probe is filling in stream quality in the background, so poll until it's
+  // done and the rows update live.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!anyProbing) return;
+    const t = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 2500);
+    return () => clearInterval(t);
+  }, [anyProbing, revalidator]);
 
   return (
     <div className="flex h-full flex-col">
@@ -382,6 +428,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
             </PopoverContent>
           </Popover>
+          <ProbeAllButton playlistId={playlist.id} anyProbing={anyProbing} />
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/guide`}>
               <Tv className="size-4" />
@@ -406,6 +453,50 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
         />
       </div>
     </div>
+  );
+}
+
+// Kicks a probe of every channel in the playlist. Runs in the background, so it
+// just fires and the rows fill in as results land (the editor polls).
+function ProbeAllButton({
+  playlistId,
+  anyProbing,
+}: {
+  playlistId: number;
+  anyProbing: boolean;
+}) {
+  const fetcher = useFetcher<{ queued?: number }>();
+  const handled = useRef<typeof fetcher.data>(undefined);
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    if (fetcher.data === handled.current) return;
+    handled.current = fetcher.data;
+    const n = fetcher.data.queued ?? 0;
+    toast(`Probing ${n} channel${n === 1 ? "" : "s"}`, {
+      description: "Checking stream quality in the background.",
+    });
+  }, [fetcher.state, fetcher.data]);
+
+  const busy = fetcher.state !== "idle" || anyProbing;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => fetcher.submit({ intent: "probeAll" }, { method: "post" })}
+        >
+          <Gauge className={busy ? "size-4 animate-pulse" : "size-4"} />
+          <span className="hidden sm:inline">Probe all</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        Probes every channel in this playlist, even ones whose source has probing
+        turned off.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

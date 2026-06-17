@@ -143,6 +143,13 @@ export function getPlaylistChannels(playlistId: number) {
       sourceEpgChannelId: sourceChannels.epgChannelId,
       streamId: sourceChannels.streamId,
       sourceProviderName: sources.name,
+      probeStatus: sourceChannels.probeStatus,
+      probeWidth: sourceChannels.probeWidth,
+      probeHeight: sourceChannels.probeHeight,
+      probeFps: sourceChannels.probeFps,
+      probeVideoCodec: sourceChannels.probeVideoCodec,
+      probeAudioCodec: sourceChannels.probeAudioCodec,
+      probeBitrate: sourceChannels.probeBitrate,
       categoryEnabled: sourceCategories.enabled,
     })
     .from(playlistChannels)
@@ -199,6 +206,28 @@ export function getPlaylistChannels(playlistId: number) {
           )
         : r.sourceName,
   }));
+}
+
+/** Is any source feeding this playlist currently probing? Drives live polling
+    in the editor so quality fills in as it lands. */
+export function playlistHasProbingSource(playlistId: number): boolean {
+  const row = db
+    .select({ id: sources.id })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
+    .where(
+      and(
+        eq(playlistChannels.playlistId, playlistId),
+        eq(sources.probeStatus, "probing"),
+      ),
+    )
+    .limit(1)
+    .get();
+  return !!row;
 }
 
 /** Sources for the pickers. */

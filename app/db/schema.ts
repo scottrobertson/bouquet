@@ -3,6 +3,7 @@ import {
   type AnySQLiteColumn,
   index,
   integer,
+  real,
   sqliteTable,
   text,
   unique,
@@ -48,6 +49,35 @@ export const sources = sqliteTable("sources", {
   // Set when categories are toggled, since stored programmes only cover the
   // channels in enabled categories. Cleared on the next successful sync.
   epgStale: integer("epg_stale", { mode: "boolean" }).notNull().default(false),
+  // Probing runs ffprobe against each stream to record its quality. Off by
+  // default since it opens real connections against the provider.
+  probeEnabled: integer("probe_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  // How many streams to probe at once for this source. The provider's
+  // maxConnections is the practical ceiling; we don't enforce it.
+  probeConcurrency: integer("probe_concurrency").notNull().default(1),
+  // How often the scheduler auto-probes this source, in minutes. 0 = manual only.
+  probeIntervalMinutes: integer("probe_interval_minutes").notNull().default(1440),
+  // How long to let ffprobe read a stream before giving up, in seconds. Also the
+  // window used to measure bitrate when that's on.
+  probeTimeoutSeconds: integer("probe_timeout_seconds").notNull().default(10),
+  // Measure real bitrate by reading each stream for the read-time window. Off by
+  // default since it makes probing much slower (it downloads several MB per
+  // channel instead of just reading the header).
+  probeMeasureBitrate: integer("probe_measure_bitrate", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  probeStatus: text("probe_status", {
+    enum: ["idle", "probing", "ok", "error"],
+  })
+    .notNull()
+    .default("idle"),
+  lastProbedAt: integer("last_probed_at", { mode: "timestamp" }),
+  probeError: text("probe_error"),
+  // Live progress counters for the current/last run, so the UI can show "42/300".
+  probeTotal: integer("probe_total").notNull().default(0),
+  probeDone: integer("probe_done").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -81,6 +111,20 @@ export const sourceChannels = sqliteTable(
     lastSeenAt: integer("last_seen_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
+    // Latest ffprobe result for this stream. Null status means never probed.
+    // Stored here, not on playlist_channels, since a stream is shared across
+    // playlists and we only probe it once.
+    probedAt: integer("probed_at", { mode: "timestamp" }),
+    probeStatus: text("probe_status", { enum: ["ok", "error", "timeout"] }),
+    probeWidth: integer("probe_width"),
+    probeHeight: integer("probe_height"),
+    // Frame rate can be fractional, e.g. 29.97.
+    probeFps: real("probe_fps"),
+    probeVideoCodec: text("probe_video_codec"),
+    probeAudioCodec: text("probe_audio_codec"),
+    // Overall stream bitrate in kbps where the provider reports it.
+    probeBitrate: integer("probe_bitrate"),
+    probeError: text("probe_error"),
   },
   (t) => [
     unique("source_channels_source_stream").on(t.sourceId, t.streamId),
