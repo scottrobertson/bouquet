@@ -3,25 +3,12 @@
 import { spawn } from "node:child_process";
 import { env } from "~/lib/env.server";
 
-// ffmpeg 7 added a security check that rejects HLS segments with unusual
-// extensions, which breaks probing m3u8 streams from providers that redirect to
-// odd segment URLs. The -extension_picky 0 flag turns it off, but the flag only
-// exists from 7 onwards, so detect the major version once and only pass it then.
-let ffprobeMajorPromise: Promise<number> | null = null;
-function ffprobeMajorVersion(): Promise<number> {
-  if (!ffprobeMajorPromise) {
-    ffprobeMajorPromise = new Promise((resolve) => {
-      const child = spawn(env.ffprobePath, ["-hide_banner", "-version"]);
-      let out = "";
-      child.stdout.on("data", (d) => (out += d));
-      child.on("error", () => resolve(0));
-      child.on("close", () => {
-        const m = out.match(/version\s+n?(\d+)\./i);
-        resolve(m ? Number(m[1]) : 0);
-      });
-    });
-  }
-  return ffprobeMajorPromise;
+// ffmpeg 7+ rejects HLS segments with unusual or missing extensions, which
+// breaks probing m3u8 streams from providers that redirect to odd segment URLs.
+// -extension_picky 0 turns that check off. We pin ffmpeg 8 (static build in
+// Docker), so the flag is always available.
+function hlsRelaxArgs(hls: boolean | undefined): string[] {
+  return hls ? ["-extension_picky", "0"] : [];
 }
 
 export interface ProbeResult {
@@ -88,17 +75,16 @@ export function parseFfprobe(json: unknown): Omit<ProbeResult, "status" | "error
 
 /** Run ffprobe against a stream URL, killing it after timeoutSeconds so a stuck
     stream never hangs a worker. Set hls for m3u8 streams so we relax ffmpeg's
-    segment-extension check on versions that have it. */
-export async function probeStream(
+    segment-extension check. */
+export function probeStream(
   url: string,
   timeoutSeconds: number,
   opts: { hls?: boolean } = {},
 ): Promise<ProbeResult> {
-  const relaxHls = opts.hls && (await ffprobeMajorVersion()) >= 7;
   const args = [
     "-v",
     "error",
-    ...(relaxHls ? ["-extension_picky", "0"] : []),
+    ...hlsRelaxArgs(opts.hls),
     "-print_format",
     "json",
     "-show_streams",
@@ -181,45 +167,42 @@ export function measureBitrate(
   opts: { hls?: boolean } = {},
 ): Promise<number | null> {
   const window = Math.max(1, seconds);
-  return (async () => {
-    const relaxHls = opts.hls && (await ffprobeMajorVersion()) >= 7;
-    const args = [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      ...(relaxHls ? ["-extension_picky", "0"] : []),
-      "-t",
-      String(window),
-      "-i",
-      url,
-      "-c",
-      "copy",
-      "-f",
-      "mpegts",
-      "pipe:1",
-    ];
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    ...hlsRelaxArgs(opts.hls),
+    "-t",
+    String(window),
+    "-i",
+    url,
+    "-c",
+    "copy",
+    "-f",
+    "mpegts",
+    "pipe:1",
+  ];
 
-    return new Promise<number | null>((resolve) => {
-      const child = spawn(env.ffmpegPath, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let bytes = 0;
-      let settled = false;
-
-      // Hard stop in case -t doesn't end it (stuck stream). A little past the
-      // window so a healthy stream finishes on its own first.
-      const timer = setTimeout(() => child.kill("SIGKILL"), (window + 5) * 1000);
-      function finish(v: number | null) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(v);
-      }
-
-      child.stdout.on("data", (d) => (bytes += d.length));
-      child.stderr.on("data", () => {});
-      child.on("error", () => finish(null));
-      child.on("close", () => finish(bitrateKbps(bytes, window)));
+  return new Promise<number | null>((resolve) => {
+    const child = spawn(env.ffmpegPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
     });
-  })();
+    let bytes = 0;
+    let settled = false;
+
+    // Hard stop in case -t doesn't end it (stuck stream). A little past the
+    // window so a healthy stream finishes on its own first.
+    const timer = setTimeout(() => child.kill("SIGKILL"), (window + 5) * 1000);
+    function finish(v: number | null) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    }
+
+    child.stdout.on("data", (d) => (bytes += d.length));
+    child.stderr.on("data", () => {});
+    child.on("error", () => finish(null));
+    child.on("close", () => finish(bitrateKbps(bytes, window)));
+  });
 }

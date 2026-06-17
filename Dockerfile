@@ -18,11 +18,11 @@ COPY . .
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
-# ffprobe (shipped in ffmpeg) reads stream quality for the probe feature. Kept
-# first so this slow apt layer stays cached when only the app or deps change.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
- && rm -rf /var/lib/apt/lists/*
+# ffprobe/ffmpeg read stream quality for the probe feature. Use a current static
+# build instead of Debian's (which is an old 5.1 with backported HLS limits and
+# no -extension_picky), so its HLS handling matches dev. Kept first so this layer
+# stays cached when only the app or deps change.
+COPY --from=mwader/static-ffmpeg:8.1.2 /ffmpeg /ffprobe /usr/local/bin/
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=prod-deps /app/node_modules ./node_modules
