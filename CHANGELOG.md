@@ -6,6 +6,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- "Play in VLC" and "Copy stream URL" in each channel's ⋯ menu, in both the playlist editor
+  and the guide. Play in VLC opens the provider's direct stream via the `vlc://` handler;
+  Copy stream URL puts the same URL on the clipboard for pasting into a player.
 - Stream probing. Bouquet can now run ffprobe against each stream to record its
   resolution, frame rate, video/audio codec and bitrate, shown as a quality line under each
   channel in the playlist editor. Turn it on per source and set the concurrency (how many

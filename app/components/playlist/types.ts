@@ -16,6 +16,8 @@ export type EditorChannel = {
   sourceEpgChannelId: string | null;
   sourceProviderName: string;
   sourceCategoryEnabled: boolean;
+  // The provider's direct stream URL, for the Play in VLC / copy actions.
+  streamUrl: string;
   // Latest ffprobe result for the underlying stream. Null status = never probed.
   probeStatus: "ok" | "error" | "timeout" | null;
   probeWidth: number | null;

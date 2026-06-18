@@ -20,6 +20,7 @@ import {
   sources,
 } from "~/db/schema";
 import { altName } from "~/services/playlist/alt-name";
+import { buildStreamUrl } from "~/services/xtream/client.server";
 
 // The source browser is virtualized, so this just bounds the payload, not what
 // gets rendered. High enough to cover a full provider in one fetch.
@@ -143,6 +144,11 @@ export function getPlaylistChannels(playlistId: number) {
       sourceEpgChannelId: sourceChannels.epgChannelId,
       streamId: sourceChannels.streamId,
       sourceProviderName: sources.name,
+      serverUrl: sources.serverUrl,
+      streamBaseUrl: sources.streamBaseUrl,
+      username: sources.username,
+      password: sources.password,
+      outputFormat: sources.outputFormat,
       probeStatus: sourceChannels.probeStatus,
       probeWidth: sourceChannels.probeWidth,
       probeHeight: sourceChannels.probeHeight,
@@ -190,22 +196,38 @@ export function getPlaylistChannels(playlistId: number) {
   const nameById = new Map<number, string>();
   for (const r of rows) nameById.set(r.id, r.customName || r.sourceName);
 
-  // No category row (null category, or unseeded) counts as enabled.
-  return rows.map(({ categoryEnabled, ...r }) => ({
-    ...r,
-    sourceCategoryEnabled: categoryEnabled ?? true,
-    // For an alternate, the name it falls back to when not manually renamed.
-    // For a primary it's just the source name, so existing rename logic is
-    // unchanged.
-    autoName:
-      r.primaryChannelId != null
-        ? altName(
-            template,
-            nameById.get(r.primaryChannelId) ?? r.sourceName,
-            r.altPosition + 1,
-          )
-        : r.sourceName,
-  }));
+  // No category row (null category, or unseeded) counts as enabled. Strip the
+  // raw provider creds out of the payload, keeping only the built stream URL.
+  return rows.map(
+    ({
+      categoryEnabled,
+      serverUrl,
+      streamBaseUrl,
+      username,
+      password,
+      outputFormat,
+      ...r
+    }) => ({
+      ...r,
+      sourceCategoryEnabled: categoryEnabled ?? true,
+      streamUrl: buildStreamUrl(
+        { serverUrl: streamBaseUrl ?? serverUrl, username, password },
+        r.streamId,
+        outputFormat,
+      ),
+      // For an alternate, the name it falls back to when not manually renamed.
+      // For a primary it's just the source name, so existing rename logic is
+      // unchanged.
+      autoName:
+        r.primaryChannelId != null
+          ? altName(
+              template,
+              nameById.get(r.primaryChannelId) ?? r.sourceName,
+              r.altPosition + 1,
+            )
+          : r.sourceName,
+    }),
+  );
 }
 
 /** Is any source feeding this playlist currently probing? Drives live polling

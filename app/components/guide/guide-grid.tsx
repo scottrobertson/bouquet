@@ -1,7 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { RotateCcw, Tv } from "lucide-react";
+import { Copy, MoreVertical, Play, RotateCcw, Tv } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigation, useSearchParams } from "react-router";
+import { Button } from "~/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { ALL_GROUPS, GuideToolbar } from "./guide-toolbar";
@@ -209,6 +216,37 @@ export function GuideGrid({
   );
 }
 
+/** Per-channel actions in the guide: play the provider's stream in VLC or copy
+    its URL. Mirrors the playlist editor's row menu. */
+function ChannelMenu({ streamUrl }: { streamUrl: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+        >
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <a href={`vlc://${streamUrl}`}>
+            <Play className="size-4" />
+            Play in VLC
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigator.clipboard.writeText(streamUrl)}>
+          <Copy className="size-4" />
+          Copy stream URL
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 const ChannelRow = memo(function ChannelRow({
   row,
   top,
@@ -249,13 +287,14 @@ const ChannelRow = memo(function ChannelRow({
             <Tv className="size-3.5" />
           </div>
         )}
-        <span className="truncate text-[13px]">{row.displayName}</span>
+        <span className="flex-1 truncate text-[13px]">{row.displayName}</span>
         {row.catchupDays > 0 ? (
           <RotateCcw
-            className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+            className="size-3.5 shrink-0 text-muted-foreground"
             aria-label={`${row.catchupDays} day catchup`}
           />
         ) : null}
+        <ChannelMenu streamUrl={row.streamUrl} />
       </div>
 
       <div

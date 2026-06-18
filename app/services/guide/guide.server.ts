@@ -23,6 +23,7 @@ export interface GuideChannel {
   logo: string;
   tvgId: string;
   catchupDays: number;
+  streamUrl: string;
   programmes: GuideProgramme[];
 }
 
@@ -182,6 +183,7 @@ export function getPlaylistGuide(
       logo: c.logo,
       tvgId: c.tvgId,
       catchupDays: c.catchupDays,
+      streamUrl: c.streamUrl,
       programmes,
     });
   }

@@ -3,11 +3,13 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  Copy,
   CornerDownRight,
   Gauge,
   GripVertical,
   MoreVertical,
   Pencil,
+  Play,
   RotateCcw,
   Trash2,
   Tv,
@@ -422,6 +424,7 @@ export function ChannelRowBody({
         {!overlay && group ? (
           <GroupMenu
             group={group}
+            streamUrl={channel.streamUrl}
             probing={fetcher.formData?.get("intent") === "probeChannel"}
             onProbe={() =>
               fetcher.submit(
@@ -450,11 +453,13 @@ export function ChannelRowBody({
     ungroup-all for a primary with alternates, and delete on every row. */
 function GroupMenu({
   group,
+  streamUrl,
   onProbe,
   onProbeGroup,
   probing,
 }: {
   group: GroupControls;
+  streamUrl: string;
   onProbe: () => void;
   // Set on a primary that has alternates: probe the whole group.
   onProbeGroup?: () => void;
@@ -474,6 +479,19 @@ function GroupMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+        <DropdownMenuItem asChild>
+          <a href={`vlc://${streamUrl}`}>
+            <Play className="size-4" />
+            Play in VLC
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => navigator.clipboard.writeText(streamUrl)}
+        >
+          <Copy className="size-4" />
+          Copy stream URL
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onProbe} disabled={probing}>
           <Gauge className="size-4" />
           {probing ? "Probing…" : "Probe quality"}
