@@ -173,6 +173,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Catchup URLs from the guide had the wrong start time, off by your timezone's offset from
+  UTC. The provider's timeshift endpoint wants the start as local wall-clock time, the same
+  time the guide shows, so the URL now uses that instead of UTC.
+- Alternate channels no longer show a catchup icon on their programmes when the alternate's
+  own stream has no archive. The icon followed the shared EPG, but an alternate keeps its
+  own catchup, so it now only shows when this channel can actually replay the programme.
 - Guide programmes no longer draw on top of each other when a channel's EPG data has
   overlapping or duplicate entries. Each channel's lane is now made non-overlapping
   before it's rendered: overlapping programmes are trimmed back to where the next one

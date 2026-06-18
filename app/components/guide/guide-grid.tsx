@@ -406,6 +406,7 @@ const ChannelRow = memo(function ChannelRow({
               fromMs={fromMs}
               windowWidth={windowWidth}
               nowMs={nowMs}
+              catchupAvailable={row.catchupDays > 0}
               onSelect={() =>
                 onSelect({
                   channelName: row.displayName,
@@ -426,12 +427,14 @@ function ProgrammeBlock({
   fromMs,
   windowWidth,
   nowMs,
+  catchupAvailable,
   onSelect,
 }: {
   programme: ProgrammeView;
   fromMs: number;
   windowWidth: number;
   nowMs: number;
+  catchupAvailable: boolean;
   onSelect: () => void;
 }) {
   const left = xForMs(p.startMs, fromMs);
@@ -464,7 +467,7 @@ function ProgrammeBlock({
         style={{ left: CHANNEL_COL_W }}
       >
         <span className="flex min-w-0 items-center gap-1">
-          {past && p.catchup ? (
+          {past && p.catchup && catchupAvailable ? (
             <RotateCcw className="size-3 shrink-0 text-muted-foreground" />
           ) : null}
           <span className="truncate text-[12px] font-medium">
@@ -481,18 +484,19 @@ function ProgrammeBlock({
   );
 }
 
-/** Fill the channel's timeshift template for one programme. Times are formatted
-    in UTC, matching the unix timestamps we store from the provider's EPG. */
+/** Fill the channel's timeshift template for one programme. The provider's
+    timeshift endpoint wants the start time as local wall-clock time, the same
+    time the guide shows, not UTC. */
 function catchupUrl(template: string, startMs: number, stopMs: number): string {
   const d = new Date(startMs);
   const pad = (n: number) => String(n).padStart(2, "0");
   return template
     .replace("{duration}", String(Math.round((stopMs - startMs) / 60000)))
-    .replace("{Y}", String(d.getUTCFullYear()))
-    .replace("{m}", pad(d.getUTCMonth() + 1))
-    .replace("{d}", pad(d.getUTCDate()))
-    .replace("{H}", pad(d.getUTCHours()))
-    .replace("{M}", pad(d.getUTCMinutes()));
+    .replace("{Y}", String(d.getFullYear()))
+    .replace("{m}", pad(d.getMonth() + 1))
+    .replace("{d}", pad(d.getDate()))
+    .replace("{H}", pad(d.getHours()))
+    .replace("{M}", pad(d.getMinutes()));
 }
 
 function ProgrammeDialog({
