@@ -1,23 +1,23 @@
 # syntax=docker/dockerfile:1
 
 # Debian-based image so better-sqlite3 native prebuilds work without a toolchain.
-FROM node:22-bookworm-slim AS dev-deps
+FROM node:26-bookworm-slim AS dev-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:22-bookworm-slim AS prod-deps
+FROM node:26-bookworm-slim AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /app
 COPY --from=dev-deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 # curl is handy for debugging the container (hitting internal routes, checking streams).
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 # ffprobe/ffmpeg read stream quality for the probe feature. Use a current static
