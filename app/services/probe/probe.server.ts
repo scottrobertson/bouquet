@@ -309,10 +309,12 @@ export async function probeDueSources(): Promise<void> {
     })
     .from(sources)
     .all();
-  for (const s of all) {
-    if (!s.probeEnabled) continue;
-    if (isProbeDue(s.lastProbedAt, s.probeIntervalMinutes, now)) {
-      await runProbe(s.id);
-    }
+  const due = all.filter(
+    (s) =>
+      s.probeEnabled && isProbeDue(s.lastProbedAt, s.probeIntervalMinutes, now),
+  );
+  console.log(`[probe] ${due.length} of ${all.length} sources due`);
+  for (const s of due) {
+    await runProbe(s.id);
   }
 }

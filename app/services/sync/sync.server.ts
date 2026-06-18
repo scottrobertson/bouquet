@@ -65,6 +65,9 @@ export async function runSync(sourceId: number): Promise<void> {
     .get();
   if (!source) return;
 
+  console.log(`[sync] ${source.name}: starting`);
+  const startedAt = Date.now();
+
   db.update(sources)
     .set({ syncStatus: "syncing" })
     .where(eq(sources.id, sourceId))
@@ -82,6 +85,9 @@ export async function runSync(sourceId: number): Promise<void> {
   try {
     const account = await validateAccount(creds);
     if (!account.ok) {
+      console.warn(
+        `[sync] ${source.name}: account validation failed: ${account.message ?? "unknown"}`,
+      );
       db.update(sources)
         .set({
           syncStatus: "error",
@@ -187,6 +193,8 @@ export async function runSync(sourceId: number): Promise<void> {
     // players on the next poll instead of waiting out the cache TTL.
     invalidateAll();
 
+    console.log(`[sync] ${source.name}: ${streams.length} channels synced`);
+
     // Log what changed for the source's history. Never let it break a sync.
     try {
       recordSyncChanges(sourceId, before, seen, now);
@@ -194,6 +202,7 @@ export async function runSync(sourceId: number): Promise<void> {
       console.error("[sync] recording changes failed", err);
     }
   } catch (err) {
+    console.error(`[sync] ${source.name}: failed`, err);
     db.update(sources)
       .set({
         syncStatus: "error",
@@ -302,6 +311,10 @@ export async function runSync(sourceId: number): Promise<void> {
       }
     });
 
+    console.log(
+      `[sync] ${source.name}: EPG done, ${targets.length - failures}/${targets.length} channels`,
+    );
+
     // Stored programmes now match the current enabled categories.
     db.update(sources)
       .set({ epgStale: false })
@@ -309,11 +322,15 @@ export async function runSync(sourceId: number): Promise<void> {
       .run();
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
+    console.warn(`[sync] ${source.name}: EPG update failed: ${msg}`);
     db.update(sources)
       .set({ lastError: `Channels synced. EPG update failed: ${msg}` })
       .where(eq(sources.id, sourceId))
       .run();
   }
+
+  const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
+  console.log(`[sync] ${source.name}: done in ${secs}s`);
 }
 
 /** Rebuild a source's epg channel list (the matching dropdown) from its
@@ -385,10 +402,12 @@ export async function syncDueSources(): Promise<void> {
     })
     .from(sources)
     .all();
-  for (const s of all) {
-    if (isSyncDue(s.lastSyncedAt, s.syncIntervalMinutes, now)) {
-      await runSync(s.id);
-    }
+  const due = all.filter((s) =>
+    isSyncDue(s.lastSyncedAt, s.syncIntervalMinutes, now),
+  );
+  console.log(`[sync] ${due.length} of ${all.length} sources due`);
+  for (const s of due) {
+    await runSync(s.id);
   }
   pruneOldProgrammes();
 }

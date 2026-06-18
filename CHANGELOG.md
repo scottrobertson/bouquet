@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Server logging for scheduled syncs. Each sync now logs when it starts, the channel count,
+  the EPG result, and how long it took, plus a line at the top of each cron tick saying how
+  many sources were due. Probe ticks log the due count too, matching the existing per-channel
+  probe logs.
 - "Play in VLC" and "Copy stream URL" in each channel's ⋯ menu, in both the playlist editor
   and the guide. Play in VLC opens the provider's direct stream via the `vlc://` handler;
   Copy stream URL puts the same URL on the clipboard for pasting into a player.
