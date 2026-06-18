@@ -15,8 +15,8 @@ import type { Route } from "./+types/playlists.$id.guide";
 const WINDOW_PAST_MS = 3 * 24 * 3_600_000;
 const WINDOW_FUTURE_MS = 24 * 3_600_000;
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `Guide · ${data?.playlistName ?? "Playlist"} · Bouquet` }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `Guide · ${loaderData?.playlistName ?? "Playlist"} · Bouquet` }];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {

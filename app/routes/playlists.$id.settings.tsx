@@ -27,8 +27,8 @@ import { getPlaylist } from "~/services/playlist/queries.server";
 import { invalidate } from "~/services/output/cache.server";
 import type { Route } from "./+types/playlists.$id.settings";
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `Settings · ${data?.playlist.name ?? "Playlist"} · Bouquet` }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `Settings · ${loaderData?.playlist.name ?? "Playlist"} · Bouquet` }];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {

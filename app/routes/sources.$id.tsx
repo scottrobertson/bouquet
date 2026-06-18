@@ -48,8 +48,8 @@ import { startProbe } from "~/services/probe/probe.server";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
 import type { Route } from "./+types/sources.$id";
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `${data?.source.name ?? "Source"} · Bouquet` }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `${loaderData?.source.name ?? "Source"} · Bouquet` }];
 }
 
 export async function loader({ params }: Route.LoaderArgs) {

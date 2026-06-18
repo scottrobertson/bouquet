@@ -6,6 +6,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Upgraded React Router from 7 to 8, plus the rest of the npm dependencies to their latest
+  versions. The v8 future flags were already on, so this was mostly a version bump. The only
+  code change was renaming the `meta` function's `data` argument to `loaderData`.
 - Moved the per-channel enable/disable toggle off the row and into its ⋯ menu, to declutter
   the row. The bulk Enable/Disable in the Tools menu is unchanged.
 - Disabled channels are now dimmed in the playlist editor. The logo and name fade out so you

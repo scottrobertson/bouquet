@@ -60,8 +60,8 @@ import {
 } from "~/services/probe/probe.server";
 import type { Route } from "./+types/playlists.$id";
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `${data?.playlist.name ?? "Playlist"} · Bouquet` }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `${loaderData?.playlist.name ?? "Playlist"} · Bouquet` }];
 }
 
 // Kept light on purpose: the source browser loads from its own endpoint, so

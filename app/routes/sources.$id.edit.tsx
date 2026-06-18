@@ -8,8 +8,8 @@ import { sources } from "~/db/schema";
 import { validateAccount } from "~/services/xtream/client.server";
 import type { Route } from "./+types/sources.$id.edit";
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `Edit ${data?.source.name ?? "source"} · Bouquet` }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `Edit ${loaderData?.source.name ?? "source"} · Bouquet` }];
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
