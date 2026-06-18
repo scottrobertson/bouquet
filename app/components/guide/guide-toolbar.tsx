@@ -7,7 +7,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { useFetcher, useSearchParams } from "react-router";
+import { useFetcher } from "react-router";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import {
@@ -19,25 +19,27 @@ import {
 } from "~/components/ui/select";
 import { fmtDay } from "./layout";
 
-const DAY_MS = 24 * 3_600_000;
 export const ALL_GROUPS = "__all__";
 
 export function GuideToolbar({
   groups,
   group,
   onGroupChange,
-  atMs,
+  dayMs,
+  onPan,
   onNow,
   needsSync,
 }: {
   groups: string[];
   group: string;
   onGroupChange: (g: string) => void;
-  atMs: number;
+  // The day on screen, for the date label.
+  dayMs: number;
+  // Scroll the timeline back (-1) or forward (1) by about a screen.
+  onPan: (dir: -1 | 1) => void;
   onNow: () => void;
   needsSync: boolean;
 }) {
-  const [, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<{ ok: boolean; count: number }>();
   const refreshing = fetcher.state !== "idle";
   const notified = useRef(false);
@@ -50,17 +52,6 @@ export function GuideToolbar({
       toast.success("Refreshing the guide in the background. Check back shortly.");
     }
   }, [refreshing, fetcher.data]);
-
-  function shiftDay(delta: number) {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("at", String(atMs + delta * DAY_MS));
-        return next;
-      },
-      { preventScrollReset: true },
-    );
-  }
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 md:px-6">
@@ -83,8 +74,8 @@ export function GuideToolbar({
           variant="outline"
           size="icon"
           className="size-8 rounded-r-none"
-          onClick={() => shiftDay(-1)}
-          aria-label="Previous day"
+          onClick={() => onPan(-1)}
+          aria-label="Scroll back in time"
         >
           <ChevronLeft className="size-4" />
         </Button>
@@ -92,15 +83,15 @@ export function GuideToolbar({
           variant="outline"
           size="icon"
           className="size-8 rounded-l-none border-l-0"
-          onClick={() => shiftDay(1)}
-          aria-label="Next day"
+          onClick={() => onPan(1)}
+          aria-label="Scroll forward in time"
         >
           <ChevronRight className="size-4" />
         </Button>
       </div>
 
       <span className="text-[13px] text-muted-foreground tabular-nums">
-        {fmtDay(atMs)}
+        {fmtDay(dayMs)}
       </span>
 
       <Button variant="outline" size="sm" onClick={onNow}>

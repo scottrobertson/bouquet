@@ -10,7 +10,9 @@ import { getPlaylist } from "~/services/playlist/queries.server";
 import { startSync } from "~/services/sync/sync.server";
 import type { Route } from "./+types/playlists.$id.guide";
 
-const WINDOW_PAST_MS = 24 * 3_600_000;
+// Fetch a few days either side of the anchor so day-to-day navigation in the
+// guide is client-side and doesn't refetch (and flicker) at each boundary.
+const WINDOW_PAST_MS = 3 * 24 * 3_600_000;
 const WINDOW_FUTURE_MS = 24 * 3_600_000;
 
 export function meta({ data }: Route.MetaArgs) {
@@ -100,8 +102,8 @@ export default function PlaylistGuide({ loaderData }: Route.ComponentProps) {
           <GuideGrid
             playlistId={playlistId}
             categories={categories}
-            fromMs={loaderData.fromMs}
-            toMs={loaderData.toMs}
+            loadedFromMs={loaderData.fromMs}
+            loadedToMs={loaderData.toMs}
             atMs={loaderData.atMs}
             initialNowMs={loaderData.nowMs}
             needsSync={loaderData.needsSync}

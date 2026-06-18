@@ -8,6 +8,7 @@ export const CHANNEL_COL_W = 440;
 export const HEADER_H = 36;
 export const MIN_BLOCK_W = 28;
 export const HALF_HOUR_MS = 30 * 60_000;
+export const DAY_MS = 24 * 3_600_000;
 
 export function xForMs(ms: number, startMs: number): number {
   return (ms - startMs) * PX_PER_MS;

@@ -142,6 +142,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The guide is now one continuous timeline you scroll through, rather than a window stuck on
+  one day. It loads several days at once (three back, one forward), so scrolling across
+  midnight is smooth with no jump or refetch. The ◀ ▶ buttons scroll back and forward by
+  about a screen, the date label tracks the day you're looking at, "Now" jumps to the current
+  time, and scrolling off either end quietly loads more. Catchup history reaches back the full
+  seven days the guide keeps. Before, it only showed a rolling two-day window and switching
+  days threw you a day away from what you wanted.
 - The "Add to" picker in the source browser no longer has a "+ New category" option.
   You add channels to an existing category here; create categories with the dedicated
   add-category flow instead.

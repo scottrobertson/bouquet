@@ -1,6 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Copy, MoreVertical, Play, RotateCcw, Tv } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigation, useSearchParams } from "react-router";
 import { Button } from "~/components/ui/button";
 import {
@@ -21,15 +28,24 @@ import { cn } from "~/lib/utils";
 import { ALL_GROUPS, GuideToolbar } from "./guide-toolbar";
 import {
   CHANNEL_COL_W,
+  fmtDay,
   fmtTime,
   halfHourTicks,
   HEADER_H,
   MIN_BLOCK_W,
+  PX_PER_MS,
   ROW_H,
   widthForMs,
   xForMs,
 } from "./layout";
 import type { CategoryView, ChannelView, ProgrammeView } from "./types";
+
+/** Local midnight of the day containing `ms`, in the browser's timezone. */
+function startOfDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
 interface Row extends ChannelView {
   group: string;
@@ -43,16 +59,18 @@ interface Selected {
 
 export function GuideGrid({
   categories,
-  fromMs,
-  toMs,
+  loadedFromMs,
+  loadedToMs,
   atMs,
   initialNowMs,
   needsSync,
 }: {
   playlistId: number;
   categories: CategoryView[];
-  fromMs: number;
-  toMs: number;
+  // The range of programme data the loader fetched. Days inside it can be shown
+  // without a refetch.
+  loadedFromMs: number;
+  loadedToMs: number;
   atMs: number;
   initialNowMs: number;
   needsSync: boolean;
@@ -63,11 +81,17 @@ export function GuideGrid({
   // The grid formats times in the browser's locale and timezone, so it can't be
   // server-rendered without a hydration mismatch. It's a client-only view.
   const [mounted, setMounted] = useState(false);
+  // The day the left edge is currently showing, for the date label. Tracked from
+  // the scroll position so it updates as you scroll across midnights.
+  const [viewDayMs, setViewDayMs] = useState(() => startOfDay(atMs));
   const [, setSearchParams] = useSearchParams();
   const navigation = useNavigation();
   const loading = navigation.state === "loading";
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // After a refetch moves the loaded range, where to put the scroll: a time to
+  // sit at the left edge, or "now" to centre on the current time.
+  const pendingScroll = useRef<number | "now" | null>(null);
 
   const groups = useMemo(() => categories.map((c) => c.name), [categories]);
   const rows = useMemo<Row[]>(() => {
@@ -77,7 +101,9 @@ export function GuideGrid({
     return group === ALL_GROUPS ? all : all.filter((r) => r.group === group);
   }, [categories, group]);
 
-  const windowWidth = widthForMs(fromMs, toMs);
+  // One continuous timeline across the whole loaded range, so scrolling moves
+  // through time (and across midnights) with no day-by-day paging.
+  const windowWidth = widthForMs(loadedFromMs, loadedToMs);
   const totalWidth = CHANNEL_COL_W + windowWidth;
 
   const virtualizer = useVirtualizer({
@@ -95,22 +121,75 @@ export function GuideGrid({
     return () => clearInterval(t);
   }, []);
 
-  // On load (and when the window changes via day navigation), put "now" about a
-  // quarter in from the left if it's in view, otherwise start at the left edge.
+  // Position the scroll on first render and whenever a refetch shifts the loaded
+  // range. Keyed on the range, so plain scrolling never repositions.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (initialNowMs >= fromMs && initialNowMs <= toMs) {
-      // Centre "now" so recent history is on screen, not just the future.
-      const x = CHANNEL_COL_W + xForMs(initialNowMs, fromMs) - el.clientWidth * 0.5;
-      el.scrollLeft = Math.max(0, x);
+    const p = pendingScroll.current;
+    if (typeof p === "number") {
+      el.scrollLeft = Math.max(0, xForMs(p, loadedFromMs));
+    } else if (p === "now") {
+      el.scrollLeft = scrollForCentre(el, nowMs, 0.25);
     } else {
-      el.scrollLeft = 0;
+      // Initial: same position as the "Now" button, the anchor a quarter in.
+      el.scrollLeft = scrollForCentre(el, atMs, 0.25);
     }
-  }, [mounted, fromMs, toMs, initialNowMs]);
+    pendingScroll.current = null;
+  }, [mounted, loadedFromMs, loadedToMs]);
+
+  function scrollForCentre(el: HTMLDivElement, ms: number, fromLeft: number) {
+    return Math.max(
+      0,
+      CHANNEL_COL_W + xForMs(ms, loadedFromMs) - el.clientWidth * fromLeft,
+    );
+  }
+
+  // Keep the date label in step with what's at the left of the timeline.
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const leftTime = loadedFromMs + el.scrollLeft / PX_PER_MS;
+    const day = startOfDay(leftTime);
+    setViewDayMs((prev) => (prev === day ? prev : day));
+  }
+
+  // Fetch more data when scrolling off either end, re-centring the window and
+  // restoring the scroll one screen further on so the motion stays continuous.
+  function extend(dir: -1 | 1) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const screenMs = (el.clientWidth - CHANNEL_COL_W) / PX_PER_MS;
+    const leftTime = loadedFromMs + el.scrollLeft / PX_PER_MS;
+    pendingScroll.current = leftTime + dir * screenMs;
+    const newAt = dir < 0 ? loadedFromMs : loadedToMs;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("at", String(newAt));
+        return next;
+      },
+      { preventScrollReset: true },
+    );
+  }
+
+  // Scroll the timeline by about a screen; at the very edge, fetch more.
+  function handlePan(dir: -1 | 1) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (dir < 0 && el.scrollLeft <= 0) return extend(-1);
+    if (dir > 0 && el.scrollLeft >= maxScroll - 1) return extend(1);
+    const step = Math.max(0, el.clientWidth - CHANNEL_COL_W) * 0.9;
+    const target = Math.max(0, Math.min(maxScroll, el.scrollLeft + dir * step));
+    el.scrollTo({ left: target, behavior: "smooth" });
+  }
 
   function handleNow() {
-    if (nowMs < fromMs || nowMs > toMs) {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (nowMs < loadedFromMs || nowMs > loadedToMs) {
+      pendingScroll.current = "now";
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -121,14 +200,14 @@ export function GuideGrid({
       );
       return;
     }
-    const el = scrollRef.current;
-    if (!el) return;
-    const x = CHANNEL_COL_W + xForMs(nowMs, fromMs) - el.clientWidth * 0.25;
-    el.scrollTo({ left: Math.max(0, x), behavior: "smooth" });
+    el.scrollTo({ left: scrollForCentre(el, nowMs, 0.25), behavior: "smooth" });
   }
 
-  const ticks = useMemo(() => halfHourTicks(fromMs, toMs), [fromMs, toMs]);
-  const nowVisible = nowMs >= fromMs && nowMs <= toMs;
+  const ticks = useMemo(
+    () => halfHourTicks(loadedFromMs, loadedToMs),
+    [loadedFromMs, loadedToMs],
+  );
+  const nowVisible = nowMs >= loadedFromMs && nowMs <= loadedToMs;
 
   if (!mounted) {
     return (
@@ -144,13 +223,15 @@ export function GuideGrid({
         groups={groups}
         group={group}
         onGroupChange={setGroup}
-        atMs={atMs}
+        dayMs={viewDayMs}
+        onPan={handlePan}
         onNow={handleNow}
         needsSync={needsSync}
       />
 
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className={cn(
           "relative min-h-0 flex-1 overflow-auto overscroll-contain bg-background transition-opacity",
           loading && "opacity-60",
@@ -170,15 +251,23 @@ export function GuideGrid({
               className="relative shrink-0 border-b border-border bg-card"
               style={{ width: windowWidth, height: HEADER_H }}
             >
-              {ticks.map((t) => (
-                <div
-                  key={t}
-                  className="absolute top-0 bottom-0 border-l border-border/60 pl-1 text-[11px] text-muted-foreground tabular-nums"
-                  style={{ left: xForMs(t, fromMs) }}
-                >
-                  {fmtTime(t)}
-                </div>
-              ))}
+              {ticks.map((t) => {
+                const midnight = startOfDay(t) === t;
+                return (
+                  <div
+                    key={t}
+                    className={cn(
+                      "absolute top-0 bottom-0 pl-1 text-[11px] tabular-nums",
+                      midnight
+                        ? "border-l border-border font-medium text-foreground"
+                        : "border-l border-border/60 text-muted-foreground",
+                    )}
+                    style={{ left: xForMs(t, loadedFromMs) }}
+                  >
+                    {midnight ? fmtDay(t) : fmtTime(t)}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -193,7 +282,7 @@ export function GuideGrid({
                 row={rows[vi.index]}
                 top={vi.start}
                 windowWidth={windowWidth}
-                fromMs={fromMs}
+                fromMs={loadedFromMs}
                 nowMs={nowMs}
                 onSelect={setSelected}
               />
@@ -203,7 +292,7 @@ export function GuideGrid({
               <div
                 className="pointer-events-none absolute top-0 z-10 w-0.5 bg-primary"
                 style={{
-                  left: CHANNEL_COL_W + xForMs(nowMs, fromMs),
+                  left: CHANNEL_COL_W + xForMs(nowMs, loadedFromMs),
                   height: virtualizer.getTotalSize(),
                 }}
               />
@@ -239,7 +328,9 @@ function ChannelMenu({ streamUrl }: { streamUrl: string }) {
             Play in VLC
           </a>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => navigator.clipboard.writeText(streamUrl)}>
+        <DropdownMenuItem
+          onClick={() => navigator.clipboard.writeText(streamUrl)}
+        >
           <Copy className="size-4" />
           Copy stream URL
         </DropdownMenuItem>
@@ -264,6 +355,7 @@ const ChannelRow = memo(function ChannelRow({
   onSelect: (s: Selected) => void;
 }) {
   const logo = logoSrc(row.logo);
+  const programmes = row.programmes;
   return (
     <div
       className="absolute left-0 flex"
@@ -302,12 +394,12 @@ const ChannelRow = memo(function ChannelRow({
         className="relative shrink-0 border-b border-border"
         style={{ width: windowWidth, height: ROW_H }}
       >
-        {row.programmes.length === 0 ? (
+        {programmes.length === 0 ? (
           <div className="absolute inset-y-1.5 left-0 flex w-56 items-center rounded-sm border border-dashed border-border/60 px-2 text-[11px] text-muted-foreground">
             No guide data
           </div>
         ) : (
-          row.programmes.map((p, i) => (
+          programmes.map((p, i) => (
             <ProgrammeBlock
               key={i}
               programme={p}
@@ -435,28 +527,28 @@ function ProgrammeDialog({
             No description available.
           </p>
         )}
-        {p?.catchup ? (
-          <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <RotateCcw className="size-3.5" />
-            Available to replay from your provider's catchup.
-          </p>
-        ) : null}
         {replayUrl ? (
-          <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm" variant="secondary">
-              <a href={`vlc://${replayUrl}`}>
-                <Play className="size-4" />
-                Play catchup in VLC
-              </a>
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => navigator.clipboard.writeText(replayUrl)}
-            >
-              <Copy className="size-4" />
-              Copy catchup URL
-            </Button>
+          <div className="flex flex-col gap-2">
+            <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <RotateCcw className="size-3.5" />
+              Available to replay from your provider's catchup.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="secondary">
+                <a href={`vlc://${replayUrl}`}>
+                  <Play className="size-4" />
+                  Play catchup in VLC
+                </a>
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigator.clipboard.writeText(replayUrl)}
+              >
+                <Copy className="size-4" />
+                Copy catchup URL
+              </Button>
+            </div>
           </div>
         ) : null}
       </DialogContent>
