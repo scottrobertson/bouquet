@@ -24,6 +24,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- A discreet GitHub link at the bottom of the sidebar, pointing at the project repo. It
+  shows in both the desktop sidebar and the mobile drawer, and collapses to just the icon
+  on the icon rail.
 - Server logging for scheduled syncs. Each sync now logs when it starts, the channel count,
   the EPG result, and how long it took, plus a line at the top of each cron tick saying how
   many sources were due. Probe ticks log the due count too, matching the existing per-channel
