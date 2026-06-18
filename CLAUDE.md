@@ -38,9 +38,11 @@ There is no separate lint step. CI runs typecheck + tests, then builds the Docke
 
 **Output (`app/services/output/`).** `output/m3u/:token` and `output/epg/:token` are public, unauthenticated routes hit by IPTV players, keyed by a per-playlist `output_token`. Results are cached (`cache.server.ts`), invalidated on sync and edits.
 
-**Scheduling.** `server.js` is a custom Express server (production only) that boots `node-cron`. Cron does not run sync logic itself; it POSTs to the internal `/internal/sync` and `/internal/backup` routes with the `SESSION_SECRET` as an `x-internal-token`, so all sync logic stays in the same code the UI uses. The cron ticks hourly and the endpoint syncs only sources whose interval has elapsed.
+**Probing (`app/services/probe/`).** Runs ffprobe against streams to record quality (resolution, frame rate, codecs, bitrate) shown in the editor. Each probe opens a real connection to the provider, so the scheduled probe only covers channels actually in output (enabled, available, not in a disabled category). Manual probes (single channel, or "Probe all") use a wider net. Bitrate can't be read from a live stream, so measuring it reads the stream for the read time and weighs the data (off by default, it's slow). Binaries come from `FFPROBE_PATH`/`FFMPEG_PATH`.
 
-**DB connection (`app/db/index.server.ts`).** Single `better-sqlite3` connection in WAL mode with foreign keys on, cached across HMR reloads. Migrations run once per process on first import. The raw `sqlite` handle is exported for backup/restore, which dump and reinsert rows directly to avoid ORM type coercion.
+**Scheduling.** `server.js` is a custom Express server (production only) that boots `node-cron`. Cron does not run the logic itself; it POSTs to the internal `/internal/sync`, `/internal/probe`, and `/internal/backup` routes with the `SESSION_SECRET` as an `x-internal-token`, so it stays in the same code the UI uses. The cron ticks hourly and each endpoint only acts on sources whose interval has elapsed.
+
+**DB connection (`app/db/index.server.ts`).** Single `better-sqlite3` connection in WAL mode with foreign keys on, cached across HMR reloads. Migrations run once per process on first import. The raw `sqlite` handle is exported for backup/restore: a backup is a gzipped copy of the whole database file, and restore replaces everything then runs migrations, so an older backup is upgraded to the current schema (`app/services/backup/backup.server.ts`).
 
 **UI.** Tailwind v4 + shadcn/ui (new-york style) in `app/components/ui/`. Path alias `~` → `app/`. Icons from `lucide-react`. Drag-and-drop ordering uses `@dnd-kit`; long channel lists use `@tanstack/react-virtual`.
 
