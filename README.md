@@ -7,8 +7,6 @@ M3U file plus a matching XMLTV EPG to point your player at.
 It's a playlist manager, not a proxy. It never touches the video streams. The
 output M3U contains your provider's own direct stream URLs.
 
-Built with [Claude](https://claude.com/claude-code).
-
 ## Features
 
 **Sources**
@@ -113,3 +111,10 @@ the SQLite file is created at `./data/bouquet.db`.
 | `PORT` | `3000` | Server port |
 
 Migrations apply automatically on startup.
+
+## Built with Claude
+
+Most of this was written with [Claude](https://claude.com/claude-code). Every
+change is reviewed by a human before it lands, so nothing goes in unread. Treat
+it like any other code: read it, test it, and open an issue if something looks
+off.
