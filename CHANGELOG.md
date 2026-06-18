@@ -4,6 +4,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ## [Unreleased]
 
+### Fixed
+
+- A sync or probe that was running when the container restarted no longer leaves the source
+  stuck "syncing"/"probing" forever. Those runs only live in memory, so on startup any source
+  still marked in-progress is cleared to an error, which unsticks the UI and the "Probe all"
+  button.
+
 ### Added
 
 - Server logging for scheduled syncs. Each sync now logs when it starts, the channel count,

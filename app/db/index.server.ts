@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { eq } from "drizzle-orm";
 import { env } from "~/lib/env.server";
 import * as schema from "./schema";
 
@@ -10,6 +11,7 @@ import * as schema from "./schema";
 const globalForDb = globalThis as unknown as {
   __sqlite?: Database.Database;
   __migrated?: boolean;
+  __recovered?: boolean;
 };
 
 function createConnection() {
@@ -36,4 +38,21 @@ export const db = drizzle(sqlite, { schema });
 if (!globalForDb.__migrated) {
   migrate(db, { migrationsFolder: "./drizzle" });
   globalForDb.__migrated = true;
+}
+
+// Sync and probe runs live only in memory. If the process died mid-run (e.g. a
+// container restart), the source is left stuck as "syncing"/"probing" forever
+// and the UI keeps polling. A fresh process can't have either running, so clear
+// the stale state on boot. Guarded so HMR reloads, which keep a real in-flight
+// run alive, don't clobber it.
+if (!globalForDb.__recovered) {
+  db.update(schema.sources)
+    .set({ syncStatus: "error", lastError: "Interrupted by a restart" })
+    .where(eq(schema.sources.syncStatus, "syncing"))
+    .run();
+  db.update(schema.sources)
+    .set({ probeStatus: "error", probeError: "Interrupted by a restart" })
+    .where(eq(schema.sources.probeStatus, "probing"))
+    .run();
+  globalForDb.__recovered = true;
 }
