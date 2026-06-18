@@ -107,22 +107,19 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
     .orderBy(asc(playlistChannels.position), asc(playlistChannels.id))
     .all();
 
-  const byCat = new Map<number, typeof normalRows>();
-  for (const r of normalRows) {
-    const list = byCat.get(r.categoryId);
-    if (list) list.push(r);
-    else byCat.set(r.categoryId, [r]);
-  }
-
   // Resolved name and EPG for every channel in the playlist (including disabled
   // ones), so an alternate can take its primary's name and guide even when the
   // primary is hidden from output.
   const primaryNameById = new Map<number, string>();
   const primaryEpgById = new Map<number, { tvgId: string; epgSourceId: number }>();
   const primaryLogoById = new Map<number, string>();
+  // Whether each channel is enabled, so an alternate can be gated on its
+  // primary: a disabled primary takes its whole group out of output.
+  const enabledById = new Map<number, boolean>();
   for (const r of db
     .select({
       id: playlistChannels.id,
+      enabled: playlistChannels.enabled,
       customName: playlistChannels.customName,
       customLogo: playlistChannels.customLogo,
       pcEpgSourceId: playlistChannels.epgSourceId,
@@ -139,12 +136,25 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
     )
     .where(eq(playlistChannels.playlistId, playlist.id))
     .all()) {
+    enabledById.set(r.id, r.enabled);
     primaryNameById.set(r.id, r.customName || r.channelName);
     primaryEpgById.set(r.id, {
       tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
       epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
     });
     primaryLogoById.set(r.id, r.customLogo || r.channelLogo || "");
+  }
+
+  // Group enabled channels by category, dropping any alternate whose primary is
+  // disabled. The primary gates the whole group, so a backup never emits on its
+  // own under a name and guide whose primary is gone.
+  const byCat = new Map<number, typeof normalRows>();
+  for (const r of normalRows) {
+    if (r.primaryChannelId != null && enabledById.get(r.primaryChannelId) === false)
+      continue;
+    const list = byCat.get(r.categoryId);
+    if (list) list.push(r);
+    else byCat.set(r.categoryId, [r]);
   }
 
   // Order each category so every primary is immediately followed by its

@@ -4,6 +4,17 @@ All notable changes to this project are recorded here. Newest first.
 
 ## [Unreleased]
 
+### Changed
+
+- Moved the per-channel enable/disable toggle off the row and into its ⋯ menu, to declutter
+  the row. The bulk Enable/Disable in the Tools menu is unchanged.
+- Disabled channels are now dimmed in the playlist editor. The logo and name fade out so you
+  can scan the list and see what's off.
+- Disabling the primary of an alternate group now takes the whole group out of output. An
+  alternate borrows its name and guide from the primary, so emitting backups without their
+  primary left orphaned channels. Each alternate keeps its own on/off state, so re-enabling
+  the primary brings them back as they were. The group's alternates dim in the editor too.
+
 ### Fixed
 
 - A sync or probe that was running when the container restarted no longer leaves the source

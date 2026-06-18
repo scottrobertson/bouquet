@@ -19,6 +19,7 @@ import {
   renameChannel,
   reorderAlternates,
   setEpg,
+  toggleChannel,
 } from "~/services/playlist/mutations.server";
 
 let playlistId: number;
@@ -234,6 +235,36 @@ describe("output", () => {
     expect(out!.channels.every((c) => c.logo === "http://logo/primary.png")).toBe(
       true,
     );
+  });
+
+  it("a disabled primary takes its whole group out of output", async () => {
+    const { pcA, pcB, pcC } = seedThree();
+    renameChannel(playlistId, pcA, "BBC One");
+    makeAlternates(playlistId, pcA, [pcB, pcC]);
+
+    toggleChannel(playlistId, pcA, false);
+
+    const out = await getPlaylistOutput("tok");
+    // Primary and both alternates are gone, so no orphaned backups.
+    expect(out!.channels.map((c) => c.displayName)).toEqual([]);
+  });
+
+  it("re-enabling the primary brings back alternates in their own state", async () => {
+    const { pcA, pcB, pcC } = seedThree();
+    renameChannel(playlistId, pcA, "BBC One");
+    makeAlternates(playlistId, pcA, [pcB, pcC]);
+    // One alternate is individually off; gating must not lose that.
+    toggleChannel(playlistId, pcC, false);
+
+    toggleChannel(playlistId, pcA, false);
+    expect((await getPlaylistOutput("tok"))!.channels).toHaveLength(0);
+
+    toggleChannel(playlistId, pcA, true);
+    const out = await getPlaylistOutput("tok");
+    expect(out!.channels.map((c) => c.displayName)).toEqual([
+      "BBC One",
+      "BBC One (Alt 1)",
+    ]);
   });
 
   it("renames every alternate when the primary is renamed", async () => {

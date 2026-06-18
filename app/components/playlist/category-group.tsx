@@ -251,6 +251,7 @@ function PrimaryGroup({
             onSelect={onSelectChannel}
             group={{
               isAlternate: true,
+              primaryEnabled: primary.enabled,
               hasAlternates: false,
               altCount: 0,
               collapsed: false,

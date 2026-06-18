@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Copy,
   CornerDownRight,
+  Eye,
+  EyeOff,
   Gauge,
   GripVertical,
   MoreVertical,
@@ -27,7 +29,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { Switch } from "~/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -76,6 +77,9 @@ function QualityLine({ channel }: { channel: EditorChannel }) {
     alternate, and delete on both. */
 export type GroupControls = {
   isAlternate: boolean;
+  // Set on an alternate: whether its primary is enabled. A disabled primary
+  // gates the whole group out of output, so we dim its alternates too.
+  primaryEnabled?: boolean;
   // Primary that has alternates.
   hasAlternates: boolean;
   altCount: number;
@@ -281,6 +285,9 @@ export function ChannelRowBody({
       ? fetcher.formData.get("enabled") === "true"
       : undefined;
   const enabled = submittedEnabled ?? channel.enabled;
+  // Dim a row when it won't reach output: its own toggle is off, or it's an
+  // alternate whose primary is disabled (the primary gates the group).
+  const dimmed = !enabled || (isAlternate && group?.primaryEnabled === false);
   const renamed =
     !isAlternate && !!channel.customName && channel.customName !== baseName;
 
@@ -314,10 +321,17 @@ export function ChannelRowBody({
       {isAlternate ? (
         <span className="hidden size-7 shrink-0 sm:block" />
       ) : (
-        <ChannelLogo src={logo} />
+        <span className={cn("transition-opacity", dimmed && "opacity-40")}>
+          <ChannelLogo src={logo} />
+        </span>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col gap-0.5 transition-opacity",
+          dimmed && "opacity-40",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-1.5">
           <NameField
             channel={channel}
@@ -410,21 +424,21 @@ export function ChannelRowBody({
             <EpgPicker channel={channel} playlistId={playlistId} fetcher={fetcher} />
           </span>
         )}
-        <Switch
-          checked={enabled}
-          disabled={overlay}
-          onPointerDown={(e) => e.stopPropagation()}
-          onCheckedChange={(v) =>
-            fetcher.submit(
-              { intent: "toggleChannel", channelId: channel.id, enabled: String(v) },
-              { method: "post" },
-            )
-          }
-        />
         {!overlay && group ? (
           <GroupMenu
             group={group}
             streamUrl={channel.streamUrl}
+            enabled={enabled}
+            onToggleEnabled={() =>
+              fetcher.submit(
+                {
+                  intent: "toggleChannel",
+                  channelId: channel.id,
+                  enabled: String(!enabled),
+                },
+                { method: "post" },
+              )
+            }
             probing={fetcher.formData?.get("intent") === "probeChannel"}
             onProbe={() =>
               fetcher.submit(
@@ -454,12 +468,16 @@ export function ChannelRowBody({
 function GroupMenu({
   group,
   streamUrl,
+  enabled,
+  onToggleEnabled,
   onProbe,
   onProbeGroup,
   probing,
 }: {
   group: GroupControls;
   streamUrl: string;
+  enabled: boolean;
+  onToggleEnabled: () => void;
   onProbe: () => void;
   // Set on a primary that has alternates: probe the whole group.
   onProbeGroup?: () => void;
@@ -479,6 +497,11 @@ function GroupMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={onToggleEnabled}>
+          {enabled ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          {enabled ? "Disable" : "Enable"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <a href={`vlc://${streamUrl}`}>
             <Play className="size-4" />
