@@ -10,8 +10,8 @@ All notable changes to this project are recorded here. Newest first.
   and the guide. Play in VLC opens the provider's direct stream via the `vlc://` handler;
   Copy stream URL puts the same URL on the clipboard for pasting into a player.
 - "Play catchup in VLC" and "Copy catchup URL" on a past programme in the guide, when its
-  channel offers catchup and the provider has it archived. Click the programme to open its
-  details and the two actions appear, built from that programme's start time and length.
+  channel keeps an archive and the programme aired within that window. Click the programme to
+  open its details and the two actions appear, built from that programme's start time and length.
 - Stream probing. Bouquet can now run ffprobe against each stream to record its
   resolution, frame rate, video/audio codec and bitrate, shown as a quality line under each
   channel in the playlist editor. Turn it on per source and set the concurrency (how many
@@ -142,6 +142,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The guide now decides catchup from each channel's own archive window rather than the
+  provider's per-programme archive flag. A past programme shows the catchup icon and replay
+  actions whenever the channel keeps an archive and the programme aired within that window.
+  Before, the flag came from the shared EPG, so an alternate could show catchup on its
+  channel but never on any programme (or, on the wrong feed, show it when its own stream had
+  no archive). Now it matches each channel's real stream, including alternates.
 - The guide is now one continuous timeline you scroll through, rather than a window stuck on
   one day. It loads several days at once (three back, one forward), so scrolling across
   midnight is smooth with no jump or refetch. The ◀ ▶ buttons scroll back and forward by

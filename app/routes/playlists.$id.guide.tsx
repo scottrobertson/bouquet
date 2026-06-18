@@ -50,7 +50,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         subTitle: p.subTitle,
         description: p.description,
         category: p.category,
-        catchup: p.catchup,
       })),
     })),
   }));

@@ -13,9 +13,6 @@ export interface GuideProgramme {
   subTitle: string | null;
   description: string | null;
   category: string | null;
-  // Past programme on a channel whose provider keeps catchup for it. A real
-  // player could replay it; we just flag it.
-  catchup: boolean;
 }
 
 export interface GuideChannel {
@@ -117,7 +114,6 @@ export function getPlaylistGuide(
     set.add(c.tvgId);
   }
 
-  const now = Math.floor(Date.now() / 1000);
   // Key is `${epgSourceId}:${tvgId}` so a channel maps to its own source's guide.
   const progsByChannel = new Map<string, GuideProgramme[]>();
 
@@ -132,7 +128,6 @@ export function getPlaylistGuide(
           subTitle: epgProgrammes.subTitle,
           description: epgProgrammes.description,
           category: epgProgrammes.category,
-          hasArchive: epgProgrammes.hasArchive,
         })
         .from(epgProgrammes)
         .where(
@@ -159,8 +154,6 @@ export function getPlaylistGuide(
           subTitle: r.subTitle,
           description: r.description,
           category: r.category,
-          // The provider marks which aired programmes are in the archive.
-          catchup: r.hasArchive && r.stopTs <= now,
         });
       }
     }

@@ -54,6 +54,7 @@ interface Row extends ChannelView {
 interface Selected {
   channelName: string;
   programme: ProgrammeView;
+  catchupDays: number;
   catchupSource: string;
 }
 
@@ -301,7 +302,11 @@ export function GuideGrid({
         </div>
       </div>
 
-      <ProgrammeDialog selected={selected} onClose={() => setSelected(null)} />
+      <ProgrammeDialog
+        selected={selected}
+        nowMs={nowMs}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
@@ -406,11 +411,12 @@ const ChannelRow = memo(function ChannelRow({
               fromMs={fromMs}
               windowWidth={windowWidth}
               nowMs={nowMs}
-              catchupAvailable={row.catchupDays > 0}
+              catchupDays={row.catchupDays}
               onSelect={() =>
                 onSelect({
                   channelName: row.displayName,
                   programme: p,
+                  catchupDays: row.catchupDays,
                   catchupSource: row.catchupSource,
                 })
               }
@@ -427,14 +433,14 @@ function ProgrammeBlock({
   fromMs,
   windowWidth,
   nowMs,
-  catchupAvailable,
+  catchupDays,
   onSelect,
 }: {
   programme: ProgrammeView;
   fromMs: number;
   windowWidth: number;
   nowMs: number;
-  catchupAvailable: boolean;
+  catchupDays: number;
   onSelect: () => void;
 }) {
   const left = xForMs(p.startMs, fromMs);
@@ -467,7 +473,7 @@ function ProgrammeBlock({
         style={{ left: CHANNEL_COL_W }}
       >
         <span className="flex min-w-0 items-center gap-1">
-          {past && p.catchup && catchupAvailable ? (
+          {isReplayable(p.startMs, p.stopMs, nowMs, catchupDays) ? (
             <RotateCcw className="size-3 shrink-0 text-muted-foreground" />
           ) : null}
           <span className="truncate text-[12px] font-medium">
@@ -481,6 +487,23 @@ function ProgrammeBlock({
         ) : null}
       </span>
     </button>
+  );
+}
+
+/** A past programme can be replayed when the channel keeps an archive and the
+    programme aired within that archive window. We go off the channel's own
+    archive days, not the EPG's per-programme flag, so alternates that carry the
+    primary's shared EPG still reflect their own stream's catchup. */
+function isReplayable(
+  startMs: number,
+  stopMs: number,
+  nowMs: number,
+  catchupDays: number,
+): boolean {
+  return (
+    catchupDays > 0 &&
+    stopMs <= nowMs &&
+    startMs >= nowMs - catchupDays * 86_400_000
   );
 }
 
@@ -501,14 +524,18 @@ function catchupUrl(template: string, startMs: number, stopMs: number): string {
 
 function ProgrammeDialog({
   selected,
+  nowMs,
   onClose,
 }: {
   selected: Selected | null;
+  nowMs: number;
   onClose: () => void;
 }) {
   const p = selected?.programme;
   const replayUrl =
-    p?.catchup && selected?.catchupSource
+    p &&
+    selected?.catchupSource &&
+    isReplayable(p.startMs, p.stopMs, nowMs, selected.catchupDays)
       ? catchupUrl(selected.catchupSource, p.startMs, p.stopMs)
       : null;
   return (

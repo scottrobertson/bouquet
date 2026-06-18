@@ -8,7 +8,6 @@ export interface ProgrammeView {
   subTitle: string | null;
   description: string | null;
   category: string | null;
-  catchup: boolean;
 }
 
 export interface ChannelView {

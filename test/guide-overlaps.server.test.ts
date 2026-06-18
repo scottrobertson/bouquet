@@ -12,7 +12,6 @@ function prog(startTs: number, stopTs: number, title = "x"): GuideProgramme {
     subTitle: null,
     description: null,
     category: null,
-    catchup: false,
   };
 }
 
