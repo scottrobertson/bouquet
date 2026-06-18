@@ -18,6 +18,8 @@ COPY . .
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
+# curl is handy for debugging the container (hitting internal routes, checking streams).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 # ffprobe/ffmpeg read stream quality for the probe feature. Use a current static
 # build instead of Debian's (which is an old 5.1 with backported HLS limits and
 # no -extension_picky), so its HLS handling matches dev. Kept first so this layer
