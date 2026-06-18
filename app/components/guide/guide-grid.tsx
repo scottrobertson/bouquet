@@ -38,6 +38,7 @@ interface Row extends ChannelView {
 interface Selected {
   channelName: string;
   programme: ProgrammeView;
+  catchupSource: string;
 }
 
 export function GuideGrid({
@@ -314,7 +315,11 @@ const ChannelRow = memo(function ChannelRow({
               windowWidth={windowWidth}
               nowMs={nowMs}
               onSelect={() =>
-                onSelect({ channelName: row.displayName, programme: p })
+                onSelect({
+                  channelName: row.displayName,
+                  programme: p,
+                  catchupSource: row.catchupSource,
+                })
               }
             />
           ))
@@ -384,6 +389,20 @@ function ProgrammeBlock({
   );
 }
 
+/** Fill the channel's timeshift template for one programme. Times are formatted
+    in UTC, matching the unix timestamps we store from the provider's EPG. */
+function catchupUrl(template: string, startMs: number, stopMs: number): string {
+  const d = new Date(startMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return template
+    .replace("{duration}", String(Math.round((stopMs - startMs) / 60000)))
+    .replace("{Y}", String(d.getUTCFullYear()))
+    .replace("{m}", pad(d.getUTCMonth() + 1))
+    .replace("{d}", pad(d.getUTCDate()))
+    .replace("{H}", pad(d.getUTCHours()))
+    .replace("{M}", pad(d.getUTCMinutes()));
+}
+
 function ProgrammeDialog({
   selected,
   onClose,
@@ -392,6 +411,10 @@ function ProgrammeDialog({
   onClose: () => void;
 }) {
   const p = selected?.programme;
+  const replayUrl =
+    p?.catchup && selected?.catchupSource
+      ? catchupUrl(selected.catchupSource, p.startMs, p.stopMs)
+      : null;
   return (
     <Dialog open={!!selected} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -417,6 +440,24 @@ function ProgrammeDialog({
             <RotateCcw className="size-3.5" />
             Available to replay from your provider's catchup.
           </p>
+        ) : null}
+        {replayUrl ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="secondary">
+              <a href={`vlc://${replayUrl}`}>
+                <Play className="size-4" />
+                Play catchup in VLC
+              </a>
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => navigator.clipboard.writeText(replayUrl)}
+            >
+              <Copy className="size-4" />
+              Copy catchup URL
+            </Button>
+          </div>
         ) : null}
       </DialogContent>
     </Dialog>

@@ -24,6 +24,9 @@ export interface GuideChannel {
   tvgId: string;
   catchupDays: number;
   streamUrl: string;
+  // Timeshift URL template with {duration}/{date} placeholders, empty when the
+  // channel has no catchup. Filled per programme to replay a past show.
+  catchupSource: string;
   programmes: GuideProgramme[];
 }
 
@@ -184,6 +187,7 @@ export function getPlaylistGuide(
       tvgId: c.tvgId,
       catchupDays: c.catchupDays,
       streamUrl: c.streamUrl,
+      catchupSource: c.catchupSource,
       programmes,
     });
   }

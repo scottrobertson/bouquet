@@ -40,6 +40,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       tvgId: ch.tvgId,
       catchupDays: ch.catchupDays,
       streamUrl: ch.streamUrl,
+      catchupSource: ch.catchupSource,
       programmes: ch.programmes.map((p) => ({
         startMs: p.startTs * 1000,
         stopMs: p.stopTs * 1000,

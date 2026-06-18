@@ -17,6 +17,7 @@ export interface ChannelView {
   tvgId: string;
   catchupDays: number;
   streamUrl: string;
+  catchupSource: string;
   programmes: ProgrammeView[];
 }
 
