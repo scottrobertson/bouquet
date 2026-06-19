@@ -6,6 +6,16 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Alt groups now have a "Smart sort" option in their ⋯ menu that reorders the group best-first from
+  probe data and promotes the best stream to primary. It ranks by resolution then frame rate then
+  bitrate, with bitrate compared per codec so HEVC isn't punished for needing fewer bits, audio
+  codec breaking near-ties (surround over stereo), and streams sunk to the bottom in the order
+  unprobed, then failed, then unavailable.
+  The group's name and guide stay put, so only the running order changes. Since it can change which
+  stream is primary, it opens a preview first: the proposed order with each stream's data, how far
+  each moves, a note when the primary changes, and the rules used, with nothing applied until you
+  confirm. Playlist settings has a "Smart sort" section to pick whether to rank by resolution or
+  bitrate first and to toggle the audio and working-streams-first rules.
 - The "Probe all" button now has a dropdown with "Probe missing" and "Probe failed", each showing
   a count, plus "Clear probes" to wipe all results for the playlist's channels. Missing probes
   channels never probed before, failed probes ones whose last probe errored or timed out. "Probe

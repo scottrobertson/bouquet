@@ -21,6 +21,14 @@ import {
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
+import { Switch } from "~/components/ui/switch";
 import { db } from "~/db/index.server";
 import { playlists } from "~/db/schema";
 import { getPlaylist } from "~/services/playlist/queries.server";
@@ -42,6 +50,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       id: playlist.id,
       name: playlist.name,
       altNameTemplate: playlist.altNameTemplate,
+      smartSortPrefer: playlist.smartSortPrefer,
+      smartSortAudio: playlist.smartSortAudio,
+      smartSortAvailableFirst: playlist.smartSortAvailableFirst,
     },
     m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
     epgUrl: `${origin}/output/epg/${playlist.outputToken}`,
@@ -90,6 +101,20 @@ export async function action({ request, params }: Route.ActionArgs) {
     return data({ ok: true, intent });
   }
 
+  if (intent === "setSmartSort") {
+    const prefer = form.get("smartSortPrefer") === "bitrate" ? "bitrate" : "resolution";
+    db.update(playlists)
+      .set({
+        smartSortPrefer: prefer,
+        // Switches only submit a value when on, so a missing field means off.
+        smartSortAudio: form.get("smartSortAudio") != null,
+        smartSortAvailableFirst: form.get("smartSortAvailableFirst") != null,
+      })
+      .where(eq(playlists.id, id))
+      .run();
+    return data({ ok: true, intent });
+  }
+
   if (intent === "deletePlaylist") {
     db.delete(playlists).where(eq(playlists.id, id)).run();
     return redirect("/playlists");
@@ -104,9 +129,12 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
 
   useEffect(() => {
     if (actionData && "intent" in actionData && actionData.ok) {
-      toast.success(
-        actionData.intent === "setAltTemplate" ? "Naming saved" : "Playlist renamed",
-      );
+      const messages: Record<string, string> = {
+        setAltTemplate: "Naming saved",
+        setSmartSort: "Smart sort saved",
+        renamePlaylist: "Playlist renamed",
+      };
+      toast.success(messages[actionData.intent as string] ?? "Saved");
     }
   }, [actionData]);
 
@@ -161,6 +189,71 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
                 name="altNameTemplate"
                 defaultValue={playlist.altNameTemplate}
                 placeholder="{name} (Alt {n})"
+              />
+            </div>
+            <Button type="submit" size="sm">
+              Save
+            </Button>
+          </Form>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-[13px] font-medium">Smart sort</h2>
+          <p className="text-[13px] text-muted-foreground">
+            How "Smart sort" in an alt group's menu orders its streams. It uses
+            probe data, so probe the group first to get the most out of it.
+          </p>
+          <Form method="post" className="space-y-4">
+            <input type="hidden" name="intent" value="setSmartSort" />
+            <div className="space-y-2">
+              <Label htmlFor="smart-prefer">Rank by</Label>
+              <Select
+                name="smartSortPrefer"
+                defaultValue={playlist.smartSortPrefer}
+              >
+                <SelectTrigger id="smart-prefer" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="resolution">
+                    Resolution first, then bitrate
+                  </SelectItem>
+                  <SelectItem value="bitrate">
+                    Bitrate first, then resolution
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Bitrate is compared per codec, so HEVC isn't punished for needing
+                fewer bits.
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="smart-audio">Use audio to break ties</Label>
+                <p className="text-xs text-muted-foreground">
+                  Prefer surround audio (E-AC-3, AC-3) over stereo when streams
+                  are otherwise equal.
+                </p>
+              </div>
+              <Switch
+                id="smart-audio"
+                name="smartSortAudio"
+                defaultChecked={playlist.smartSortAudio}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="smart-available">Working streams first</Label>
+                <p className="text-xs text-muted-foreground">
+                  Sink streams that are unavailable or failed their last probe
+                  below ones that work.
+                </p>
+              </div>
+              <Switch
+                id="smart-available"
+                name="smartSortAvailableFirst"
+                defaultChecked={playlist.smartSortAvailableFirst}
               />
             </div>
             <Button type="submit" size="sm">

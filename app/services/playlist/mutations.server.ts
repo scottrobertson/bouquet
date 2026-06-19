@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -6,6 +6,7 @@ import {
   sourceChannels,
 } from "~/db/schema";
 import { nextCategoryPosition, nextChannelPosition } from "./queries.server";
+import { smartSort, type SmartSortConfig } from "./smart-sort";
 
 /** Confirm a category belongs to the playlist before we touch it. */
 function categoryInPlaylist(playlistId: number, categoryId: number) {
@@ -772,6 +773,92 @@ export function reorderAlternates(
       tx.update(playlistChannels)
         .set({ altPosition: i })
         .where(eq(playlistChannels.id, id))
+        .run();
+    });
+  });
+}
+
+/** Reorder a whole group best-first by its streams' probe data, promoting the
+    winner to primary. The group's name and guide stay put (they belong to the
+    group, not whichever stream wins), so only the running order changes, not the
+    output's name or EPG. */
+export function smartSortGroup(
+  playlistId: number,
+  primaryId: number,
+  config: SmartSortConfig,
+) {
+  const primary = primaryCandidate(playlistId, primaryId);
+  if (!primary) return;
+
+  // The whole group: the primary plus its alternates, joined to the source
+  // channel for the probe data we sort on.
+  const members = db
+    .select({
+      id: playlistChannels.id,
+      customName: playlistChannels.customName,
+      epgSourceId: playlistChannels.epgSourceId,
+      epgChannelId: playlistChannels.epgChannelId,
+      available: sourceChannels.available,
+      probeStatus: sourceChannels.probeStatus,
+      probeWidth: sourceChannels.probeWidth,
+      probeHeight: sourceChannels.probeHeight,
+      probeFps: sourceChannels.probeFps,
+      probeVideoCodec: sourceChannels.probeVideoCodec,
+      probeAudioCodec: sourceChannels.probeAudioCodec,
+      probeBitrate: sourceChannels.probeBitrate,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .where(
+      and(
+        eq(playlistChannels.playlistId, playlistId),
+        or(
+          eq(playlistChannels.id, primaryId),
+          eq(playlistChannels.primaryChannelId, primaryId),
+        ),
+      ),
+    )
+    .orderBy(asc(playlistChannels.altPosition), asc(playlistChannels.id))
+    .all();
+  if (members.length < 2) return;
+
+  const sorted = smartSort(members, config);
+  const newPrimary = sorted[0];
+  const rest = sorted.slice(1);
+
+  const oldPrimary = members.find((m) => m.id === primaryId);
+  if (!oldPrimary) return;
+  const groupEpg = {
+    epgSourceId: oldPrimary.epgSourceId,
+    epgChannelId: oldPrimary.epgChannelId,
+  };
+
+  db.transaction((tx) => {
+    if (newPrimary.id !== primaryId) {
+      tx.update(playlistChannels)
+        .set({
+          primaryChannelId: null,
+          altPosition: 0,
+          position: primary.position,
+          customName: oldPrimary.customName,
+          ...groupEpg,
+        })
+        .where(eq(playlistChannels.id, newPrimary.id))
+        .run();
+    }
+    rest.forEach((m, i) => {
+      tx.update(playlistChannels)
+        .set({
+          primaryChannelId: newPrimary.id,
+          categoryId: primary.categoryId,
+          altPosition: i,
+          customName: null,
+          ...groupEpg,
+        })
+        .where(eq(playlistChannels.id, m.id))
         .run();
     });
   });

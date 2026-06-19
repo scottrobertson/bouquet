@@ -184,6 +184,21 @@ export const playlists = sqliteTable("playlists", {
   altNameTemplate: text("alt_name_template")
     .notNull()
     .default("{name} (Alt {n})"),
+  // Smart sort orders an alt group best-first from probe data. These pick what
+  // "best" means. prefer = the top quality signal, resolution or bitrate; audio
+  // = let surround audio break near-ties; availableFirst = sink dead/errored
+  // streams below working ones.
+  smartSortPrefer: text("smart_sort_prefer", { enum: ["resolution", "bitrate"] })
+    .notNull()
+    .default("resolution"),
+  smartSortAudio: integer("smart_sort_audio", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  smartSortAvailableFirst: integer("smart_sort_available_first", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

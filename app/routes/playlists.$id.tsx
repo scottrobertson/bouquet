@@ -57,11 +57,13 @@ import {
   reorderCategories,
   reorderChannels,
   setEpg,
+  smartSortGroup,
   toggleChannel,
   ungroupAlternate,
   ungroupPrimary,
 } from "~/services/playlist/mutations.server";
 import {
+  getAltGroupStreams,
   getAutoChannels,
   getCategories,
   getPlaylist,
@@ -69,6 +71,7 @@ import {
   matchingSourceChannelIds,
   playlistHasProbingSource,
 } from "~/services/playlist/queries.server";
+import { explainSmartSort } from "~/services/playlist/smart-sort";
 import { invalidate } from "~/services/output/cache.server";
 import {
   clearPlaylistProbes,
@@ -358,6 +361,35 @@ export async function action({ request, params }: Route.ActionArgs) {
 
     case "promoteAlternate": {
       promoteAlternate(playlistId, Number(form.get("channelId")));
+      return data({ ok: true, intent });
+    }
+
+    case "previewSmartSort": {
+      // Compute the order without applying it, so the editor can show what would
+      // change and why before the user confirms.
+      const config = {
+        prefer: playlist.smartSortPrefer,
+        audio: playlist.smartSortAudio,
+        availableFirst: playlist.smartSortAvailableFirst,
+      };
+      const streams = getAltGroupStreams(
+        playlistId,
+        Number(form.get("primaryId")),
+      ).map((s, i) => ({
+        ...s,
+        currentlyPrimary: s.primaryChannelId == null,
+        currentPosition: i,
+      }));
+      const ranked = explainSmartSort(streams, config);
+      return data({ ok: true, intent, config, streams: ranked });
+    }
+
+    case "smartSortGroup": {
+      smartSortGroup(playlistId, Number(form.get("primaryId")), {
+        prefer: playlist.smartSortPrefer,
+        audio: playlist.smartSortAudio,
+        availableFirst: playlist.smartSortAvailableFirst,
+      });
       return data({ ok: true, intent });
     }
 

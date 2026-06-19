@@ -7,6 +7,7 @@ import {
   like,
   notExists,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 import { db } from "~/db/index.server";
@@ -228,6 +229,49 @@ export function getPlaylistChannels(playlistId: number) {
           : r.sourceName,
     }),
   );
+}
+
+/** The streams in one alt group (primary plus alternates), with the provider and
+    probe data the smart-sort preview shows. Primary first, then alternates in
+    their current order. */
+export function getAltGroupStreams(playlistId: number, primaryId: number) {
+  return db
+    .select({
+      id: playlistChannels.id,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      sourceName: sourceChannels.name,
+      providerName: sources.name,
+      categoryName: sourceChannels.categoryName,
+      available: sourceChannels.available,
+      probeStatus: sourceChannels.probeStatus,
+      probeWidth: sourceChannels.probeWidth,
+      probeHeight: sourceChannels.probeHeight,
+      probeFps: sourceChannels.probeFps,
+      probeVideoCodec: sourceChannels.probeVideoCodec,
+      probeAudioCodec: sourceChannels.probeAudioCodec,
+      probeBitrate: sourceChannels.probeBitrate,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
+    .where(
+      and(
+        eq(playlistChannels.playlistId, playlistId),
+        or(
+          eq(playlistChannels.id, primaryId),
+          eq(playlistChannels.primaryChannelId, primaryId),
+        ),
+      ),
+    )
+    .orderBy(
+      sql`${playlistChannels.primaryChannelId} is null desc`,
+      asc(playlistChannels.altPosition),
+      asc(playlistChannels.id),
+    )
+    .all();
 }
 
 /** Is any source feeding this playlist currently probing? Drives live polling

@@ -14,6 +14,7 @@ import {
   Pencil,
   Play,
   RotateCcw,
+  Sparkles,
   Trash2,
   Tv,
   Unlink,
@@ -39,6 +40,7 @@ import { logoSrc } from "~/lib/logo";
 import { qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
+import { SmartSortDialog } from "./smart-sort-dialog";
 import type { EditorChannel } from "./types";
 
 /** Stream quality below the provider/category line. Shows a live waiting/probing
@@ -296,6 +298,7 @@ export function ChannelRowBody({
   group?: GroupControls;
 }) {
   const fetcher = useFetcher();
+  const [smartSortOpen, setSmartSortOpen] = useState(false);
   const logo = channel.customLogo ?? channel.sourceLogo;
   const isAlternate = channel.primaryChannelId != null;
   // Alternates are always auto-named from their primary (any stored custom name
@@ -484,10 +487,23 @@ export function ChannelRowBody({
                     )
                 : undefined
             }
+            onSmartSort={
+              group.hasAlternates && !group.isAlternate
+                ? () => setSmartSortOpen(true)
+                : undefined
+            }
           />
         ) : null}
         </div>
       </div>
+
+      {!overlay && group?.hasAlternates && !group.isAlternate ? (
+        <SmartSortDialog
+          primaryId={channel.id}
+          open={smartSortOpen}
+          onOpenChange={setSmartSortOpen}
+        />
+      ) : null}
     </>
   );
 }
@@ -501,6 +517,7 @@ function GroupMenu({
   onToggleEnabled,
   onProbe,
   onProbeGroup,
+  onSmartSort,
   probing,
 }: {
   group: GroupControls;
@@ -510,6 +527,8 @@ function GroupMenu({
   onProbe: () => void;
   // Set on a primary that has alternates: probe the whole group.
   onProbeGroup?: () => void;
+  // Set on a primary that has alternates: reorder the group by stream quality.
+  onSmartSort?: () => void;
   probing: boolean;
 }) {
   return (
@@ -579,6 +598,12 @@ function GroupMenu({
           </>
         ) : group.hasAlternates ? (
           <>
+            {onSmartSort ? (
+              <DropdownMenuItem onClick={onSmartSort}>
+                <Sparkles className="size-4" />
+                Smart sort
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={group.onUngroupPrimary}>
               <Unlink className="size-4" />
               Ungroup all
