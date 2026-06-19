@@ -102,11 +102,16 @@ export async function runSync(sourceId: number): Promise<void> {
       return;
     }
 
+    const fetchStartedAt = Date.now();
     const categories = await fetchLiveCategories(creds);
     const categoryNames = new Map(
       categories.map((c) => [c.categoryId, c.categoryName]),
     );
     const streams = await fetchLiveStreams(creds);
+    const fetchSecs = ((Date.now() - fetchStartedAt) / 1000).toFixed(1);
+    console.log(
+      `[sync] ${source.name}: fetched ${categories.length} categories, ${streams.length} streams in ${fetchSecs}s`,
+    );
 
     // Snapshot the catalog before we touch it, so we can log what this sync
     // added/removed once it's done.
@@ -202,7 +207,12 @@ export async function runSync(sourceId: number): Promise<void> {
 
     // Log what changed for the source's history. Never let it break a sync.
     try {
-      recordSyncChanges(sourceId, before, seen, now);
+      const changes = recordSyncChanges(sourceId, before, seen, now);
+      if (changes) {
+        console.log(
+          `[sync] ${source.name}: ${changes.added} added, ${changes.removed} removed since last sync`,
+        );
+      }
     } catch (err) {
       console.error("[sync] recording changes failed", err);
     }
@@ -262,6 +272,10 @@ export async function runSync(sourceId: number): Promise<void> {
     refreshSourceEpgChannels(sourceId);
 
     const targets = [...streamByEpgId.entries()];
+    console.log(
+      `[sync] ${source.name}: fetching EPG for ${targets.length} channels`,
+    );
+    const epgStartedAt = Date.now();
     let failures = 0;
     const perChannel = await mapPool(
       targets,
@@ -317,8 +331,9 @@ export async function runSync(sourceId: number): Promise<void> {
       }
     });
 
+    const epgSecs = ((Date.now() - epgStartedAt) / 1000).toFixed(1);
     console.log(
-      `[sync] ${source.name}: EPG done, ${targets.length - failures}/${targets.length} channels`,
+      `[sync] ${source.name}: EPG done, ${targets.length - failures}/${targets.length} channels${failures > 0 ? ` (${failures} failed)` : ""} in ${epgSecs}s`,
     );
 
     // Stored programmes now match the current enabled categories.

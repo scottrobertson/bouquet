@@ -17,6 +17,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Sync now logs more detail: how long the catalog fetch took with category and stream counts, how
+  many channels were added or removed since the last sync, how many channels the EPG step is
+  fetching, and how long EPG took (with a failure count when any fail).
 - "Probe all" and "Probe group" now probe channels in the order they appear in the playlist
   instead of jumping around. Within each source the probe works down the list. Channels from
   different sources still run in parallel, so a multi-source playlist isn't strictly top to

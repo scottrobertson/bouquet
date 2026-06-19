@@ -127,10 +127,10 @@ export function recordSyncChanges(
   before: Map<string, BeforeChannel>,
   seen: SeenChannel[],
   syncedAt: Date,
-) {
+): { added: number; removed: number } | null {
   // First sync of a source: nothing existed before, so the whole catalog would
   // log as "added". Treat it as a baseline and record nothing.
-  if (before.size === 0) return;
+  if (before.size === 0) return null;
 
   const changes: NewChange[] = [];
   const seenIds = new Set(seen.map((s) => s.streamId));
@@ -188,7 +188,7 @@ export function recordSyncChanges(
     }
   }
 
-  if (changes.length === 0) return;
+  if (changes.length === 0) return { added: 0, removed: 0 };
 
   attachPlaylists(sourceId, changes);
 
@@ -207,6 +207,9 @@ export function recordSyncChanges(
       )
       .run();
   }
+
+  const added = changes.filter((c) => c.kind !== "channel_removed" && c.kind !== "category_removed").length;
+  return { added, removed: changes.length - added };
 }
 
 /** One row per sync that recorded changes, newest first, with add/remove counts.
