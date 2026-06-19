@@ -1,7 +1,6 @@
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
   closestCenter,
   pointerWithin,
   useDroppable,
@@ -11,6 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { SafePointerSensor } from "~/lib/dnd-sensors";
 import {
   SortableContext,
   arrayMove,
@@ -173,7 +173,7 @@ export function EditorBoard({
   const [view, setView] = useState<"source" | "playlist">("playlist");
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(SafePointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
   // Dropping a playlist channel here removes it from the playlist.
