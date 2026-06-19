@@ -8,6 +8,7 @@ import {
   sources,
 } from "~/db/schema";
 import { invalidateAll } from "~/services/output/cache.server";
+import { bumpSource } from "~/services/events.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import {
   recordSyncChanges,
@@ -41,6 +42,7 @@ export function startSync(sourceId: number): void {
     .set({ syncStatus: "syncing" })
     .where(eq(sources.id, sourceId))
     .run();
+  bumpSource(sourceId);
 
   void runSync(sourceId).catch((err) => {
     db.update(sources)
@@ -50,6 +52,7 @@ export function startSync(sourceId: number): void {
       })
       .where(eq(sources.id, sourceId))
       .run();
+    bumpSource(sourceId);
   });
 }
 
@@ -95,6 +98,7 @@ export async function runSync(sourceId: number): Promise<void> {
         })
         .where(eq(sources.id, sourceId))
         .run();
+      bumpSource(sourceId);
       return;
     }
 
@@ -192,6 +196,7 @@ export async function runSync(sourceId: number): Promise<void> {
     // Drop cached output so auto-sync categories and availability changes reach
     // players on the next poll instead of waiting out the cache TTL.
     invalidateAll();
+    bumpSource(sourceId);
 
     console.log(`[sync] ${source.name}: ${streams.length} channels synced`);
 
@@ -210,6 +215,7 @@ export async function runSync(sourceId: number): Promise<void> {
       })
       .where(eq(sources.id, sourceId))
       .run();
+    bumpSource(sourceId);
     return;
   }
 

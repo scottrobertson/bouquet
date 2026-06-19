@@ -7,6 +7,7 @@ import {
   sources,
   type Source,
 } from "~/db/schema";
+import { bumpSource } from "~/services/events.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import { qualityParts } from "~/lib/quality";
 import { measureBitrate, probeStream } from "~/services/probe/ffprobe.server";
@@ -76,6 +77,7 @@ async function probeAndStore(
     .set({ probeStatus: "probing" })
     .where(eq(sourceChannels.id, ch.id))
     .run();
+  bumpSource(source.id);
 
   const r = await probeStream(url, source.probeTimeoutSeconds, { hls });
 
@@ -141,6 +143,7 @@ async function probeChannelList(
       )
       .run();
   }
+  bumpSource(source.id);
 
   console.log(
     `[probe] ${source.name}: probing ${channels.length} channels, concurrency ${source.probeConcurrency}`,
@@ -154,6 +157,7 @@ async function probeChannelList(
       .set({ probeDone: sql`${sources.probeDone} + 1` })
       .where(eq(sources.id, source.id))
       .run();
+    bumpSource(source.id);
   });
 
   console.log(`[probe] ${source.name}: done, ${ok} ok, ${failed} failed`);
@@ -162,6 +166,7 @@ async function probeChannelList(
     .set({ probeStatus: "ok", lastProbedAt: new Date(), probeError: null })
     .where(eq(sources.id, source.id))
     .run();
+  bumpSource(source.id);
 }
 
 /** Kick a background probe of one source, without waiting. Probes the channels
@@ -171,6 +176,7 @@ export function startProbe(sourceId: number): void {
     .set({ probeStatus: "probing", probeTotal: 0, probeDone: 0, probeError: null })
     .where(eq(sources.id, sourceId))
     .run();
+  bumpSource(sourceId);
   void runProbe(sourceId).catch((err) => markError(sourceId, err));
 }
 
@@ -307,6 +313,7 @@ function markError(sourceId: number, err: unknown): void {
     })
     .where(eq(sources.id, sourceId))
     .run();
+  bumpSource(sourceId);
 }
 
 /** Has this source's probe interval elapsed? */

@@ -1,6 +1,7 @@
 import { ArrowLeft, Check, Gauge, Link2, Loader2, Settings, Tv } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Link, data, useFetcher, useFetchers, useRevalidator } from "react-router";
+import { Link, data, useFetcher, useFetchers } from "react-router";
+import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
 import {
   Tooltip,
@@ -383,16 +384,9 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   const { playlist, categories, channels, autoChannels, output, anyProbing } =
     loaderData;
 
-  // A probe is filling in stream quality in the background, so poll until it's
-  // done and the rows update live.
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    if (!anyProbing) return;
-    const t = setInterval(() => {
-      if (revalidator.state === "idle") revalidator.revalidate();
-    }, 1500);
-    return () => clearInterval(t);
-  }, [anyProbing, revalidator]);
+  // A probe is filling in stream quality in the background, so listen for live
+  // updates until it's done and the rows update live.
+  useLiveRevalidate(anyProbing);
 
   // Channels waiting on or mid-probe right now, for the live header count.
   const probingCount = channels.filter(

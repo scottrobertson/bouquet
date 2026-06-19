@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Sync and probe progress now updates instantly instead of on a timer. The sources list, a
+  source's page, and the playlist editor open a live connection while a sync or probe is running
+  and refresh the moment something changes, so badges, counts and channel rows update as soon as
+  the server has news rather than every 1.5 to 2.5 seconds. A slow refresh still runs as a
+  backstop in case the live connection can't get through.
+
 - Renaming channels on mobile no longer zooms the page. The app now disables pinch and
   double-tap zoom so it feels like a native app, and the rename field uses a bigger, easier to
   tap text box on phones. Desktop is unchanged.

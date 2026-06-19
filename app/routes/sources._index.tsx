@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { Gauge, MoreHorizontal, Plus, Radio, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Link, data, useFetcher, useRevalidator } from "react-router";
+import { Link, data, useFetcher } from "react-router";
+import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -123,17 +124,11 @@ export async function action({ request }: Route.ActionArgs) {
 export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
   const { sources: rows } = loaderData;
 
-  // Syncs and probes run in the background, so poll while either is going.
-  const revalidator = useRevalidator();
+  // Syncs and probes run in the background, so listen for live updates while
+  // either is going.
   const anySyncing = rows.some((s) => s.syncStatus === "syncing");
   const anyProbing = rows.some((s) => s.probeStatus === "probing");
-  useEffect(() => {
-    if (!anySyncing && !anyProbing) return;
-    const t = setInterval(() => {
-      if (revalidator.state === "idle") revalidator.revalidate();
-    }, 2500);
-    return () => clearInterval(t);
-  }, [anySyncing, anyProbing, revalidator]);
+  useLiveRevalidate(anySyncing || anyProbing);
 
   // Sync every source at once.
   const syncAllFetcher = useFetcher<typeof action>();

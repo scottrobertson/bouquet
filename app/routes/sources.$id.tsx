@@ -10,9 +10,9 @@ import {
   useFetcher,
   useFetchers,
   useNavigation,
-  useRevalidator,
 } from "react-router";
 import { toast } from "sonner";
+import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { PageHeader } from "~/components/page-header";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
 import {
@@ -141,17 +141,11 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
     (navigation.state !== "idle" && navIntent === "probe") ||
     source.probeStatus === "probing";
 
-  // Sync and probe both run in the background, so poll the loader while either
-  // is still going.
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    if (source.syncStatus !== "syncing" && source.probeStatus !== "probing")
-      return;
-    const t = setInterval(() => {
-      if (revalidator.state === "idle") revalidator.revalidate();
-    }, 2500);
-    return () => clearInterval(t);
-  }, [source.syncStatus, source.probeStatus, revalidator]);
+  // Sync and probe both run in the background, so listen for live updates while
+  // either is still going.
+  useLiveRevalidate(
+    source.syncStatus === "syncing" || source.probeStatus === "probing",
+  );
 
   // Toast once when a background sync or probe is kicked off.
   const handled = useRef<typeof actionData>(undefined);
