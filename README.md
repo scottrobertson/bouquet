@@ -25,6 +25,7 @@ output M3U contains your provider's own direct stream URLs.
 - Bulk tools: move, enable/disable, sort, add prefix/suffix, find and replace, reset EPG
 - Per-channel EPG, defaulting to the channel's own source
 - Group a channel with backup feeds as [alternates](#alternates-backup-channels)
+- Smart sort an alt group best-first from probe data, with a preview before it applies
 - Auto-sync categories that mirror a provider category and stay current (e.g. Pay Per View)
 
 **Guide and playback**
@@ -61,6 +62,26 @@ editor and keeps their names and metadata in step with the primary.
 - Group channels with "Make alternate of…" in the playlist, or "Add as alternate of…"
   when pulling them in from the Source Channels pane.
 - Promote an alternate into the primary spot at any time, and it reverts to its own name.
+- "Smart sort" orders a group by stream quality and promotes the best one to primary.
+
+### Smart sort
+
+Once you've probed a group, "Smart sort" in the group menu ranks its streams
+best-first and makes the best one the primary. It tries to be objective about
+"better":
+
+- Resolution first, then frame rate, then bitrate. Bitrate is normalised per
+  codec, so a HEVC stream isn't punished for hitting the same quality with fewer
+  bits. Tiny bitrate differences are treated as a tie.
+- Audio breaks those ties (surround over stereo).
+- Streams that don't work sink to the bottom, in the order unprobed, then failed,
+  then unavailable.
+
+Because it can change which stream is primary, it shows a preview first: the new
+order, each stream's data, how far each moves, and the exact rules it used. The
+channel's name and guide stay the same, only the running order changes. You can
+rank by bitrate first instead, and toggle the audio and working-first rules, in
+playlist Settings.
 
 ## Tech
 
