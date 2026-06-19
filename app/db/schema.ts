@@ -240,6 +240,8 @@ export const playlistChannels = sqliteTable(
       .notNull()
       .references(() => sourceChannels.id, { onDelete: "cascade" }),
     customName: text("custom_name"),
+    // Manual logo override. With none set, a non-default EPG pick lends its
+    // logo, otherwise the source channel's own logo is used.
     customLogo: text("custom_logo"),
     position: integer("position").notNull().default(0),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),

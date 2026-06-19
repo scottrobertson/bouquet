@@ -17,12 +17,37 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "~/components/ui/dialog";
+import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import type { EditorChannel, EpgChannel } from "./types";
 
 // EPG lists can be thousands of entries, so we filter ourselves and only render
 // a capped slice. Rendering them all bogs down the list.
 const RENDER_LIMIT = 100;
+
+// The logo a row would lend the channel if picked, so you can see it before you
+// choose. Falls back to a generic icon when there's none or it won't load.
+function EpgIcon({ icon }: { icon: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const src = icon ? logoSrc(icon) : null;
+  if (!src || failed) {
+    return (
+      <div className="flex size-7 shrink-0 items-center justify-center">
+        <Tv2 className="size-3.5 text-muted-foreground" />
+      </div>
+    );
+  }
+  return (
+    <span className="flex size-7 shrink-0 items-center justify-center">
+      <img
+        src={src}
+        alt=""
+        className="max-h-7 max-w-7 rounded object-contain"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  );
+}
 
 /** Per-channel EPG picker. Lists EPG channels from every source, plus a reset to
     the channel's own source EPG. The list is fetched lazily on open, then saved
@@ -191,6 +216,7 @@ export function EpgPicker({
                   onSelect={() => save(selectedEpg.sourceId, selectedEpg.channelId)}
                   className="bg-accent"
                 >
+                  <EpgIcon icon={selectedEpg.icon} />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate">
                       {selectedEpg.displayName ?? selectedEpg.channelId}
@@ -217,6 +243,7 @@ export function EpgPicker({
                       onSelect={() => save(epg.sourceId, epg.channelId)}
                       className={cn(selected && "bg-accent")}
                     >
+                      <EpgIcon icon={epg.icon} />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate">
                           {epg.displayName ?? epg.channelId}
@@ -269,6 +296,7 @@ export function EpgPicker({
                       onSelect={() => save(epg.sourceId, epg.channelId)}
                       className={cn(selected && "bg-accent")}
                     >
+                      <EpgIcon icon={epg.icon} />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate">
                           {epg.displayName ?? epg.channelId}

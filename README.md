@@ -24,6 +24,7 @@ output M3U contains your provider's own direct stream URLs.
 - Two-pane editor with drag-and-drop ordering, categories, and renaming
 - Bulk tools: move, enable/disable, sort, add prefix/suffix, find and replace, reset EPG
 - Per-channel EPG, defaulting to the channel's own source
+- Picking a non-default EPG channel also takes its logo, so you can borrow a nicer logo from another provider
 - Group a channel with backup feeds as [alternates](#alternates-backup-channels)
 - Smart sort an alt group best-first from probe data, with a preview before it applies
 - Auto-sync categories that mirror a provider category and stay current (e.g. Pay Per View)

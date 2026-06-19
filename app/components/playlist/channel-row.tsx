@@ -309,7 +309,7 @@ export function ChannelRowBody({
 }) {
   const fetcher = useFetcher();
   const [smartSortOpen, setSmartSortOpen] = useState(false);
-  const logo = channel.customLogo ?? channel.sourceLogo;
+  const logo = channel.customLogo || channel.epgLogo || channel.sourceLogo;
   const isAlternate = channel.primaryChannelId != null;
   // Alternates are always auto-named from their primary (any stored custom name
   // is ignored). Primaries use their custom name, falling back to the source.

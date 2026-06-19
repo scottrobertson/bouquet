@@ -21,6 +21,7 @@ import {
   sources,
 } from "~/db/schema";
 import { altName } from "~/services/playlist/alt-name";
+import { epgLogoLookup } from "~/services/playlist/epg-logo.server";
 import { buildStreamUrl } from "~/services/xtream/client.server";
 
 // The source browser is virtualized, so this just bounds the payload, not what
@@ -197,6 +198,16 @@ export function getPlaylistChannels(playlistId: number) {
   const nameById = new Map<number, string>();
   for (const r of rows) nameById.set(r.id, r.customName || r.sourceName);
 
+  // Logo borrowed from a custom EPG pick, so the editor preview matches output.
+  const epgLogoOf = epgLogoLookup(
+    rows.map((r) => ({
+      channelSourceId: r.channelSourceId,
+      sourceDefaultEpgId: r.sourceEpgChannelId,
+      epgSourceId: r.epgSourceId,
+      epgChannelId: r.epgChannelId,
+    })),
+  );
+
   // No category row (null category, or unseeded) counts as enabled. Strip the
   // raw provider creds out of the payload, keeping only the built stream URL.
   return rows.map(
@@ -211,6 +222,13 @@ export function getPlaylistChannels(playlistId: number) {
     }) => ({
       ...r,
       sourceCategoryEnabled: categoryEnabled ?? true,
+      epgLogo:
+        epgLogoOf({
+          channelSourceId: r.channelSourceId,
+          sourceDefaultEpgId: r.sourceEpgChannelId,
+          epgSourceId: r.epgSourceId,
+          epgChannelId: r.epgChannelId,
+        }) || null,
       streamUrl: buildStreamUrl(
         { serverUrl: streamBaseUrl ?? serverUrl, username, password },
         r.streamId,
@@ -447,6 +465,7 @@ export function listEpgChannels() {
       sourceId: sourceEpgChannels.sourceId,
       channelId: sourceEpgChannels.channelId,
       displayName: sourceEpgChannels.displayName,
+      icon: sourceEpgChannels.icon,
       sourceName: sources.name,
     })
     .from(sourceEpgChannels)

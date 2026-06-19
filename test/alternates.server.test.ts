@@ -6,6 +6,7 @@ import {
   playlistChannels,
   playlists,
   sourceChannels,
+  sourceEpgChannels,
   sources,
 } from "~/db/schema";
 import { buildM3u } from "~/services/output/m3u.server";
@@ -55,6 +56,7 @@ beforeEach(() => {
   db.delete(playlistChannels).run();
   db.delete(playlistCategories).run();
   db.delete(playlists).run();
+  db.delete(sourceEpgChannels).run();
   db.delete(sourceChannels).run();
   db.delete(sources).run();
 
@@ -278,6 +280,53 @@ describe("output", () => {
       "Sky One (Alt 1)",
       "Sky One (Alt 2)",
     ]);
+  });
+});
+
+describe("logo", () => {
+  /** Register an EPG channel in the source with its own icon. */
+  function addEpgChannel(channelId: string, icon: string) {
+    db.insert(sourceEpgChannels)
+      .values({ sourceId, channelId, displayName: channelId, icon })
+      .run();
+  }
+
+  it("borrows the picked EPG channel's logo when a custom EPG is set", async () => {
+    const { pcA } = seedThree();
+    addEpgChannel("b.epg", "http://logo/b.png");
+    setEpg(playlistId, pcA, sourceId, "b.epg");
+
+    const out = await getPlaylistOutput("tok");
+    const a = out!.channels.find((c) => c.tvgId === "b.epg")!;
+    expect(a.logo).toBe("http://logo/b.png");
+  });
+
+  it("keeps the source logo when the EPG is the source default", async () => {
+    seedThree();
+    db.update(sourceChannels)
+      .set({ logo: "http://logo/a.png" })
+      .where(eq(sourceChannels.streamId, "a"))
+      .run();
+    // a.epg has its own icon, but the default EPG must not override the logo.
+    addEpgChannel("a.epg", "http://logo/a-epg.png");
+
+    const out = await getPlaylistOutput("tok");
+    const a = out!.channels.find((c) => c.displayName === "Channel A")!;
+    expect(a.logo).toBe("http://logo/a.png");
+  });
+
+  it("a manual logo override wins over the EPG channel's logo", async () => {
+    const { pcA } = seedThree();
+    addEpgChannel("b.epg", "http://logo/b.png");
+    setEpg(playlistId, pcA, sourceId, "b.epg");
+    db.update(playlistChannels)
+      .set({ customLogo: "http://logo/manual.png" })
+      .where(eq(playlistChannels.id, pcA))
+      .run();
+
+    const out = await getPlaylistOutput("tok");
+    const a = out!.channels.find((c) => c.tvgId === "b.epg")!;
+    expect(a.logo).toBe("http://logo/manual.png");
   });
 });
 

@@ -11,6 +11,7 @@ import {
 } from "~/db/schema";
 import { buildStreamUrl, buildTimeshiftSource } from "~/services/xtream/client.server";
 import { altName } from "~/services/playlist/alt-name";
+import { epgLogoLookup } from "~/services/playlist/epg-logo.server";
 
 export interface ResolvedChannel {
   displayName: string;
@@ -116,7 +117,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
   // Whether each channel is enabled, so an alternate can be gated on its
   // primary: a disabled primary takes its whole group out of output.
   const enabledById = new Map<number, boolean>();
-  for (const r of db
+  const allRows = db
     .select({
       id: playlistChannels.id,
       enabled: playlistChannels.enabled,
@@ -135,14 +136,44 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
       eq(playlistChannels.sourceChannelId, sourceChannels.id),
     )
     .where(eq(playlistChannels.playlistId, playlist.id))
-    .all()) {
+    .all();
+
+  // Logo a channel emits: a manual override wins, then the icon of a custom EPG
+  // channel it points at, then the source channel's own logo.
+  const epgLogoOf = epgLogoLookup(
+    allRows.map((r) => ({
+      channelSourceId: r.channelSourceId,
+      sourceDefaultEpgId: r.channelEpgId,
+      epgSourceId: r.pcEpgSourceId,
+      epgChannelId: r.pcEpgChannelId,
+    })),
+  );
+  const logoFor = (r: {
+    customLogo: string | null;
+    channelLogo: string | null;
+    channelEpgId: string | null;
+    channelSourceId: number;
+    pcEpgSourceId: number | null;
+    pcEpgChannelId: string | null;
+  }): string =>
+    r.customLogo ||
+    epgLogoOf({
+      channelSourceId: r.channelSourceId,
+      sourceDefaultEpgId: r.channelEpgId,
+      epgSourceId: r.pcEpgSourceId,
+      epgChannelId: r.pcEpgChannelId,
+    }) ||
+    r.channelLogo ||
+    "";
+
+  for (const r of allRows) {
     enabledById.set(r.id, r.enabled);
     primaryNameById.set(r.id, r.customName || r.channelName);
     primaryEpgById.set(r.id, {
       tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
       epgSourceId: r.pcEpgSourceId ?? r.channelSourceId,
     });
-    primaryLogoById.set(r.id, r.customLogo || r.channelLogo || "");
+    primaryLogoById.set(r.id, logoFor(r));
   }
 
   // Group enabled channels by category, dropping any alternate whose primary is
@@ -213,7 +244,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
       const pl = primaryLogoById.get(r.primaryChannelId);
       if (pl != null) return pl;
     }
-    return r.customLogo || r.channelLogo || "";
+    return logoFor(r);
   };
 
   // Live channels for an auto-sync category, straight from the source catalog.

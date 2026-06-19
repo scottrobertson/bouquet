@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- A channel's logo now follows its EPG. When you pick an EPG channel other than the source
+  default, the logo comes from that EPG channel, so picking a guide from a provider with a nicer
+  logo gives you that logo too. Channels left on their source default keep the source's own logo,
+  and a manually set logo still wins over both. The editor preview shows the same logo the
+  playlist will emit, and the EPG picker shows each channel's logo next to it so you can see what
+  you'll get before you pick.
 - The EPG picker now lists the alt group's guides at the top under "Alternatives" when you're
   picking a guide for an alt group primary. Each alternate is the same channel from another
   provider, so its own source EPG is usually the guide you want, and now it's one click away

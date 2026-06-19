@@ -5,6 +5,8 @@ export type EditorChannel = {
   sourceChannelId: number;
   customName: string | null;
   customLogo: string | null;
+  // Logo borrowed from a custom EPG pick, null when the EPG is the source default.
+  epgLogo: string | null;
   enabled: boolean;
   epgSourceId: number | null;
   epgChannelId: string | null;
@@ -53,6 +55,9 @@ export type EpgChannel = {
   sourceId: number;
   channelId: string;
   displayName: string | null;
+  // The logo this EPG channel lends a channel when picked. Same as the source
+  // channel's own logo.
+  icon: string | null;
   sourceName: string;
 };
 
