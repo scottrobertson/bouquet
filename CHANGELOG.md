@@ -6,6 +6,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Making a different channel the primary of an alternate group now keeps the group's custom
+  name. Before, promoting an alternate reset the name back to the channel's own. From the
+  editor it's just picking a different primary, so the group's name and details stay put. The
+  ⋯ menu also says "Make primary" instead of "Move up" when the alternate is next in line for
+  the primary spot.
+- Tidied the probe options in a channel's ⋯ menu: "Probe group" now sits above the single
+  channel option, which is now just labelled "Probe".
+
 - Probing now shows live in the playlist editor instead of going quiet until it finishes.
   Probe a single channel and its row shows a spinner straight away. Probe a group or the whole
   playlist and every channel flips to "Queued…" at once, then to "Probing…" as each stream is

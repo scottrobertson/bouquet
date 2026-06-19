@@ -262,6 +262,7 @@ function PrimaryGroup({
               // reorder within the alternates.
               canMoveUp: true,
               canMoveDown: i < alternates.length - 1,
+              willPromote: i === 0,
               onMove: (dir) => {
                 if (dir === -1 && i === 0) groupApi.onPromoteAlternate(alt.id);
                 else groupApi.onMoveAlternate(primary.id, alt.id, dir);

@@ -305,7 +305,7 @@ describe("removeChannel on a primary", () => {
     ]);
   });
 
-  it("promoteAlternate reverts the new primary and re-names the rest", async () => {
+  it("promoteAlternate keeps the group's custom name and re-names the rest", async () => {
     const { pcA, pcB, pcC } = seedThree();
     renameChannel(playlistId, pcA, "BBC One");
     makeAlternates(playlistId, pcA, [pcB, pcC]);
@@ -314,15 +314,15 @@ describe("removeChannel on a primary", () => {
 
     const rows = playlistRows();
     expect(rows.find((r) => r.id === pcB)!.primaryChannelId).toBeNull();
-    expect(rows.find((r) => r.id === pcB)!.customName).toBeNull();
+    expect(rows.find((r) => r.id === pcB)!.customName).toBe("BBC One");
     expect(rows.find((r) => r.id === pcA)!.primaryChannelId).toBe(pcB);
     expect(rows.find((r) => r.id === pcA)!.customName).toBeNull();
 
     const out = await getPlaylistOutput("tok");
     expect(out!.channels.map((d) => d.displayName)).toEqual([
-      "Channel B",
-      "Channel B (Alt 1)",
-      "Channel B (Alt 2)",
+      "BBC One",
+      "BBC One (Alt 1)",
+      "BBC One (Alt 2)",
     ]);
   });
 

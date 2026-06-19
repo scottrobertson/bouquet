@@ -113,6 +113,8 @@ export type GroupControls = {
   onUngroupAlternate: () => void;
   canMoveUp: boolean;
   canMoveDown: boolean;
+  // Set on an alternate when moving up would make it the primary.
+  willPromote?: boolean;
   onMove: (dir: -1 | 1) => void;
   onDelete: () => void;
 };
@@ -542,16 +544,16 @@ function GroupMenu({
           Copy stream URL
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onProbe} disabled={probing}>
-          <Gauge className="size-4" />
-          {probing ? "Probing…" : "Probe quality"}
-        </DropdownMenuItem>
         {onProbeGroup ? (
           <DropdownMenuItem onClick={onProbeGroup}>
             <Gauge className="size-4" />
             Probe group
           </DropdownMenuItem>
         ) : null}
+        <DropdownMenuItem onClick={onProbe} disabled={probing}>
+          <Gauge className="size-4" />
+          {probing ? "Probing…" : "Probe"}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {group.isAlternate ? (
           <>
@@ -560,7 +562,7 @@ function GroupMenu({
               onClick={() => group.onMove(-1)}
             >
               <ArrowUp className="size-4" />
-              Move up
+              {group.willPromote ? "Make primary" : "Move up"}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!group.canMoveDown}

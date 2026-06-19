@@ -797,7 +797,10 @@ export function promoteAlternate(playlistId: number, channelId: number) {
   if (!alt || alt.primaryChannelId == null) return;
   const oldPrimaryId = alt.primaryChannelId;
   const oldPrimary = db
-    .select({ position: playlistChannels.position })
+    .select({
+      position: playlistChannels.position,
+      customName: playlistChannels.customName,
+    })
     .from(playlistChannels)
     .where(eq(playlistChannels.id, oldPrimaryId))
     .get();
@@ -814,14 +817,15 @@ export function promoteAlternate(playlistId: number, channelId: number) {
     .filter((id) => id !== channelId);
 
   db.transaction((tx) => {
-    // Promoted alternate becomes the primary: reverts to its own name (clear any
-    // custom name) and takes the group's list position.
+    // The user is just picking a different primary, not renaming the group, so
+    // the new primary keeps whatever custom name the old one had and takes its
+    // list position.
     tx.update(playlistChannels)
       .set({
         primaryChannelId: null,
         altPosition: 0,
         position: oldPrimary.position,
-        customName: null,
+        customName: oldPrimary.customName,
       })
       .where(eq(playlistChannels.id, channelId))
       .run();
