@@ -56,6 +56,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Sync errors now say what actually went wrong with the provider connection instead of just
+  "fetch failed". A failed request now reports the real cause, like "Connection failed
+  (ECONNRESET)" or "Request timed out after 30s", which makes provider problems much easier to
+  diagnose from the logs and the source's error.
+
 - A sync or probe that was running when the container restarted no longer leaves the source
   stuck "syncing"/"probing" forever. Those runs only live in memory, so on startup any source
   still marked in-progress is cleared to an error, which unsticks the UI and the "Probe all"

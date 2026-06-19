@@ -66,9 +66,24 @@ async function fetchWithTimeout(
       signal: controller.signal,
       redirect: "follow",
     });
+  } catch (err) {
+    throw new Error(describeFetchError(err, timeoutMs), { cause: err });
   } finally {
     clearTimeout(timer);
   }
+}
+
+// fetch() throws a bare "fetch failed" for every transport problem and hides the
+// real reason on err.cause. Pull it out so the sync log says what actually broke.
+function describeFetchError(err: unknown, timeoutMs: number): string {
+  if (err instanceof Error && err.name === "AbortError") {
+    return `Request timed out after ${timeoutMs / 1000}s`;
+  }
+  const cause = err instanceof Error ? (err.cause as any) : null;
+  const code = cause?.code;
+  if (code) return `Connection failed (${code})`;
+  if (cause?.message) return `Connection failed: ${cause.message}`;
+  return err instanceof Error ? err.message : "Request failed";
 }
 
 function playerApiUrl(creds: XtreamCreds, params: Record<string, string>): string {
