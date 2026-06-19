@@ -18,8 +18,9 @@ export type EditorChannel = {
   sourceCategoryEnabled: boolean;
   // The provider's direct stream URL, for the Play in VLC / copy actions.
   streamUrl: string;
-  // Latest ffprobe result for the underlying stream. Null status = never probed.
-  probeStatus: "ok" | "error" | "timeout" | null;
+  // Latest ffprobe result for the underlying stream. Null = never probed.
+  // "queued"/"probing" are live states shown while a probe is in flight.
+  probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
   probeWidth: number | null;
   probeHeight: number | null;
   probeFps: number | null;

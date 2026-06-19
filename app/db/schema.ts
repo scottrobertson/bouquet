@@ -115,7 +115,12 @@ export const sourceChannels = sqliteTable(
     // Stored here, not on playlist_channels, since a stream is shared across
     // playlists and we only probe it once.
     probedAt: integer("probed_at", { mode: "timestamp" }),
-    probeStatus: text("probe_status", { enum: ["ok", "error", "timeout"] }),
+    // "queued" and "probing" are live states the editor shows while a probe is
+    // in flight. The column is plain text (the enum is types only), so the new
+    // values need no migration.
+    probeStatus: text("probe_status", {
+      enum: ["queued", "probing", "ok", "error", "timeout"],
+    }),
     probeWidth: integer("probe_width"),
     probeHeight: integer("probe_height"),
     // Frame rate can be fractional, e.g. 29.97.

@@ -69,6 +69,14 @@ async function probeAndStore(
 ): Promise<boolean> {
   const hls = source.outputFormat === "m3u8";
   const url = buildStreamUrl(credsFor(source), ch.streamId, source.outputFormat);
+
+  // Flip the row to "probing" the moment we start, so the editor shows it as
+  // live instead of waiting on the whole run.
+  db.update(sourceChannels)
+    .set({ probeStatus: "probing" })
+    .where(eq(sourceChannels.id, ch.id))
+    .run();
+
   const r = await probeStream(url, source.probeTimeoutSeconds, { hls });
 
   let bitrate = r.bitrate;
@@ -119,6 +127,20 @@ async function probeChannelList(
     .set({ probeStatus: "probing", probeTotal: channels.length, probeDone: 0, probeError: null })
     .where(eq(sources.id, source.id))
     .run();
+
+  // Light the whole batch up as "queued" right away, so the editor shows every
+  // row waiting and they flip to "probing" then their result as the pool works.
+  if (channels.length > 0) {
+    db.update(sourceChannels)
+      .set({ probeStatus: "queued" })
+      .where(
+        inArray(
+          sourceChannels.id,
+          channels.map((c) => c.id),
+        ),
+      )
+      .run();
+  }
 
   console.log(
     `[probe] ${source.name}: probing ${channels.length} channels, concurrency ${source.probeConcurrency}`,

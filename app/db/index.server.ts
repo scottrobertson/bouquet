@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { env } from "~/lib/env.server";
 import * as schema from "./schema";
 
@@ -53,6 +53,12 @@ if (!globalForDb.__recovered) {
   db.update(schema.sources)
     .set({ probeStatus: "error", probeError: "Interrupted by a restart" })
     .where(eq(schema.sources.probeStatus, "probing"))
+    .run();
+  // Channels left mid-probe never finished, and their old result was already
+  // overwritten when they were queued, so drop them back to never-probed.
+  db.update(schema.sourceChannels)
+    .set({ probeStatus: null })
+    .where(inArray(schema.sourceChannels.probeStatus, ["queued", "probing"]))
     .run();
   globalForDb.__recovered = true;
 }

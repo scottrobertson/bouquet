@@ -9,6 +9,7 @@ import {
   EyeOff,
   Gauge,
   GripVertical,
+  Loader2,
   MoreVertical,
   Pencil,
   Play,
@@ -40,10 +41,33 @@ import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import type { EditorChannel } from "./types";
 
-/** Stream quality below the provider/category line. Shows the probe result when
-    we have one, a quiet note when the last probe failed, and nothing when the
-    channel was never probed (so unprobed lists stay clean). */
-function QualityLine({ channel }: { channel: EditorChannel }) {
+/** Stream quality below the provider/category line. Shows a live waiting/probing
+    state while a probe is in flight, the result when we have one, a quiet note
+    when the last probe failed, and nothing when the channel was never probed (so
+    unprobed lists stay clean). `probing` is the row's own in-flight probe, which
+    the server status doesn't reflect until the next poll. */
+function QualityLine({
+  channel,
+  probing,
+}: {
+  channel: EditorChannel;
+  probing?: boolean;
+}) {
+  if (probing || channel.probeStatus === "probing") {
+    return (
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Probing…
+      </div>
+    );
+  }
+
+  if (channel.probeStatus === "queued") {
+    return (
+      <div className="text-[11px] text-muted-foreground/60">Queued…</div>
+    );
+  }
+
   if (channel.probeStatus === "error" || channel.probeStatus === "timeout") {
     return (
       <div className="text-[11px] text-muted-foreground/60">
@@ -290,6 +314,9 @@ export function ChannelRowBody({
   const dimmed = !enabled || (isAlternate && group?.primaryEnabled === false);
   const renamed =
     !isAlternate && !!channel.customName && channel.customName !== baseName;
+  // This row's own probe is in flight. The server status only catches up on the
+  // next poll, so show the spinner straight away.
+  const probing = fetcher.formData?.get("intent") === "probeChannel";
 
   return (
     <>
@@ -370,7 +397,7 @@ export function ChannelRowBody({
             {channel.sourceCategoryName ?? "Uncategorised"}
           </span>
         </div>
-        <QualityLine channel={channel} />
+        <QualityLine channel={channel} probing={probing} />
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -439,7 +466,7 @@ export function ChannelRowBody({
                 { method: "post" },
               )
             }
-            probing={fetcher.formData?.get("intent") === "probeChannel"}
+            probing={probing}
             onProbe={() =>
               fetcher.submit(
                 { intent: "probeChannel", sourceChannelId: channel.sourceChannelId },

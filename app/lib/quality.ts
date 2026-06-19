@@ -1,5 +1,5 @@
 export interface ProbeQuality {
-  probeStatus: "ok" | "error" | "timeout" | null;
+  probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
   probeWidth: number | null;
   probeHeight: number | null;
   probeFps: number | null;

@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Probing now shows live in the playlist editor instead of going quiet until it finishes.
+  Probe a single channel and its row shows a spinner straight away. Probe a group or the whole
+  playlist and every channel flips to "Queued…" at once, then to "Probing…" as each stream is
+  actually checked, then to its result. The header shows a running count of how many are left,
+  and the editor polls a bit faster so results land sooner.
+
 - Upgraded React Router from 7 to 8, plus the rest of the npm dependencies to their latest
   versions. The v8 future flags were already on, so this was mostly a version bump. The only
   code change was renaming the `meta` function's `data` argument to `loaderData`.

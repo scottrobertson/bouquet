@@ -390,9 +390,14 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
     if (!anyProbing) return;
     const t = setInterval(() => {
       if (revalidator.state === "idle") revalidator.revalidate();
-    }, 2500);
+    }, 1500);
     return () => clearInterval(t);
   }, [anyProbing, revalidator]);
+
+  // Channels waiting on or mid-probe right now, for the live header count.
+  const probingCount = channels.filter(
+    (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
+  ).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -428,6 +433,11 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
             </PopoverContent>
           </Popover>
+          {probingCount > 0 ? (
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              Probing {probingCount}…
+            </span>
+          ) : null}
           <ProbeAllButton playlistId={playlist.id} anyProbing={anyProbing} />
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/guide`}>
