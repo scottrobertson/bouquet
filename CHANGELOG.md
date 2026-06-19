@@ -4,7 +4,19 @@ All notable changes to this project are recorded here. Newest first.
 
 ## [Unreleased]
 
+### Added
+
+- Categories now have a ⋯ menu in their header with a "Probe category" option that probes just
+  that category's channels. Delete moved into the same menu. Auto categories only show delete,
+  since they have no channels of their own to probe.
+
 ### Changed
+
+- "Probe all" and "Probe group" now probe channels in the order they appear in the playlist
+  instead of jumping around. Within each source the probe works down the list. Channels from
+  different sources still run in parallel, so a multi-source playlist isn't strictly top to
+  bottom, but each source follows the editor's order.
+
 
 - Sync and probe progress now updates instantly instead of on a timer. The sources list, a
   source's page, and the playlist editor open a live connection while a sync or probe is running

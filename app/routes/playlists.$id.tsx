@@ -56,6 +56,7 @@ import {
 import { invalidate } from "~/services/output/cache.server";
 import {
   probeSingleChannel,
+  startProbeCategory,
   startProbeGroup,
   startProbePlaylist,
 } from "~/services/probe/probe.server";
@@ -262,6 +263,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       // Probe every channel in this playlist, across all its sources, ignoring
       // the source probe setting and the available/category filters.
       const queued = startProbePlaylist(playlistId);
+      return data({ ok: true, intent, queued });
+    }
+
+    case "probeCategory": {
+      // Probe every channel in one category, same rules as probe all.
+      const queued = startProbeCategory(playlistId, Number(form.get("categoryId")));
       return data({ ok: true, intent, queued });
     }
 

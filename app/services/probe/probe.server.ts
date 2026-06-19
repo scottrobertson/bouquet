@@ -207,11 +207,16 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
   await probeAndStore(source, ch, source.probeMeasureBitrate);
 }
 
-/** Every channel placed in a playlist (enabled), with its source, ignoring the
-    available/category filters so a manual "probe all" covers everything the
-    user sees in the editor. Ordered the same way the editor lists them so the
-    probe marches down the list instead of jumping around. */
-function playlistProbeTargets(playlistId: number) {
+/** Enabled channels placed in a playlist (optionally one category), with their
+    source, ignoring the available/category filters so a manual probe covers
+    everything the user sees in the editor. Ordered the same way the editor lists
+    them so the probe marches down the list instead of jumping around. */
+function playlistProbeTargets(playlistId: number, categoryId?: number) {
+  const filters = [
+    eq(playlistChannels.playlistId, playlistId),
+    eq(playlistChannels.enabled, true),
+  ];
+  if (categoryId != null) filters.push(eq(playlistChannels.categoryId, categoryId));
   return db
     .selectDistinct({
       sourceId: sourceChannels.sourceId,
@@ -232,12 +237,7 @@ function playlistProbeTargets(playlistId: number) {
       playlistCategories,
       eq(playlistChannels.categoryId, playlistCategories.id),
     )
-    .where(
-      and(
-        eq(playlistChannels.playlistId, playlistId),
-        eq(playlistChannels.enabled, true),
-      ),
-    )
+    .where(and(...filters))
     .orderBy(
       asc(playlistCategories.position),
       asc(playlistCategories.id),
@@ -247,11 +247,9 @@ function playlistProbeTargets(playlistId: number) {
     .all();
 }
 
-/** Kick a background probe of every channel in a playlist, grouped by source so
-    each runs at its own concurrency. Ignores the source's probe setting and the
-    available/category filters. Returns how many channels were queued. */
-export function startProbePlaylist(playlistId: number): number {
-  const targets = playlistProbeTargets(playlistId);
+/** Fan a set of probe targets out across their sources, so each source runs at
+    its own concurrency. Keeps each source's channels in the order given. */
+function startProbeTargets(targets: (ProbeTarget & { sourceId: number })[]): number {
   const bySource = new Map<number, ProbeTarget[]>();
   for (const t of targets) {
     const list = bySource.get(t.sourceId) ?? [];
@@ -265,6 +263,19 @@ export function startProbePlaylist(playlistId: number): number {
     void probeChannelList(source, channels).catch((err) => markError(sourceId, err));
   }
   return targets.length;
+}
+
+/** Kick a background probe of every channel in a playlist, grouped by source so
+    each runs at its own concurrency. Ignores the source's probe setting and the
+    available/category filters. Returns how many channels were queued. */
+export function startProbePlaylist(playlistId: number): number {
+  return startProbeTargets(playlistProbeTargets(playlistId));
+}
+
+/** Kick a background probe of every channel in one playlist category. Same rules
+    as a full playlist probe, just scoped to the category. */
+export function startProbeCategory(playlistId: number, categoryId: number): number {
+  return startProbeTargets(playlistProbeTargets(playlistId, categoryId));
 }
 
 /** Kick a background probe of a specific set of source channels, grouped by

@@ -8,7 +8,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronDown,
   ChevronRight,
+  Gauge,
   GripVertical,
+  MoreVertical,
   RefreshCw,
   Trash2,
   Tv,
@@ -26,6 +28,13 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { AlternateRow, PrimaryRow } from "./channel-row";
@@ -129,7 +138,7 @@ export function CategoryGroup({
           </span>
         ) : null}
         <div className="ml-auto">
-          <DeleteCategory category={category} count={count} />
+          <CategoryMenu category={category} count={count} />
         </div>
       </div>
 
@@ -378,7 +387,9 @@ function CategoryName({ category }: { category: EditorCategory }) {
   );
 }
 
-function DeleteCategory({
+/** The category header ⋯ menu: probe the whole category (not on auto categories,
+    which have no playlist channels) and delete it. */
+function CategoryMenu({
   category,
   count,
 }: {
@@ -387,18 +398,49 @@ function DeleteCategory({
 }) {
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
+  const isAuto = category.auto != null;
+  const probing = fetcher.formData?.get("intent") === "probeCategory";
 
   return (
     <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-7 text-muted-foreground hover:text-destructive"
-        onClick={() => setOpen(true)}
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            <MoreVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {!isAuto ? (
+            <>
+              <DropdownMenuItem
+                disabled={probing || count === 0}
+                onClick={() =>
+                  fetcher.submit(
+                    { intent: "probeCategory", categoryId: category.id },
+                    { method: "post" },
+                  )
+                }
+              >
+                <Gauge className="size-4" />
+                {probing ? "Probing…" : "Probe category"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+          <DropdownMenuItem
+            onClick={() => setOpen(true)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
