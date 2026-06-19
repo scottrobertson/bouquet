@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
+  playlistCategories,
   playlistChannels,
   sourceCategories,
   sourceChannels,
@@ -208,7 +209,8 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
 
 /** Every channel placed in a playlist (enabled), with its source, ignoring the
     available/category filters so a manual "probe all" covers everything the
-    user sees in the editor. */
+    user sees in the editor. Ordered the same way the editor lists them so the
+    probe marches down the list instead of jumping around. */
 function playlistProbeTargets(playlistId: number) {
   return db
     .selectDistinct({
@@ -216,17 +218,31 @@ function playlistProbeTargets(playlistId: number) {
       id: sourceChannels.id,
       streamId: sourceChannels.streamId,
       name: sourceChannels.name,
+      categoryPosition: playlistCategories.position,
+      categoryId: playlistCategories.id,
+      channelPosition: playlistChannels.position,
+      channelId: playlistChannels.id,
     })
     .from(playlistChannels)
     .innerJoin(
       sourceChannels,
       eq(playlistChannels.sourceChannelId, sourceChannels.id),
     )
+    .innerJoin(
+      playlistCategories,
+      eq(playlistChannels.categoryId, playlistCategories.id),
+    )
     .where(
       and(
         eq(playlistChannels.playlistId, playlistId),
         eq(playlistChannels.enabled, true),
       ),
+    )
+    .orderBy(
+      asc(playlistCategories.position),
+      asc(playlistCategories.id),
+      asc(playlistChannels.position),
+      asc(playlistChannels.id),
     )
     .all();
 }
@@ -267,6 +283,11 @@ export function startProbeChannels(sourceChannelIds: number[]): number {
     .where(inArray(sourceChannels.id, sourceChannelIds))
     .all();
 
+  // inArray ignores the order of the ids, so put the rows back into the order
+  // they were asked for, then the per-source batches probe in that order.
+  const order = new Map(sourceChannelIds.map((id, i) => [id, i]));
+  rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
   const bySource = new Map<number, ProbeTarget[]>();
   for (const r of rows) {
     const list = bySource.get(r.sourceId) ?? [];
@@ -300,6 +321,9 @@ export function startProbeGroup(
         ),
       ),
     )
+    // Primary first (its primaryChannelId is null, which sorts first), then the
+    // alternates in their own order, matching how the group reads in the editor.
+    .orderBy(asc(playlistChannels.primaryChannelId), asc(playlistChannels.altPosition), asc(playlistChannels.id))
     .all()
     .map((r) => r.scid);
   return startProbeChannels(ids);
