@@ -553,7 +553,8 @@ function GroupMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+          // Icon stays small but the tap target stretches to ~44px so it's easy to hit on mobile.
+          className="relative size-7 cursor-pointer text-muted-foreground before:absolute before:-inset-2 before:content-[''] hover:text-foreground"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <MoreVertical className="size-4" />
