@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Renaming channels on mobile no longer zooms the page. The app now disables pinch and
+  double-tap zoom so it feels like a native app, and the rename field uses a bigger, easier to
+  tap text box on phones. Desktop is unchanged.
+
 - Making a different channel the primary of an alternate group now keeps the group's custom
   name. Before, promoting an alternate reset the name back to the channel's own. From the
   editor it's just picking a different primary, so the group's name and details stay put. The

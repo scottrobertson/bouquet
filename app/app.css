@@ -93,6 +93,8 @@ body {
   font-size: 13px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+  /* No double-tap zoom, and no 300ms tap delay. Makes touch feel native. */
+  touch-action: manipulation;
 }
 
 * {

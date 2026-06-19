@@ -666,7 +666,7 @@ function NameField({
             setEditing(false);
           }
         }}
-        className="-mx-1.5 min-w-0 flex-1 rounded-sm bg-white/[0.06] px-1.5 text-[13px] leading-[1.4] outline-none ring-1 ring-ring/60"
+        className="-mx-1.5 min-w-0 flex-1 rounded-sm bg-white/[0.06] px-1.5 text-base leading-[1.4] outline-none ring-1 ring-ring/60 md:text-[13px]"
       />
     );
   }
