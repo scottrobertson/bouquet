@@ -101,6 +101,12 @@ body {
   border-color: var(--border);
 }
 
+/* Radix hands focus back to a menu trigger when the menu closes, so the button's
+   focus ring flashes on after a plain click. Drop the ring on menu triggers. */
+[data-slot="dropdown-menu-trigger"]:focus-visible {
+  box-shadow: none;
+}
+
 /* tighter heading tracking per guide */
 h1, h2, h3 {
   letter-spacing: -0.02em;
