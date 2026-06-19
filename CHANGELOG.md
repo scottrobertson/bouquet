@@ -47,6 +47,9 @@ All notable changes to this project are recorded here. Newest first.
   instead of jumping around. Within each source the probe works down the list. Channels from
   different sources still run in parallel, so a multi-source playlist isn't strictly top to
   bottom, but each source follows the editor's order.
+- On mobile the playlist header actions (Output URLs, Probe, Guide, Settings) were icon-only, so
+  you couldn't tell what they did. They now collapse into a single ⋯ menu with labelled rows.
+  Desktop still shows each as its own labelled button.
 
 
 - Sync and probe progress now updates instantly instead of on a timer. The sources list, a

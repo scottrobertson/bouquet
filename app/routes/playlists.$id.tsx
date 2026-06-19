@@ -5,10 +5,11 @@ import {
   Gauge,
   Link2,
   Loader2,
+  MoreVertical,
   Settings,
   Tv,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, data, useFetcher, useFetchers } from "react-router";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
@@ -18,7 +19,14 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { z } from "zod";
+import { cn } from "~/lib/utils";
 import { CopyField } from "~/components/copy-field";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { externalOrigin } from "~/lib/url.server";
 import { EditorBoard } from "~/components/playlist/editor-board";
 import { Button } from "~/components/ui/button";
@@ -477,6 +485,11 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
     (c) => c.probeStatus === "error" || c.probeStatus === "timeout",
   ).length;
 
+  // One probe fetcher shared by the desktop button and the mobile menu, so a
+  // probe started from either fires a single toast.
+  const probing = anyProbing || probingCount > 0;
+  const { submitting, probe } = useProbeAll();
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 md:px-6">
@@ -492,44 +505,57 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="flex items-center gap-3">
           <SaveStatus />
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Link2 className="size-4" />
-                <span className="hidden sm:inline">Output URLs</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-              className="w-[32rem] max-w-[calc(100vw-2rem)] space-y-3"
-            >
-              <p className="text-[13px] text-muted-foreground">
-                Point your IPTV player at these.
-              </p>
-              <CopyField label="M3U" url={output.m3uUrl} />
-              <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
-            </PopoverContent>
-          </Popover>
-          <ProbeAllButton
+          {/* Desktop: each action is its own labelled button. */}
+          <div className="hidden items-center gap-3 sm:flex">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Link2 className="size-4" />
+                  Output URLs
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                className="w-[32rem] max-w-[calc(100vw-2rem)] space-y-3"
+              >
+                <OutputUrls output={output} />
+              </PopoverContent>
+            </Popover>
+            <ProbeAllButton
+              probe={probe}
+              submitting={submitting}
+              probing={probing}
+              probingCount={probingCount}
+              missingCount={missingCount}
+              failedCount={failedCount}
+            />
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/playlists/${playlist.id}/guide`}>
+                <Tv className="size-4" />
+                Guide
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/playlists/${playlist.id}/settings`}>
+                <Settings className="size-4" />
+                Settings
+              </Link>
+            </Button>
+          </div>
+          {/* Mobile: the actions are icon-only and hard to read, so collapse
+              them into one labelled menu. */}
+          <HeaderMenu
+            className="sm:hidden"
             playlistId={playlist.id}
-            probing={anyProbing || probingCount > 0}
+            output={output}
+            probe={probe}
+            submitting={submitting}
+            probing={probing}
             probingCount={probingCount}
             missingCount={missingCount}
             failedCount={failedCount}
           />
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/playlists/${playlist.id}/guide`}>
-              <Tv className="size-4" />
-              <span className="hidden sm:inline">Guide</span>
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/playlists/${playlist.id}/settings`}>
-              <Settings className="size-4" />
-              <span className="hidden sm:inline">Settings</span>
-            </Link>
-          </Button>
         </div>
       </div>
 
@@ -545,24 +571,15 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// Kicks a probe of every channel in the playlist. Runs in the background, so it
-// just fires and the rows fill in as results land (the editor polls). The
-// dropdown narrows the probe to only the channels that need it, or clears
-// results. While a probe is running the button shows live progress and the
-// dropdown is hidden, since there's nothing to start mid-probe.
-function ProbeAllButton({
-  playlistId,
-  probing,
-  probingCount,
-  missingCount,
-  failedCount,
-}: {
-  playlistId: number;
-  probing: boolean;
-  probingCount: number;
-  missingCount: number;
-  failedCount: number;
-}) {
+type ProbeIntent =
+  | "probeAll"
+  | "probeMissing"
+  | "probeFailed"
+  | "clearProbes";
+
+// Owns the probe fetcher so the desktop button and the mobile menu can both
+// start a probe through it and only one toast fires.
+function useProbeAll() {
   const fetcher = useFetcher<{ queued?: number; cleared?: number }>();
   const handled = useRef<typeof fetcher.data>(undefined);
   useEffect(() => {
@@ -580,17 +597,41 @@ function ProbeAllButton({
     });
   }, [fetcher.state, fetcher.data]);
 
-  const busy = fetcher.state !== "idle" || probing;
-  const probe = (intent: string) => fetcher.submit({ intent }, { method: "post" });
+  const probe = (intent: ProbeIntent) =>
+    fetcher.submit({ intent }, { method: "post" });
+  return { submitting: fetcher.state !== "idle", probe };
+}
+
+type ProbeProps = {
+  probe: (intent: ProbeIntent) => void;
+  submitting: boolean;
+  probing: boolean;
+  probingCount: number;
+  missingCount: number;
+  failedCount: number;
+};
+
+// Kicks a probe of every channel in the playlist. Runs in the background, so it
+// just fires and the rows fill in as results land (the editor polls). The
+// dropdown narrows the probe to only the channels that need it, or clears
+// results. While a probe is running the button shows live progress and the
+// dropdown is hidden, since there's nothing to start mid-probe.
+function ProbeAllButton({
+  probe,
+  submitting,
+  probing,
+  probingCount,
+  missingCount,
+  failedCount,
+}: ProbeProps) {
+  const busy = submitting || probing;
 
   // Mid-probe: a single button showing progress, no dropdown.
   if (probing) {
     return (
       <Button size="sm" variant="outline" disabled>
         <Gauge className="size-4 animate-pulse" />
-        <span className="hidden sm:inline">
-          {probingCount > 0 ? `Probing ${probingCount}…` : "Probing…"}
-        </span>
+        {probingCount > 0 ? `Probing ${probingCount}…` : "Probing…"}
       </Button>
     );
   }
@@ -607,7 +648,7 @@ function ProbeAllButton({
             onClick={() => probe("probeAll")}
           >
             <Gauge className="size-4" />
-            <span className="hidden sm:inline">Probe all</span>
+            Probe all
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -649,6 +690,108 @@ function ProbeAllButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+// The output URLs an IPTV player points at. Shared by the desktop popover and
+// the mobile dialog.
+function OutputUrls({ output }: { output: { m3uUrl: string; epgUrl: string } }) {
+  return (
+    <>
+      <p className="text-[13px] text-muted-foreground">
+        Point your IPTV player at these.
+      </p>
+      <CopyField label="M3U" url={output.m3uUrl} />
+      <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
+    </>
+  );
+}
+
+// On mobile the header buttons are icon-only and hard to read, so every action
+// lives here as a labelled row instead.
+function HeaderMenu({
+  className,
+  playlistId,
+  output,
+  probe,
+  submitting,
+  probing,
+  probingCount,
+  missingCount,
+  failedCount,
+}: ProbeProps & {
+  className?: string;
+  playlistId: number;
+  output: { m3uUrl: string; epgUrl: string };
+}) {
+  const [urlsOpen, setUrlsOpen] = useState(false);
+  const busy = submitting || probing;
+
+  return (
+    <div className={className}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon" variant="outline" aria-label="Playlist actions">
+            <MoreVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setUrlsOpen(true)}>
+            <Link2 className="size-4" />
+            Output URLs
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to={`/playlists/${playlistId}/guide`}>
+              <Tv className="size-4" />
+              Guide
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to={`/playlists/${playlistId}/settings`}>
+              <Settings className="size-4" />
+              Settings
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={busy} onClick={() => probe("probeAll")}>
+            <Gauge className={cn("size-4", probing && "animate-pulse")} />
+            {probing
+              ? probingCount > 0
+                ? `Probing ${probingCount}…`
+                : "Probing…"
+              : "Probe all"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={busy || missingCount === 0}
+            onClick={() => probe("probeMissing")}
+          >
+            Probe missing ({missingCount})
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={busy || failedCount === 0}
+            onClick={() => probe("probeFailed")}
+          >
+            Probe failed ({failedCount})
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={busy}
+            onClick={() => probe("clearProbes")}
+          >
+            Clear probes
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={urlsOpen} onOpenChange={setUrlsOpen}>
+        <DialogContent className="space-y-3">
+          <DialogHeader>
+            <DialogTitle>Output URLs</DialogTitle>
+          </DialogHeader>
+          <OutputUrls output={output} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
