@@ -33,7 +33,13 @@ output M3U contains your provider's own direct stream URLs.
 - TV guide per playlist that you can scroll back and forward through
 - Catchup support so players can replay past programmes
 - Play any channel or past programme straight in VLC, or copy its URL
-- Optional stream probing to show resolution, frame rate, codecs, and bitrate
+
+**Probing**
+
+- Probe streams for resolution, frame rate, codecs, and bitrate
+- Scheduled per source, or probe on demand
+- Probe a whole playlist, just the missing or failed ones, a category, or one group
+- Optional bitrate measuring for a real figure (off by default, it's slower)
 
 **Output**
 
