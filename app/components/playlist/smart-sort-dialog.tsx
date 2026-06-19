@@ -134,7 +134,7 @@ function StatusBadge({ factors }: { factors: SmartSortFactors }) {
 function PreviewRow({ stream, index }: { stream: PreviewStream; index: number }) {
   const meta = qualityMeta(stream);
   const moved = index - stream.currentPosition;
-  const becomesPrimary = index === 0 && !stream.currentlyPrimary;
+  const wasPrimary = stream.currentlyPrimary && index !== 0;
   const f = stream.factors;
   const bitrate = mbps(f.rawBitrateKbps);
 
@@ -152,9 +152,9 @@ function PreviewRow({ stream, index }: { stream: PreviewStream; index: number })
               Primary
             </Badge>
           ) : null}
-          {becomesPrimary ? (
-            <Badge className="border-transparent bg-primary/10 text-primary">
-              New
+          {wasPrimary ? (
+            <Badge className="border-transparent bg-muted text-muted-foreground">
+              Was primary
             </Badge>
           ) : null}
           <StatusBadge factors={f} />
