@@ -130,6 +130,7 @@ export function PrimaryRow({
   selected,
   onSelect,
   group,
+  alternates,
   dragHandleProps,
   insertAbove,
 }: {
@@ -138,6 +139,7 @@ export function PrimaryRow({
   selected: boolean;
   onSelect: (id: number, shiftKey: boolean) => void;
   group?: GroupControls;
+  alternates?: EditorChannel[];
   dragHandleProps?: Record<string, unknown>;
   insertAbove?: boolean;
 }) {
@@ -165,7 +167,12 @@ export function PrimaryRow({
       >
         <Checkbox checked={selected} className="pointer-events-none" />
       </span>
-      <ChannelRowBody channel={channel} playlistId={playlistId} group={group} />
+      <ChannelRowBody
+        channel={channel}
+        playlistId={playlistId}
+        group={group}
+        alternates={alternates}
+      />
     </div>
   );
 }
@@ -291,11 +298,14 @@ export function ChannelRowBody({
   playlistId,
   overlay,
   group,
+  alternates,
 }: {
   channel: EditorChannel;
   playlistId?: number;
   overlay?: boolean;
   group?: GroupControls;
+  // The primary's alternates, passed through to the EPG picker.
+  alternates?: EditorChannel[];
 }) {
   const fetcher = useFetcher();
   const [smartSortOpen, setSmartSortOpen] = useState(false);
@@ -453,7 +463,12 @@ export function ChannelRowBody({
             onPointerDown={(e) => e.stopPropagation()}
             className="hidden sm:inline-flex"
           >
-            <EpgPicker channel={channel} playlistId={playlistId} fetcher={fetcher} />
+            <EpgPicker
+              channel={channel}
+              playlistId={playlistId}
+              fetcher={fetcher}
+              alternates={alternates}
+            />
           </span>
         )}
         {!overlay && group ? (

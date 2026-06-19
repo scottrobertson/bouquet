@@ -232,6 +232,7 @@ function PrimaryGroup({
         playlistId={playlistId}
         selected={selectedChannels.has(primary.id)}
         onSelect={onSelectChannel}
+        alternates={alternates}
         dragHandleProps={{ ...attributes, ...listeners }}
         insertAbove={insertAbove}
         group={{

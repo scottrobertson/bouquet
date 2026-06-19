@@ -6,6 +6,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The EPG picker now lists the alt group's guides at the top under "Alternatives" when you're
+  picking a guide for an alt group primary. Each alternate is the same channel from another
+  provider, so its own source EPG is usually the guide you want, and now it's one click away
+  instead of buried in the full list. The picker also opens as a centred dialog now rather than
+  a cramped popover, and the rest of the channels are a single list with the source shown on
+  each row instead of grouped under a source heading, so you don't lose track of the source
+  once you scroll.
 - Alt groups now have a "Smart sort" option in their ⋯ menu that reorders the group best-first from
   probe data and promotes the best stream to primary. It ranks by resolution then frame rate then
   bitrate, with bitrate compared per codec so HEVC isn't punished for needing fewer bits, audio

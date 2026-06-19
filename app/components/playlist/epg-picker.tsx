@@ -10,16 +10,19 @@ import {
   CommandList,
 } from "~/components/ui/command";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "~/components/ui/popover";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/ui/dialog";
 import { cn } from "~/lib/utils";
 import type { EditorChannel, EpgChannel } from "./types";
 
 // EPG lists can be thousands of entries, so we filter ourselves and only render
-// a capped slice. Rendering them all bogs down the popover.
-const RENDER_LIMIT = 80;
+// a capped slice. Rendering them all bogs down the list.
+const RENDER_LIMIT = 100;
 
 /** Per-channel EPG picker. Lists EPG channels from every source, plus a reset to
     the channel's own source EPG. The list is fetched lazily on open, then saved
@@ -28,10 +31,14 @@ export function EpgPicker({
   channel,
   playlistId,
   fetcher,
+  alternates,
 }: {
   channel: EditorChannel;
   playlistId: number;
   fetcher: ReturnType<typeof useFetcher>;
+  // The primary's alternates, when this channel is an alt group primary. Their
+  // own source EPGs are surfaced at the top as likely guides.
+  alternates?: EditorChannel[];
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -46,15 +53,15 @@ export function EpgPicker({
   const epgChannels = epgFetcher.data?.epgChannels ?? [];
   const loading = epgFetcher.state === "loading";
 
+  const matchesNeedle = (e: EpgChannel, needle: string) =>
+    (e.displayName ?? "").toLowerCase().includes(needle) ||
+    e.channelId.toLowerCase().includes(needle) ||
+    e.sourceName.toLowerCase().includes(needle);
+
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return epgChannels;
-    return epgChannels.filter(
-      (e) =>
-        (e.displayName ?? "").toLowerCase().includes(needle) ||
-        e.channelId.toLowerCase().includes(needle) ||
-        e.sourceName.toLowerCase().includes(needle),
-    );
+    return epgChannels.filter((e) => matchesNeedle(e, needle));
   }, [epgChannels, query]);
 
   const displayName = channel.customName ?? channel.sourceName;
@@ -74,17 +81,44 @@ export function EpgPicker({
         ) ?? null)
       : null;
 
-  const shown = matches.slice(0, RENDER_LIMIT);
-  const grouped = useMemo(() => {
-    const map = new Map<string, EpgChannel[]>();
-    for (const epg of shown) {
-      if (epg.id === selectedEpg?.id) continue;
-      const list = map.get(epg.sourceName) ?? [];
-      list.push(epg);
-      map.set(epg.sourceName, list);
+  // EPG channels belonging to this group's alternates. Each alternate is the
+  // same channel from another provider, so its own source EPG is a likely guide
+  // for the primary. We pin these at the top so they're one click away. Dedupe
+  // alternates that share an EPG; the active one is marked below.
+  const altEpg = useMemo(() => {
+    if (!alternates?.length) return [];
+    const seen = new Set<number>();
+    const out: EpgChannel[] = [];
+    for (const alt of alternates) {
+      if (!alt.sourceEpgChannelId) continue;
+      const match = epgChannels.find(
+        (e) =>
+          e.sourceId === alt.channelSourceId &&
+          e.channelId === alt.sourceEpgChannelId,
+      );
+      if (!match || seen.has(match.id)) continue;
+      seen.add(match.id);
+      out.push(match);
     }
-    return Array.from(map.entries());
-  }, [shown, selectedEpg]);
+    return out;
+  }, [alternates, epgChannels]);
+
+  const altEpgShown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return altEpg;
+    return altEpg.filter((e) => matchesNeedle(e, needle));
+  }, [altEpg, query]);
+
+  const altEpgIds = useMemo(() => new Set(altEpg.map((e) => e.id)), [altEpg]);
+
+  const shown = matches.slice(0, RENDER_LIMIT);
+  // A flat list rather than grouped under a source heading: once you scroll the
+  // heading is gone, so each row carries its own source instead.
+  const others = useMemo(
+    () =>
+      shown.filter((e) => e.id !== selectedEpg?.id && !altEpgIds.has(e.id)),
+    [shown, selectedEpg, altEpgIds],
+  );
 
   function save(epgSourceId: number | null, epgChannelId: string | null) {
     fetcher.submit(
@@ -100,14 +134,14 @@ export function EpgPicker({
   }
 
   return (
-    <Popover
+    <Dialog
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
         if (!o) setQuery("");
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
@@ -131,20 +165,25 @@ export function EpgPicker({
             )}
           />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="end">
+      </DialogTrigger>
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[35rem]">
+        <DialogHeader className="gap-0.5 border-b border-border px-4 py-3 pr-10 text-left">
+          <p className="text-[11px] font-normal text-muted-foreground">EPG for</p>
+          <DialogTitle className="truncate text-sm font-medium">
+            {displayName}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Choose which EPG channel provides the guide for {displayName}.
+          </DialogDescription>
+        </DialogHeader>
         {/* We do our own filtering and capping, so cmdk's filter is off. */}
-        <Command shouldFilter={false}>
-          <div className="border-b border-border px-3 py-2">
-            <p className="text-[11px] text-muted-foreground">EPG for</p>
-            <p className="truncate text-sm font-medium">{displayName}</p>
-          </div>
+        <Command shouldFilter={false} className="rounded-none">
           <CommandInput
             placeholder="Search EPG channels..."
             value={query}
             onValueChange={setQuery}
           />
-          <CommandList>
+          <CommandList className="max-h-[60vh]">
             {selectedEpg ? (
               <CommandGroup heading="Selected">
                 <CommandItem
@@ -162,6 +201,36 @@ export function EpgPicker({
                   </div>
                   <span className="text-xs text-primary">Active</span>
                 </CommandItem>
+              </CommandGroup>
+            ) : null}
+            {altEpgShown.length > 0 ? (
+              <CommandGroup heading="Alternatives">
+                {altEpgShown.map((epg) => {
+                  const selected =
+                    !isDefault &&
+                    channel.epgSourceId === epg.sourceId &&
+                    channel.epgChannelId === epg.channelId;
+                  return (
+                    <CommandItem
+                      key={`alt-${epg.id}`}
+                      value={`alt-epg-${epg.id}`}
+                      onSelect={() => save(epg.sourceId, epg.channelId)}
+                      className={cn(selected && "bg-accent")}
+                    >
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">
+                          {epg.displayName ?? epg.channelId}
+                        </span>
+                        <span className="truncate font-mono text-[11px] text-muted-foreground">
+                          {epg.sourceName} · {epg.channelId}
+                        </span>
+                      </div>
+                      {selected ? (
+                        <span className="text-xs text-primary">Active</span>
+                      ) : null}
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             ) : null}
             <CommandGroup heading="Default">
@@ -187,36 +256,34 @@ export function EpgPicker({
                 No EPG channels found.
               </div>
             ) : (
-              grouped.map(([sourceName, list]) => (
-                <CommandGroup key={sourceName} heading={sourceName}>
-                  {list.map((epg) => {
-                    const selected =
-                      !isDefault &&
-                      channel.epgSourceId === epg.sourceId &&
-                      channel.epgChannelId === epg.channelId;
-                    return (
-                      <CommandItem
-                        key={epg.id}
-                        value={`epg-${epg.id}`}
-                        onSelect={() => save(epg.sourceId, epg.channelId)}
-                        className={cn(selected && "bg-accent")}
-                      >
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">
-                            {epg.displayName ?? epg.channelId}
-                          </span>
-                          <span className="truncate font-mono text-[11px] text-muted-foreground">
-                            {epg.channelId}
-                          </span>
-                        </div>
-                        {selected ? (
-                          <span className="text-xs text-primary">Active</span>
-                        ) : null}
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              ))
+              <CommandGroup heading="All channels">
+                {others.map((epg) => {
+                  const selected =
+                    !isDefault &&
+                    channel.epgSourceId === epg.sourceId &&
+                    channel.epgChannelId === epg.channelId;
+                  return (
+                    <CommandItem
+                      key={epg.id}
+                      value={`epg-${epg.id}`}
+                      onSelect={() => save(epg.sourceId, epg.channelId)}
+                      className={cn(selected && "bg-accent")}
+                    >
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">
+                          {epg.displayName ?? epg.channelId}
+                        </span>
+                        <span className="truncate font-mono text-[11px] text-muted-foreground">
+                          {epg.sourceName} · {epg.channelId}
+                        </span>
+                      </div>
+                      {selected ? (
+                        <span className="text-xs text-primary">Active</span>
+                      ) : null}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
             )}
             {matches.length > shown.length ? (
               <div className="px-3 py-2 text-center text-[11px] text-muted-foreground">
@@ -225,7 +292,7 @@ export function EpgPicker({
             ) : null}
           </CommandList>
         </Command>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
