@@ -210,13 +210,23 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
 /** Enabled channels placed in a playlist (optionally one category), with their
     source, ignoring the available/category filters so a manual probe covers
     everything the user sees in the editor. Ordered the same way the editor lists
-    them so the probe marches down the list instead of jumping around. */
-function playlistProbeTargets(playlistId: number, categoryId?: number) {
+    them so the probe marches down the list instead of jumping around.
+    `only` narrows to channels never probed ("missing") or whose last probe
+    failed ("failed"). */
+function playlistProbeTargets(
+  playlistId: number,
+  opts: { categoryId?: number; only?: "missing" | "failed" } = {},
+) {
+  const { categoryId, only } = opts;
   const filters = [
     eq(playlistChannels.playlistId, playlistId),
     eq(playlistChannels.enabled, true),
   ];
   if (categoryId != null) filters.push(eq(playlistChannels.categoryId, categoryId));
+  if (only === "missing") filters.push(isNull(sourceChannels.probeStatus));
+  if (only === "failed") {
+    filters.push(inArray(sourceChannels.probeStatus, ["error", "timeout"]));
+  }
   return db
     .selectDistinct({
       sourceId: sourceChannels.sourceId,
@@ -272,10 +282,56 @@ export function startProbePlaylist(playlistId: number): number {
   return startProbeTargets(playlistProbeTargets(playlistId));
 }
 
+/** Kick a background probe of only the playlist's channels that have never been
+    probed. */
+export function startProbeMissing(playlistId: number): number {
+  return startProbeTargets(playlistProbeTargets(playlistId, { only: "missing" }));
+}
+
+/** Wipe probe results for every channel in a playlist, so they read as unprobed
+    again. Probe data lives on the shared source channel, so this also clears it
+    for any other playlist using the same stream. Returns how many were cleared. */
+export function clearPlaylistProbes(playlistId: number): number {
+  const rows = db
+    .selectDistinct({
+      id: sourceChannels.id,
+      sourceId: sourceChannels.sourceId,
+    })
+    .from(playlistChannels)
+    .innerJoin(sourceChannels, eq(playlistChannels.sourceChannelId, sourceChannels.id))
+    .where(eq(playlistChannels.playlistId, playlistId))
+    .all();
+  if (rows.length === 0) return 0;
+
+  db.update(sourceChannels)
+    .set({
+      probeStatus: null,
+      probedAt: null,
+      probeWidth: null,
+      probeHeight: null,
+      probeFps: null,
+      probeVideoCodec: null,
+      probeAudioCodec: null,
+      probeBitrate: null,
+      probeError: null,
+    })
+    .where(inArray(sourceChannels.id, rows.map((r) => r.id)))
+    .run();
+
+  for (const sourceId of new Set(rows.map((r) => r.sourceId))) bumpSource(sourceId);
+  return rows.length;
+}
+
+/** Kick a background probe of only the playlist's channels whose last probe
+    failed (errored or timed out). */
+export function startProbeFailed(playlistId: number): number {
+  return startProbeTargets(playlistProbeTargets(playlistId, { only: "failed" }));
+}
+
 /** Kick a background probe of every channel in one playlist category. Same rules
     as a full playlist probe, just scoped to the category. */
 export function startProbeCategory(playlistId: number, categoryId: number): number {
-  return startProbeTargets(playlistProbeTargets(playlistId, categoryId));
+  return startProbeTargets(playlistProbeTargets(playlistId, { categoryId }));
 }
 
 /** Kick a background probe of a specific set of source channels, grouped by

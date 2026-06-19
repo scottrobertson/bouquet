@@ -1,4 +1,13 @@
-import { ArrowLeft, Check, Gauge, Link2, Loader2, Settings, Tv } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Gauge,
+  Link2,
+  Loader2,
+  Settings,
+  Tv,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, data, useFetcher, useFetchers } from "react-router";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
@@ -18,6 +27,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import {
   addAlternates,
   addChannels,
@@ -55,9 +71,12 @@ import {
 } from "~/services/playlist/queries.server";
 import { invalidate } from "~/services/output/cache.server";
 import {
+  clearPlaylistProbes,
   probeSingleChannel,
   startProbeCategory,
+  startProbeFailed,
   startProbeGroup,
+  startProbeMissing,
   startProbePlaylist,
 } from "~/services/probe/probe.server";
 import type { Route } from "./+types/playlists.$id";
@@ -266,6 +285,24 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: true, intent, queued });
     }
 
+    case "probeMissing": {
+      // Probe only the channels that have never been probed.
+      const queued = startProbeMissing(playlistId);
+      return data({ ok: true, intent, queued });
+    }
+
+    case "probeFailed": {
+      // Probe only the channels whose last probe failed.
+      const queued = startProbeFailed(playlistId);
+      return data({ ok: true, intent, queued });
+    }
+
+    case "clearProbes": {
+      // Wipe all probe results for this playlist's channels.
+      const cleared = clearPlaylistProbes(playlistId);
+      return data({ ok: true, intent, cleared });
+    }
+
     case "probeCategory": {
       // Probe every channel in one category, same rules as probe all.
       const queued = startProbeCategory(playlistId, Number(form.get("categoryId")));
@@ -400,6 +437,14 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
     (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
   ).length;
 
+  // Counts for the probe submenu, scoped to enabled channels to match what the
+  // server actually probes. Missing = never probed, failed = last probe errored.
+  const enabled = channels.filter((c) => c.enabled);
+  const missingCount = enabled.filter((c) => c.probeStatus == null).length;
+  const failedCount = enabled.filter(
+    (c) => c.probeStatus === "error" || c.probeStatus === "timeout",
+  ).length;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 md:px-6">
@@ -434,12 +479,13 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               <CopyField label="EPG (XMLTV)" url={output.epgUrl} />
             </PopoverContent>
           </Popover>
-          {probingCount > 0 ? (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Probing {probingCount}…
-            </span>
-          ) : null}
-          <ProbeAllButton playlistId={playlist.id} anyProbing={anyProbing} />
+          <ProbeAllButton
+            playlistId={playlist.id}
+            probing={anyProbing || probingCount > 0}
+            probingCount={probingCount}
+            missingCount={missingCount}
+            failedCount={failedCount}
+          />
           <Button asChild size="sm" variant="outline">
             <Link to={`/playlists/${playlist.id}/guide`}>
               <Tv className="size-4" />
@@ -468,46 +514,110 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
 }
 
 // Kicks a probe of every channel in the playlist. Runs in the background, so it
-// just fires and the rows fill in as results land (the editor polls).
+// just fires and the rows fill in as results land (the editor polls). The
+// dropdown narrows the probe to only the channels that need it, or clears
+// results. While a probe is running the button shows live progress and the
+// dropdown is hidden, since there's nothing to start mid-probe.
 function ProbeAllButton({
   playlistId,
-  anyProbing,
+  probing,
+  probingCount,
+  missingCount,
+  failedCount,
 }: {
   playlistId: number;
-  anyProbing: boolean;
+  probing: boolean;
+  probingCount: number;
+  missingCount: number;
+  failedCount: number;
 }) {
-  const fetcher = useFetcher<{ queued?: number }>();
+  const fetcher = useFetcher<{ queued?: number; cleared?: number }>();
   const handled = useRef<typeof fetcher.data>(undefined);
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data) return;
     if (fetcher.data === handled.current) return;
     handled.current = fetcher.data;
+    if (fetcher.data.cleared != null) {
+      const n = fetcher.data.cleared;
+      toast(`Cleared probes for ${n} channel${n === 1 ? "" : "s"}`);
+      return;
+    }
     const n = fetcher.data.queued ?? 0;
     toast(`Probing ${n} channel${n === 1 ? "" : "s"}`, {
       description: "Checking stream quality in the background.",
     });
   }, [fetcher.state, fetcher.data]);
 
-  const busy = fetcher.state !== "idle" || anyProbing;
+  const busy = fetcher.state !== "idle" || probing;
+  const probe = (intent: string) => fetcher.submit({ intent }, { method: "post" });
+
+  // Mid-probe: a single button showing progress, no dropdown.
+  if (probing) {
+    return (
+      <Button size="sm" variant="outline" disabled>
+        <Gauge className="size-4 animate-pulse" />
+        <span className="hidden sm:inline">
+          {probingCount > 0 ? `Probing ${probingCount}…` : "Probing…"}
+        </span>
+      </Button>
+    );
+  }
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => fetcher.submit({ intent: "probeAll" }, { method: "post" })}
-        >
-          <Gauge className={busy ? "size-4 animate-pulse" : "size-4"} />
-          <span className="hidden sm:inline">Probe all</span>
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        Probes every channel in this playlist, even ones whose source has probing
-        turned off.
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            className="rounded-r-none"
+            onClick={() => probe("probeAll")}
+          >
+            <Gauge className="size-4" />
+            <span className="hidden sm:inline">Probe all</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Probes every channel in this playlist, even ones whose source has probing
+          turned off.
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            className="rounded-l-none border-l-0 px-2"
+            aria-label="More probe options"
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={missingCount === 0}
+            onClick={() => probe("probeMissing")}
+          >
+            Probe missing ({missingCount})
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={failedCount === 0}
+            onClick={() => probe("probeFailed")}
+          >
+            Probe failed ({failedCount})
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => probe("clearProbes")}
+          >
+            Clear probes
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 

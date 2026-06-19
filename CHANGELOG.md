@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The "Probe all" button now has a dropdown with "Probe missing" and "Probe failed", each showing
+  a count, plus "Clear probes" to wipe all results for the playlist's channels. Missing probes
+  channels never probed before, failed probes ones whose last probe errored or timed out. "Probe
+  all" still works as a single click. While a probe is running the button shows how many channels
+  are still being probed ("Probing 12…") and the dropdown is hidden.
 - Categories now have a ⋯ menu in their header with a "Probe category" option that probes just
   that category's channels. Delete moved into the same menu. Auto categories only show delete,
   since they have no channels of their own to probe.
