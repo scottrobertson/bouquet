@@ -61,6 +61,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- The playlist editor no longer logs a React hydration warning in the console. The drag-and-drop
+  library generates accessibility ids off an internal counter that lands on different numbers on
+  the server and the browser, so the markup didn't match on load. Giving the editor's drag context
+  a fixed id makes it match.
+
 - Sync errors now say what actually went wrong with the provider connection instead of just
   "fetch failed". A failed request now reports the real cause, like "Connection failed
   (ECONNRESET)" or "Request timed out after 30s", which makes provider problems much easier to

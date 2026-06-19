@@ -682,6 +682,9 @@ export function EditorBoard({
 
   return (
     <DndContext
+      // dnd-kit ids off a module counter that differs between server and client,
+      // so without a fixed id the aria-describedby mismatches on hydration.
+      id="playlist-editor"
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
