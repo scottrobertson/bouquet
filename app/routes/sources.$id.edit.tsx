@@ -30,6 +30,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       probeIntervalMinutes: source.probeIntervalMinutes,
       probeTimeoutSeconds: source.probeTimeoutSeconds,
       probeMeasureBitrate: source.probeMeasureBitrate,
+      probeDetectBlackScreen: source.probeDetectBlackScreen,
     },
     // Shown as guidance next to the probe concurrency field.
     maxConnections: source.lastSyncedAt ? source.maxConnections : undefined,

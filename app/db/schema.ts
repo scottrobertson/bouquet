@@ -68,6 +68,12 @@ export const sources = sqliteTable("sources", {
   probeMeasureBitrate: integer("probe_measure_bitrate", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Decode a few seconds of each stream and mark it failed if the picture is all
+  // black. Catches dead channels that still look fine to ffprobe (valid video
+  // track, resolution, codecs, but nothing on screen).
+  probeDetectBlackScreen: integer("probe_detect_black_screen", { mode: "boolean" })
+    .notNull()
+    .default(true),
   probeStatus: text("probe_status", {
     enum: ["idle", "probing", "ok", "error"],
   })

@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Probing can now catch black-screen channels. ffprobe only reads stream metadata, so a dead
+  channel with a valid video track but a black picture used to probe fine. Probing now decodes a
+  few seconds of each stream and marks it failed if the picture is all black. It's a toggle in the
+  source's probe settings, on by default. Off if you'd rather skip the extra decode.
 - A channel's logo now follows its EPG. When you pick an EPG channel other than the source
   default, the logo comes from that EPG channel, so picking a guide from a provider with a nicer
   logo gives you that logo too. Channels left on their source default keep the source's own logo,

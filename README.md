@@ -41,6 +41,7 @@ output M3U contains your provider's own direct stream URLs.
 - Scheduled per source, or probe on demand
 - Probe a whole playlist, just the missing or failed ones, a category, or one group
 - Optional bitrate measuring for a real figure (off by default, it's slower)
+- Black-screen detection marks dead channels failed even when ffprobe sees a valid stream (on by default)
 
 **Output**
 

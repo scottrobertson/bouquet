@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bitrateKbps, parseFfprobe } from "~/services/probe/ffprobe.server";
+import {
+  bitrateKbps,
+  parseBlackdetect,
+  parseFfprobe,
+} from "~/services/probe/ffprobe.server";
 
 describe("parseFfprobe", () => {
   it("reads resolution, fps and codecs from a video+audio stream", () => {
@@ -67,6 +71,45 @@ describe("parseFfprobe", () => {
     });
     expect(parseFfprobe(null).width).toBe(null);
     expect(parseFfprobe({}).videoCodec).toBe(null);
+  });
+});
+
+describe("parseBlackdetect", () => {
+  // A run that was black almost the whole window.
+  const allBlack = [
+    "[blackdetect @ 0x1] black_start:0 black_end:9.8 black_duration:9.8",
+    "frame=  250 fps= 25 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=1x",
+  ].join("\n");
+
+  it("flags a stream that's black for nearly the whole window", () => {
+    expect(parseBlackdetect(allBlack, 10)).toBe(true);
+  });
+
+  it("ignores a brief black blip on an otherwise normal stream", () => {
+    const blip = [
+      "[blackdetect @ 0x1] black_start:2 black_end:2.6 black_duration:0.6",
+      "frame=  250 fps= 25 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=1x",
+    ].join("\n");
+    expect(parseBlackdetect(blip, 10)).toBe(false);
+  });
+
+  it("stays false when no black was detected", () => {
+    const clean = "frame=  250 fps= 25 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=1x";
+    expect(parseBlackdetect(clean, 10)).toBe(false);
+  });
+
+  it("stays false when too little decoded to judge", () => {
+    const stalled = "[blackdetect @ 0x1] black_start:0 black_end:0.4 black_duration:0.4";
+    expect(parseBlackdetect(stalled, 10)).toBe(false);
+  });
+
+  it("sums multiple black runs across the window", () => {
+    const runs = [
+      "[blackdetect @ 0x1] black_start:0 black_end:5 black_duration:5",
+      "[blackdetect @ 0x1] black_start:5.2 black_end:10 black_duration:4.5",
+      "frame=  250 fps= 25 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=1x",
+    ].join("\n");
+    expect(parseBlackdetect(runs, 10)).toBe(true);
   });
 });
 

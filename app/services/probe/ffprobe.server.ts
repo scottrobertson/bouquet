@@ -151,6 +151,86 @@ export function probeStream(
   });
 }
 
+// A stream counts as black when near-black frames cover this much of what we
+// actually decoded. High so brief fades or ad breaks don't trip it.
+const BLACK_FRACTION = 0.9;
+
+// Read a HH:MM:SS.ss timestamp into seconds.
+function parseTimestamp(value: string): number {
+  const [h, m, s] = value.split(":").map(Number);
+  if (![h, m, s].every(Number.isFinite)) return 0;
+  return h * 3600 + m * 60 + s;
+}
+
+/** Decide if blackdetect's output means the picture was all black. Sums every
+    black run it logged and weighs it against how much we actually decoded (the
+    last `time=` ffmpeg printed). Stays false if too little decoded, so a stream
+    that stalls early is inconclusive rather than failed. Pure so it's testable
+    without spawning ffmpeg. */
+export function parseBlackdetect(stderr: string, window: number): boolean {
+  let blackSeconds = 0;
+  for (const m of stderr.matchAll(/black_duration:([\d.]+)/g)) {
+    blackSeconds += Number(m[1]) || 0;
+  }
+
+  let decodedSeconds = 0;
+  for (const m of stderr.matchAll(/time=(\d+:\d+:\d+\.\d+)/g)) {
+    decodedSeconds = Math.max(decodedSeconds, parseTimestamp(m[1]));
+  }
+
+  // Need a meaningful chunk decoded before we trust the result.
+  if (decodedSeconds < Math.min(1, window)) return false;
+  return blackSeconds / decodedSeconds >= BLACK_FRACTION;
+}
+
+/** Read a stream for `seconds` with ffmpeg's blackdetect filter and return
+    whether the picture is all black. Decodes video (audio dropped), so it's
+    slower than a plain probe. Returns false on any error, so an inconclusive
+    run never fails a channel. */
+export function detectBlackScreen(
+  url: string,
+  seconds: number,
+  opts: { hls?: boolean } = {},
+): Promise<boolean> {
+  const window = Math.max(1, seconds);
+  const args = [
+    "-hide_banner",
+    ...hlsRelaxArgs(opts.hls),
+    "-t",
+    String(window),
+    "-i",
+    url,
+    "-an",
+    "-vf",
+    "blackdetect=d=0.1",
+    "-f",
+    "null",
+    "-",
+  ];
+
+  return new Promise<boolean>((resolve) => {
+    const child = spawn(env.ffmpegPath, args, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    let settled = false;
+
+    // Hard stop in case -t doesn't end it, a little past the window so a healthy
+    // stream finishes on its own first.
+    const timer = setTimeout(() => child.kill("SIGKILL"), (window + 5) * 1000);
+    function finish(v: boolean) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    }
+
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("error", () => finish(false));
+    child.on("close", () => finish(parseBlackdetect(stderr, window)));
+  });
+}
+
 /** kbps from bytes read over a window. Pure so it's unit-testable. */
 export function bitrateKbps(bytes: number, seconds: number): number | null {
   if (bytes <= 0 || seconds <= 0) return null;

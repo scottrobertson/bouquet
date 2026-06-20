@@ -11,7 +11,11 @@ import {
 import { bumpSource } from "~/services/events.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import { qualityParts } from "~/lib/quality";
-import { measureBitrate, probeStream } from "~/services/probe/ffprobe.server";
+import {
+  detectBlackScreen,
+  measureBitrate,
+  probeStream,
+} from "~/services/probe/ffprobe.server";
 import { buildStreamUrl, type XtreamCreds } from "~/services/xtream/client.server";
 
 // A channel to probe: just the bits we need to build its URL and store the result.
@@ -85,6 +89,15 @@ async function probeAndStore(
   let bitrate = r.bitrate;
   if (r.status === "ok" && measureBitrateToo) {
     bitrate = (await measureBitrate(url, source.probeTimeoutSeconds, { hls })) ?? r.bitrate;
+  }
+
+  // ffprobe only sees stream metadata, so a stream with a valid video track but
+  // a black picture still reads as ok. Decode a bit and fail it if it's black.
+  if (r.status === "ok" && source.probeDetectBlackScreen) {
+    if (await detectBlackScreen(url, source.probeTimeoutSeconds, { hls })) {
+      r.status = "error";
+      r.error = "Black screen";
+    }
   }
 
   if (r.status === "ok") {

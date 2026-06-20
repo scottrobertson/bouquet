@@ -69,6 +69,7 @@ export const sourceSchema = z.object({
     .refine((n) => PROBE_TIMEOUT_VALUES.includes(n as never))
     .catch(10),
   probeMeasureBitrate: z.preprocess((v) => v === "on" || v === true, z.boolean()),
+  probeDetectBlackScreen: z.preprocess((v) => v === "on" || v === true, z.boolean()),
 });
 
 export type SourceInput = z.infer<typeof sourceSchema>;
@@ -89,6 +90,7 @@ export function parseSourceForm(form: FormData) {
     probeIntervalMinutes: form.get("probeIntervalMinutes"),
     probeTimeoutSeconds: form.get("probeTimeoutSeconds"),
     probeMeasureBitrate: form.get("probeMeasureBitrate"),
+    probeDetectBlackScreen: form.get("probeDetectBlackScreen"),
   });
 }
 
