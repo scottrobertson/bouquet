@@ -26,9 +26,20 @@ export function useLiveRevalidate(active: boolean): void {
     let pending: ReturnType<typeof setTimeout> | undefined;
 
     const run = () => {
-      lastRun = Date.now();
       const r = revalidatorRef.current;
-      if (r.state === "idle") r.revalidate();
+      // Busy with an earlier revalidation, so retry soon instead of dropping
+      // this trigger. Otherwise the final "done" event in a burst can be lost.
+      if (r.state !== "idle") {
+        if (!pending) {
+          pending = setTimeout(() => {
+            pending = undefined;
+            run();
+          }, 200);
+        }
+        return;
+      }
+      lastRun = Date.now();
+      r.revalidate();
     };
 
     // Run now if we're past the throttle window, otherwise schedule the trailing

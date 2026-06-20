@@ -90,6 +90,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- The playlist editor's "Probing N…" button could get stuck showing a leftover count (often 1)
+  until you hard refreshed. The live updates were switched off the moment the source finished, but
+  that happens a beat before the last channel rows do, so the count could be left stale with nothing
+  polling to clear it. It now keeps listening until the count itself reaches zero.
+
 - The ⋯ menu on category headers and alt groups was hard to tap on mobile. The icon stays the
   same size but the tap target is now bigger so it's easy to hit.
 

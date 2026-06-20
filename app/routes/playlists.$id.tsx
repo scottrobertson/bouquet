@@ -468,10 +468,6 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   const { playlist, categories, channels, autoChannels, output, anyProbing } =
     loaderData;
 
-  // A probe is filling in stream quality in the background, so listen for live
-  // updates until it's done and the rows update live.
-  useLiveRevalidate(anyProbing);
-
   // Channels waiting on or mid-probe right now, for the live header count.
   const probingCount = channels.filter(
     (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
@@ -488,6 +484,12 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   // One probe fetcher shared by the desktop button and the mobile menu, so a
   // probe started from either fires a single toast.
   const probing = anyProbing || probingCount > 0;
+
+  // Keep listening for live updates until the channel count itself clears, not
+  // just while the source says "probing". The source flips to done a beat before
+  // the last channel rows do, and if we stopped here we'd be left showing a
+  // stale "Probing 1…" with nothing polling to clear it.
+  useLiveRevalidate(probing);
   const { submitting, probe } = useProbeAll();
 
   return (
