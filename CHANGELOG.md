@@ -97,6 +97,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Measured bitrate is now more accurate. It used to divide the bytes read by the full read-time
+  window even when the stream delivered less than that (slow, stalled, or killed early), which read
+  low. It now divides by the duration ffmpeg actually muxed, so the number is right however long the
+  read ran.
+
 - The playlist editor's "Probing N…" button could get stuck showing a leftover count (often 1)
   until you hard refreshed. The live updates were switched off the moment the source finished, but
   that happens a beat before the last channel rows do, so the count could be left stale with nothing
