@@ -23,6 +23,8 @@ export type EditorChannel = {
   // Latest ffprobe result for the underlying stream. Null = never probed.
   // "queued"/"probing" are live states shown while a probe is in flight.
   probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
+  // Why the last probe failed, e.g. "Black screen". Null when it didn't fail.
+  probeError: string | null;
   probeWidth: number | null;
   probeHeight: number | null;
   probeFps: number | null;

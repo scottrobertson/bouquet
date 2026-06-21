@@ -152,6 +152,7 @@ export function getPlaylistChannels(playlistId: number) {
       password: sources.password,
       outputFormat: sources.outputFormat,
       probeStatus: sourceChannels.probeStatus,
+      probeError: sourceChannels.probeError,
       probeWidth: sourceChannels.probeWidth,
       probeHeight: sourceChannels.probeHeight,
       probeFps: sourceChannels.probeFps,

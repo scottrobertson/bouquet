@@ -71,10 +71,20 @@ function QualityLine({
   }
 
   if (channel.probeStatus === "error" || channel.probeStatus === "timeout") {
+    const label =
+      channel.probeStatus === "timeout" ? "Probe timed out" : "Probe failed";
+    const detail = channel.probeError?.trim();
+    // The timeout message is the same as the label, so don't repeat it.
+    const text = detail && detail !== label ? `${label}: ${detail}` : label;
     return (
-      <div className="text-[11px] text-muted-foreground/60">
-        {channel.probeStatus === "timeout" ? "Probe timed out" : "Probe failed"}
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="truncate text-[11px] text-muted-foreground/60">
+            {text}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">{text}</TooltipContent>
+      </Tooltip>
     );
   }
 

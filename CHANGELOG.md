@@ -6,6 +6,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The playlist channel list now shows why a probe failed instead of just "Probe failed". The
+  reason (e.g. "Black screen" or "No video stream found") shows on the channel's quality line,
+  with the full message on hover.
 - Probing can now catch black-screen channels. ffprobe only reads stream metadata, so a dead
   channel with a valid video track but a black picture used to probe fine. Probing now decodes a
   few seconds of each stream and marks it failed if the picture is all black. It's a toggle in the
