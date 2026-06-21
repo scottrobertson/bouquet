@@ -448,32 +448,6 @@ export function ChannelRowBody({
           </div>
         ) : null}
         <div className="flex items-center gap-0.5">
-        {!overlay && renamed ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="hidden size-7 cursor-pointer text-muted-foreground hover:text-foreground sm:inline-flex"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() =>
-                  fetcher.submit(
-                    { intent: "renameChannel", channelId: channel.id, customName: "" },
-                    { method: "post" },
-                  )
-                }
-              >
-                <RotateCcw className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {channel.primaryChannelId != null
-                ? "Revert to auto name"
-                : "Revert to source name"}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
         {/* Alternates always use the primary's guide, so no EPG picker. */}
         {overlay || playlistId == null || isAlternate ? null : (
           <span
@@ -524,6 +498,15 @@ export function ChannelRowBody({
                 ? () => setSmartSortOpen(true)
                 : undefined
             }
+            onRevertName={
+              renamed
+                ? () =>
+                    fetcher.submit(
+                      { intent: "renameChannel", channelId: channel.id, customName: "" },
+                      { method: "post" },
+                    )
+                : undefined
+            }
           />
         ) : null}
         </div>
@@ -550,6 +533,7 @@ function GroupMenu({
   onProbe,
   onProbeGroup,
   onSmartSort,
+  onRevertName,
   probing,
 }: {
   group: GroupControls;
@@ -561,6 +545,8 @@ function GroupMenu({
   onProbeGroup?: () => void;
   // Set on a primary that has alternates: reorder the group by stream quality.
   onSmartSort?: () => void;
+  // Set when the channel has a custom name: revert it to the source name.
+  onRevertName?: () => void;
   probing: boolean;
 }) {
   return (
@@ -640,6 +626,15 @@ function GroupMenu({
             <DropdownMenuItem onClick={group.onUngroupPrimary}>
               <Unlink className="size-4" />
               Ungroup all
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        {onRevertName ? (
+          <>
+            <DropdownMenuItem onClick={onRevertName}>
+              <RotateCcw className="size-4" />
+              Revert name
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
