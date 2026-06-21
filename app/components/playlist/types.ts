@@ -8,6 +8,9 @@ export type EditorChannel = {
   // Logo borrowed from a custom EPG pick, null when the EPG is the source default.
   epgLogo: string | null;
   enabled: boolean;
+  // Set when auto-disabled after repeated probe failures, so the row can show
+  // it differently from a manual disable. Null otherwise.
+  autoDisabledAt: Date | null;
   epgSourceId: number | null;
   epgChannelId: string | null;
   sourceName: string;

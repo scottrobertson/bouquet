@@ -136,6 +136,7 @@ export function getPlaylistChannels(playlistId: number) {
       primaryChannelId: playlistChannels.primaryChannelId,
       altPosition: playlistChannels.altPosition,
       enabled: playlistChannels.enabled,
+      autoDisabledAt: playlistChannels.autoDisabledAt,
       epgSourceId: playlistChannels.epgSourceId,
       epgChannelId: playlistChannels.epgChannelId,
       sourceName: sourceChannels.name,

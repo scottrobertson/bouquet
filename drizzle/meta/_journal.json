@@ -141,6 +141,13 @@
       "when": 1781949859179,
       "tag": "0019_normal_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1782048989235,
+      "tag": "0020_massive_junta",
+      "breakpoints": true
     }
   ]
 }

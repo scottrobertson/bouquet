@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Channels that keep failing their probe are now turned off automatically. Each playlist has an
+  "Auto-disable failing channels" setting (default 3, 0 turns it off) that disables a channel once
+  its stream fails that many probes in a row. A good probe resets the streak, and re-enabling a
+  channel gives it a fresh start. If the failing channel is the primary of an alt group, a working
+  alternate is promoted first so the group keeps playing. Auto-disabled channels show an
+  "Auto-disabled" badge in the editor so you can tell them apart from ones you turned off yourself.
 - The playlist channel list now shows why a probe failed instead of just "Probe failed". The
   reason (e.g. "Black screen" or "No video stream found") shows on the channel's quality line,
   with the full message on hover.

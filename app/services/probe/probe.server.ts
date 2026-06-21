@@ -9,6 +9,7 @@ import {
   type Source,
 } from "~/db/schema";
 import { bumpSource } from "~/services/events.server";
+import { autoDisableFailedChannels } from "~/services/playlist/mutations.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import { qualityParts } from "~/lib/quality";
 import {
@@ -126,6 +127,8 @@ async function probeAndStore(
       probeAudioCodec: r.audioCodec,
       probeBitrate: bitrate,
       probeError: r.error,
+      consecutiveProbeFailures:
+        r.status === "ok" ? 0 : sql`${sourceChannels.consecutiveProbeFailures} + 1`,
     })
     .where(eq(sourceChannels.id, ch.id))
     .run();
@@ -176,6 +179,10 @@ async function probeChannelList(
 
   console.log(`[probe] ${source.name}: done, ${ok} ok, ${failed} failed`);
 
+  // Turn off channels whose streak just crossed their playlist's threshold,
+  // before the final bump so the editor shows it in the same refresh.
+  autoDisableFailedChannels(channels.map((c) => c.id));
+
   db.update(sources)
     .set({ probeStatus: "ok", lastProbedAt: new Date(), probeError: null })
     .where(eq(sources.id, source.id))
@@ -218,6 +225,7 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
   const source = db.select().from(sources).where(eq(sources.id, ch.sourceId)).get();
   if (!source) return;
   await probeAndStore(source, ch, source.probeMeasureBitrate);
+  autoDisableFailedChannels([ch.id]);
 }
 
 /** Enabled channels placed in a playlist (optionally one category), with their

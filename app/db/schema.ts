@@ -136,6 +136,11 @@ export const sourceChannels = sqliteTable(
     // Overall stream bitrate in kbps where the provider reports it.
     probeBitrate: integer("probe_bitrate"),
     probeError: text("probe_error"),
+    // How many times in a row this stream's probe has failed. Reset to 0 on a
+    // good probe. Drives the per-playlist auto-disable.
+    consecutiveProbeFailures: integer("consecutive_probe_failures")
+      .notNull()
+      .default(0),
   },
   (t) => [
     unique("source_channels_source_stream").on(t.sourceId, t.streamId),
@@ -205,6 +210,11 @@ export const playlists = sqliteTable("playlists", {
   })
     .notNull()
     .default(true),
+  // Turn a channel off once its stream fails this many probes in a row. 0 = off.
+  // A failing primary promotes a working alternate first.
+  autoDisableFailedProbesAfter: integer("auto_disable_failed_probes_after")
+    .notNull()
+    .default(3),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -267,6 +277,10 @@ export const playlistChannels = sqliteTable(
     ),
     // Order among a primary's alternates. 0 for primaries.
     altPosition: integer("alt_position").notNull().default(0),
+    // Set when auto-disabled after repeated probe failures, so the editor can
+    // tell it apart from a channel the user turned off. Cleared on any manual
+    // toggle.
+    autoDisabledAt: integer("auto_disabled_at", { mode: "timestamp" }),
   },
   (t) => [
     index("playlist_channels_playlist").on(t.playlistId),

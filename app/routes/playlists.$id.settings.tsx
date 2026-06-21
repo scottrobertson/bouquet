@@ -53,6 +53,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       smartSortPrefer: playlist.smartSortPrefer,
       smartSortAudio: playlist.smartSortAudio,
       smartSortAvailableFirst: playlist.smartSortAvailableFirst,
+      autoDisableFailedProbesAfter: playlist.autoDisableFailedProbesAfter,
     },
     m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
     epgUrl: `${origin}/output/epg/${playlist.outputToken}`,
@@ -115,6 +116,21 @@ export async function action({ request, params }: Route.ActionArgs) {
     return data({ ok: true, intent });
   }
 
+  if (intent === "setAutoDisable") {
+    const after = z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(20)
+      .catch(3)
+      .parse(form.get("autoDisableFailedProbesAfter"));
+    db.update(playlists)
+      .set({ autoDisableFailedProbesAfter: after })
+      .where(eq(playlists.id, id))
+      .run();
+    return data({ ok: true, intent });
+  }
+
   if (intent === "deletePlaylist") {
     db.delete(playlists).where(eq(playlists.id, id)).run();
     return redirect("/playlists");
@@ -132,6 +148,7 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
       const messages: Record<string, string> = {
         setAltTemplate: "Naming saved",
         setSmartSort: "Smart sort saved",
+        setAutoDisable: "Auto-disable saved",
         renamePlaylist: "Playlist renamed",
       };
       toast.success(messages[actionData.intent as string] ?? "Saved");
@@ -254,6 +271,33 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
                 id="smart-available"
                 name="smartSortAvailableFirst"
                 defaultChecked={playlist.smartSortAvailableFirst}
+              />
+            </div>
+            <Button type="submit" size="sm">
+              Save
+            </Button>
+          </Form>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-[13px] font-medium">Auto-disable failing channels</h2>
+          <p className="text-[13px] text-muted-foreground">
+            Turn a channel off automatically once its stream fails this many
+            probes in a row. Set to 0 to never auto-disable. If a primary fails,
+            a working alternate is promoted first so the group keeps playing.
+          </p>
+          <Form method="post" className="flex items-end gap-2">
+            <input type="hidden" name="intent" value="setAutoDisable" />
+            <div className="space-y-2">
+              <Label htmlFor="auto-disable">Failed probes in a row</Label>
+              <Input
+                id="auto-disable"
+                name="autoDisableFailedProbesAfter"
+                type="number"
+                min={0}
+                max={20}
+                className="w-28"
+                defaultValue={playlist.autoDisableFailedProbesAfter}
               />
             </div>
             <Button type="submit" size="sm">

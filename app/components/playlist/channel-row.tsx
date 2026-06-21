@@ -426,7 +426,9 @@ export function ChannelRowBody({
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
-        {!channel.sourceAvailable || !channel.sourceCategoryEnabled ? (
+        {!channel.sourceAvailable ||
+        !channel.sourceCategoryEnabled ||
+        (channel.autoDisabledAt && !enabled) ? (
           <div className="flex shrink-0 items-center gap-1">
             {!channel.sourceAvailable ? (
               <Badge className="border-transparent bg-warning/10 text-warning">
@@ -436,6 +438,11 @@ export function ChannelRowBody({
             {!channel.sourceCategoryEnabled ? (
               <Badge className="border-transparent bg-muted text-muted-foreground">
                 Category off
+              </Badge>
+            ) : null}
+            {channel.autoDisabledAt && !enabled ? (
+              <Badge className="border-transparent bg-warning/10 text-warning">
+                Auto-disabled
               </Badge>
             ) : null}
           </div>

@@ -1,10 +1,12 @@
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, or, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
   playlistChannels,
+  playlists,
   sourceChannels,
 } from "~/db/schema";
+import { invalidate } from "~/services/output/cache.server";
 import { nextCategoryPosition, nextChannelPosition } from "./queries.server";
 import { smartSort, type SmartSortConfig } from "./smart-sort";
 
@@ -398,9 +400,29 @@ export function toggleChannel(
   enabled: boolean,
 ) {
   if (!channelInPlaylist(playlistId, channelId)) return;
+  // Any manual toggle clears the auto-disable marker. Turning a channel back on
+  // resets its stream's failure streak so it gets a fresh chance.
   db.update(playlistChannels)
-    .set({ enabled })
+    .set({ enabled, autoDisabledAt: null })
     .where(eq(playlistChannels.id, channelId))
+    .run();
+  if (enabled) resetFailureStreak([channelId]);
+}
+
+/** Zero the failure streak on the source channels behind these playlist
+    channels, so a re-enabled channel isn't disabled again on its next probe. */
+function resetFailureStreak(playlistChannelIds: number[]) {
+  if (playlistChannelIds.length === 0) return;
+  const scids = db
+    .select({ id: playlistChannels.sourceChannelId })
+    .from(playlistChannels)
+    .where(inArray(playlistChannels.id, playlistChannelIds))
+    .all()
+    .map((r) => r.id);
+  if (scids.length === 0) return;
+  db.update(sourceChannels)
+    .set({ consecutiveProbeFailures: 0 })
+    .where(inArray(sourceChannels.id, scids))
     .run();
 }
 
@@ -455,9 +477,10 @@ export function bulkToggle(
   const ids = [...ownedChannels(playlistId, channelIds)];
   if (!ids.length) return;
   db.update(playlistChannels)
-    .set({ enabled })
+    .set({ enabled, autoDisabledAt: null })
     .where(inArray(playlistChannels.id, ids))
     .run();
+  if (enabled) resetFailureStreak(ids);
 }
 
 export function bulkRemove(playlistId: number, channelIds: number[]) {
@@ -930,6 +953,76 @@ export function promoteAlternate(playlistId: number, channelId: number) {
         .run();
     });
   });
+}
+
+/** The first enabled alternate of a primary whose last probe succeeded, in alt
+    order. Used to pick a stand-in when we auto-disable a failing primary. */
+function workingAlternate(primaryChannelId: number): number | null {
+  const row = db
+    .select({ id: playlistChannels.id })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .where(
+      and(
+        eq(playlistChannels.primaryChannelId, primaryChannelId),
+        eq(playlistChannels.enabled, true),
+        eq(sourceChannels.probeStatus, "ok"),
+      ),
+    )
+    .orderBy(asc(playlistChannels.altPosition), asc(playlistChannels.id))
+    .get();
+  return row?.id ?? null;
+}
+
+/** Turn off any enabled channel whose stream has failed its probe enough times
+    in a row to hit its playlist's threshold. A failing primary first promotes a
+    working alternate so the group keeps a live stream. Called after a probe run
+    with the source channels it touched. */
+export function autoDisableFailedChannels(sourceChannelIds: number[]): void {
+  if (sourceChannelIds.length === 0) return;
+  const candidates = db
+    .select({
+      channelId: playlistChannels.id,
+      playlistId: playlistChannels.playlistId,
+      primaryChannelId: playlistChannels.primaryChannelId,
+      outputToken: playlists.outputToken,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .innerJoin(playlists, eq(playlistChannels.playlistId, playlists.id))
+    .where(
+      and(
+        inArray(playlistChannels.sourceChannelId, sourceChannelIds),
+        eq(playlistChannels.enabled, true),
+        gt(playlists.autoDisableFailedProbesAfter, 0),
+        gte(
+          sourceChannels.consecutiveProbeFailures,
+          playlists.autoDisableFailedProbesAfter,
+        ),
+      ),
+    )
+    .all();
+  if (candidates.length === 0) return;
+
+  const tokens = new Set<string>();
+  for (const c of candidates) {
+    if (c.primaryChannelId == null) {
+      const replacement = workingAlternate(c.channelId);
+      if (replacement != null) promoteAlternate(c.playlistId, replacement);
+    }
+    db.update(playlistChannels)
+      .set({ enabled: false, autoDisabledAt: new Date() })
+      .where(eq(playlistChannels.id, c.channelId))
+      .run();
+    tokens.add(c.outputToken);
+  }
+  for (const token of tokens) invalidate(token);
 }
 
 /** Detach an alternate so it becomes a standalone channel again. */
