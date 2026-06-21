@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -9,7 +9,10 @@ import {
   type Source,
 } from "~/db/schema";
 import { bumpSource } from "~/services/events.server";
-import { autoDisableFailedChannels } from "~/services/playlist/mutations.server";
+import {
+  autoDisableFailedChannels,
+  reviveRecoveredChannels,
+} from "~/services/playlist/mutations.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import { qualityParts } from "~/lib/quality";
 import {
@@ -141,6 +144,7 @@ async function probeAndStore(
 async function probeChannelList(
   source: Source,
   channels: ProbeTarget[],
+  opts: { reviveForPlaylistId?: number } = {},
 ): Promise<void> {
   db.update(sources)
     .set({ probeStatus: "probing", probeTotal: channels.length, probeDone: 0, probeError: null })
@@ -182,6 +186,12 @@ async function probeChannelList(
   // Turn off channels whose streak just crossed their playlist's threshold,
   // before the final bump so the editor shows it in the same refresh.
   autoDisableFailedChannels(channels.map((c) => c.id));
+
+  // The "probe auto-disabled" action re-checks turned-off channels and brings
+  // back any that work again. Scoped to the playlist that ran it.
+  if (opts.reviveForPlaylistId != null) {
+    reviveRecoveredChannels(opts.reviveForPlaylistId, channels.map((c) => c.id));
+  }
 
   db.update(sources)
     .set({ probeStatus: "ok", lastProbedAt: new Date(), probeError: null })
@@ -236,13 +246,17 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
     failed ("failed"). */
 function playlistProbeTargets(
   playlistId: number,
-  opts: { categoryId?: number; only?: "missing" | "failed" } = {},
+  opts: { categoryId?: number; only?: "missing" | "failed" | "autoDisabled" } = {},
 ) {
   const { categoryId, only } = opts;
-  const filters = [
-    eq(playlistChannels.playlistId, playlistId),
-    eq(playlistChannels.enabled, true),
-  ];
+  const filters = [eq(playlistChannels.playlistId, playlistId)];
+  // Auto-disabled channels are turned off, so target them by their marker. Every
+  // other probe only looks at enabled channels.
+  if (only === "autoDisabled") {
+    filters.push(isNotNull(playlistChannels.autoDisabledAt));
+  } else {
+    filters.push(eq(playlistChannels.enabled, true));
+  }
   if (categoryId != null) filters.push(eq(playlistChannels.categoryId, categoryId));
   if (only === "missing") filters.push(isNull(sourceChannels.probeStatus));
   if (only === "failed") {
@@ -280,7 +294,10 @@ function playlistProbeTargets(
 
 /** Fan a set of probe targets out across their sources, so each source runs at
     its own concurrency. Keeps each source's channels in the order given. */
-function startProbeTargets(targets: (ProbeTarget & { sourceId: number })[]): number {
+function startProbeTargets(
+  targets: (ProbeTarget & { sourceId: number })[],
+  opts: { reviveForPlaylistId?: number } = {},
+): number {
   const bySource = new Map<number, ProbeTarget[]>();
   for (const t of targets) {
     const list = bySource.get(t.sourceId) ?? [];
@@ -291,7 +308,7 @@ function startProbeTargets(targets: (ProbeTarget & { sourceId: number })[]): num
   for (const [sourceId, channels] of bySource) {
     const source = db.select().from(sources).where(eq(sources.id, sourceId)).get();
     if (!source) continue;
-    void probeChannelList(source, channels).catch((err) => markError(sourceId, err));
+    void probeChannelList(source, channels, opts).catch((err) => markError(sourceId, err));
   }
   return targets.length;
 }
@@ -347,6 +364,15 @@ export function clearPlaylistProbes(playlistId: number): number {
     failed (errored or timed out). */
 export function startProbeFailed(playlistId: number): number {
   return startProbeTargets(playlistProbeTargets(playlistId, { only: "failed" }));
+}
+
+/** Kick a background probe of the playlist's auto-disabled channels, turning any
+    that work again back on. */
+export function startProbeAutoDisabled(playlistId: number): number {
+  return startProbeTargets(
+    playlistProbeTargets(playlistId, { only: "autoDisabled" }),
+    { reviveForPlaylistId: playlistId },
+  );
 }
 
 /** Kick a background probe of every channel in one playlist category. Same rules

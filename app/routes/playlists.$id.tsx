@@ -84,6 +84,7 @@ import { invalidate } from "~/services/output/cache.server";
 import {
   clearPlaylistProbes,
   probeSingleChannel,
+  startProbeAutoDisabled,
   startProbeCategory,
   startProbeFailed,
   startProbeGroup,
@@ -308,6 +309,13 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: true, intent, queued });
     }
 
+    case "probeAutoDisabled": {
+      // Re-check the channels that were auto-disabled, turning back on any that
+      // work again.
+      const queued = startProbeAutoDisabled(playlistId);
+      return data({ ok: true, intent, queued });
+    }
+
     case "clearProbes": {
       // Wipe all probe results for this playlist's channels.
       const cleared = clearPlaylistProbes(playlistId);
@@ -480,6 +488,9 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   const failedCount = enabled.filter(
     (c) => c.probeStatus === "error" || c.probeStatus === "timeout",
   ).length;
+  // Auto-disabled channels are off, so they're counted by their marker, not the
+  // enabled set above.
+  const autoDisabledCount = channels.filter((c) => c.autoDisabledAt != null).length;
 
   // One probe fetcher shared by the desktop button and the mobile menu, so a
   // probe started from either fires a single toast.
@@ -531,6 +542,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               probingCount={probingCount}
               missingCount={missingCount}
               failedCount={failedCount}
+              autoDisabledCount={autoDisabledCount}
             />
             <Button asChild size="sm" variant="outline">
               <Link to={`/playlists/${playlist.id}/guide`}>
@@ -557,6 +569,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
             probingCount={probingCount}
             missingCount={missingCount}
             failedCount={failedCount}
+            autoDisabledCount={autoDisabledCount}
           />
         </div>
       </div>
@@ -577,6 +590,7 @@ type ProbeIntent =
   | "probeAll"
   | "probeMissing"
   | "probeFailed"
+  | "probeAutoDisabled"
   | "clearProbes";
 
 // Owns the probe fetcher so the desktop button and the mobile menu can both
@@ -611,6 +625,7 @@ type ProbeProps = {
   probingCount: number;
   missingCount: number;
   failedCount: number;
+  autoDisabledCount: number;
 };
 
 // Kicks a probe of every channel in the playlist. Runs in the background, so it
@@ -625,6 +640,7 @@ function ProbeAllButton({
   probingCount,
   missingCount,
   failedCount,
+  autoDisabledCount,
 }: ProbeProps) {
   const busy = submitting || probing;
 
@@ -683,6 +699,12 @@ function ProbeAllButton({
           >
             Probe failed ({failedCount})
           </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={autoDisabledCount === 0}
+            onClick={() => probe("probeAutoDisabled")}
+          >
+            Probe auto-disabled ({autoDisabledCount})
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -722,6 +744,7 @@ function HeaderMenu({
   probingCount,
   missingCount,
   failedCount,
+  autoDisabledCount,
 }: ProbeProps & {
   className?: string;
   playlistId: number;
@@ -775,6 +798,12 @@ function HeaderMenu({
             onClick={() => probe("probeFailed")}
           >
             Probe failed ({failedCount})
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={busy || autoDisabledCount === 0}
+            onClick={() => probe("probeAutoDisabled")}
+          >
+            Probe auto-disabled ({autoDisabledCount})
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"

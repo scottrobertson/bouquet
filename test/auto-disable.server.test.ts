@@ -12,6 +12,7 @@ import {
   addChannels,
   autoDisableFailedChannels,
   makeAlternates,
+  reviveRecoveredChannels,
   toggleChannel,
 } from "~/services/playlist/mutations.server";
 
@@ -167,5 +168,51 @@ describe("autoDisableFailedChannels", () => {
       .where(eq(sourceChannels.id, a))
       .get()!;
     expect(sc.f).toBe(0);
+  });
+});
+
+/** Mark a source channel's latest probe result, as a re-probe would. */
+function setProbeStatus(sourceChannelId: number, status: "ok" | "error") {
+  db.update(sourceChannels)
+    .set({ probeStatus: status })
+    .where(eq(sourceChannels.id, sourceChannelId))
+    .run();
+}
+
+describe("reviveRecoveredChannels", () => {
+  it("turns an auto-disabled channel back on when it now probes ok", () => {
+    const a = addSourceChannel("a", "Channel A", { status: "error", failures: 3 });
+    addChannels(playlistId, categoryId, [a]);
+    const pcA = pcId(a);
+    autoDisableFailedChannels([a]);
+    setProbeStatus(a, "ok");
+
+    reviveRecoveredChannels(playlistId, [a]);
+
+    expect(pcRow(pcA).enabled).toBe(true);
+    expect(pcRow(pcA).autoDisabledAt).toBeNull();
+  });
+
+  it("leaves an auto-disabled channel off if it still fails", () => {
+    const a = addSourceChannel("a", "Channel A", { status: "error", failures: 3 });
+    addChannels(playlistId, categoryId, [a]);
+    const pcA = pcId(a);
+    autoDisableFailedChannels([a]);
+
+    reviveRecoveredChannels(playlistId, [a]);
+
+    expect(pcRow(pcA).enabled).toBe(false);
+    expect(pcRow(pcA).autoDisabledAt).toBeInstanceOf(Date);
+  });
+
+  it("ignores channels that were turned off by hand, not auto-disabled", () => {
+    const a = addSourceChannel("a", "Channel A", { status: "ok" });
+    addChannels(playlistId, categoryId, [a]);
+    const pcA = pcId(a);
+    toggleChannel(playlistId, pcA, false);
+
+    reviveRecoveredChannels(playlistId, [a]);
+
+    expect(pcRow(pcA).enabled).toBe(false);
   });
 });

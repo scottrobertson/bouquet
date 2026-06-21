@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -1023,6 +1023,48 @@ export function autoDisableFailedChannels(sourceChannelIds: number[]): void {
     tokens.add(c.outputToken);
   }
   for (const token of tokens) invalidate(token);
+}
+
+/** Turn auto-disabled channels in this playlist back on if their stream now
+    probes ok, clearing the marker. Called after the "probe auto-disabled" run
+    re-checks them. */
+export function reviveRecoveredChannels(
+  playlistId: number,
+  sourceChannelIds: number[],
+): void {
+  if (sourceChannelIds.length === 0) return;
+  const rows = db
+    .select({
+      channelId: playlistChannels.id,
+      outputToken: playlists.outputToken,
+    })
+    .from(playlistChannels)
+    .innerJoin(
+      sourceChannels,
+      eq(playlistChannels.sourceChannelId, sourceChannels.id),
+    )
+    .innerJoin(playlists, eq(playlistChannels.playlistId, playlists.id))
+    .where(
+      and(
+        eq(playlistChannels.playlistId, playlistId),
+        inArray(playlistChannels.sourceChannelId, sourceChannelIds),
+        isNotNull(playlistChannels.autoDisabledAt),
+        eq(sourceChannels.probeStatus, "ok"),
+      ),
+    )
+    .all();
+  if (rows.length === 0) return;
+
+  db.update(playlistChannels)
+    .set({ enabled: true, autoDisabledAt: null })
+    .where(
+      inArray(
+        playlistChannels.id,
+        rows.map((r) => r.channelId),
+      ),
+    )
+    .run();
+  for (const token of new Set(rows.map((r) => r.outputToken))) invalidate(token);
 }
 
 /** Detach an alternate so it becomes a standalone channel again. */
