@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { qualityMeta, qualityParts, resolutionLabel, resolutionTier } from "~/lib/quality";
+import {
+  cleanProbeError,
+  qualityMeta,
+  qualityParts,
+  resolutionLabel,
+  resolutionTier,
+} from "~/lib/quality";
+
+describe("cleanProbeError", () => {
+  it("strips the leading stream URL ffmpeg prefixes on", () => {
+    expect(
+      cleanProbeError(
+        "https://host.com:443/live/user/pass/123.m3u8: Invalid data found when processing input",
+      ),
+    ).toBe("Invalid data found when processing input");
+  });
+  it("leaves a plain message alone", () => {
+    expect(cleanProbeError("No video stream found")).toBe(
+      "No video stream found",
+    );
+  });
+  it("passes null through", () => {
+    expect(cleanProbeError(null)).toBe(null);
+  });
+});
 
 describe("resolutionLabel", () => {
   it("shortens common heights", () => {

@@ -2,6 +2,7 @@
 // back the first video/audio stream so we can show channel quality.
 import { spawn } from "node:child_process";
 import { env } from "~/lib/env.server";
+import { cleanProbeError } from "~/lib/quality";
 
 // ffmpeg 7+ rejects HLS segments with unusual or missing extensions, which
 // breaks probing m3u8 streams from providers that redirect to odd segment URLs.
@@ -133,7 +134,7 @@ export function probeStream(
       }
       if (code !== 0) {
         const msg = stderr.trim().split("\n").pop() || `ffprobe exited ${code}`;
-        finish({ ...EMPTY, status: "error", error: msg });
+        finish({ ...EMPTY, status: "error", error: cleanProbeError(msg) });
         return;
       }
       try {

@@ -37,7 +37,7 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { logoSrc } from "~/lib/logo";
-import { qualityMeta } from "~/lib/quality";
+import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { EpgPicker } from "./epg-picker";
 import { SmartSortDialog } from "./smart-sort-dialog";
@@ -73,7 +73,7 @@ function QualityLine({
   if (channel.probeStatus === "error" || channel.probeStatus === "timeout") {
     const label =
       channel.probeStatus === "timeout" ? "Probe timed out" : "Probe failed";
-    const detail = channel.probeError?.trim();
+    const detail = cleanProbeError(channel.probeError)?.trim();
     // The timeout message is the same as the label, so don't repeat it.
     const text = detail && detail !== label ? `${label}: ${detail}` : label;
     return (

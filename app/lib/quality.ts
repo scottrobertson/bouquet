@@ -8,6 +8,14 @@ export interface ProbeQuality {
   probeBitrate: number | null;
 }
 
+/** ffmpeg prefixes its errors with the input URL, e.g.
+    "https://host/live/user/pass/123.m3u8: Invalid data found". That URL holds
+    the provider credentials, so drop the leading URL token and keep the message. */
+export function cleanProbeError(error: string | null): string | null {
+  if (!error) return error;
+  return error.replace(/^https?:\/\/\S+?:\s+/, "");
+}
+
 export type ResolutionTier = "uhd" | "fhd" | "hd" | "sd";
 
 /** Short resolution label by height, e.g. "4K", "1080", "720". */
