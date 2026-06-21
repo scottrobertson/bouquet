@@ -3,6 +3,7 @@ import {
   bitrateKbps,
   parseBlackdetect,
   parseFfprobe,
+  parseProgressSeconds,
 } from "~/services/probe/ffprobe.server";
 
 describe("parseFfprobe", () => {
@@ -122,5 +123,26 @@ describe("bitrateKbps", () => {
   it("returns null for no data or zero window", () => {
     expect(bitrateKbps(0, 6)).toBe(null);
     expect(bitrateKbps(1000, 0)).toBe(null);
+  });
+});
+
+describe("parseProgressSeconds", () => {
+  it("takes the last out_time ffmpeg reported", () => {
+    const progress = [
+      "out_time=00:00:05.000000\nprogress=continue",
+      "out_time=00:00:10.000000\nprogress=continue",
+      "out_time=00:00:09.500000\nprogress=end",
+    ].join("\n");
+    expect(parseProgressSeconds(progress)).toBe(10);
+  });
+
+  it("reads a stream that was cut short", () => {
+    const progress = "out_time=00:00:06.200000\nprogress=end";
+    expect(parseProgressSeconds(progress)).toBeCloseTo(6.2);
+  });
+
+  it("returns 0 when no progress was printed", () => {
+    expect(parseProgressSeconds("")).toBe(0);
+    expect(parseProgressSeconds("out_time=N/A\nprogress=continue")).toBe(0);
   });
 });

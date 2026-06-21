@@ -237,10 +237,23 @@ export function bitrateKbps(bytes: number, seconds: number): number | null {
   return Math.round((bytes * 8) / seconds / 1000);
 }
 
+/** Pull the real muxed duration out of ffmpeg's -progress output. It prints an
+    `out_time=HH:MM:SS.ss` line per progress block, so take the last good one.
+    Returns 0 if none parsed. Pure so it's testable. */
+export function parseProgressSeconds(stderr: string): number {
+  let seconds = 0;
+  for (const m of stderr.matchAll(/out_time=(\d+:\d+:\d+\.\d+)/g)) {
+    seconds = Math.max(seconds, parseTimestamp(m[1]));
+  }
+  return seconds;
+}
+
 /** Measure a stream's real bitrate by reading it for `seconds` with ffmpeg and
     weighing the bytes. ffprobe can't give this for live streams (it reports
-    N/A), so this is the only way to know the actual data rate. Returns kbps, or
-    null if nothing came through. */
+    N/A), so this is the only way to know the actual data rate. Divides by the
+    duration ffmpeg actually muxed, not the requested window, so a stream that
+    delivers less than asked (slow, stalled, or killed early) still reads right.
+    Returns kbps, or null if nothing came through. */
 export function measureBitrate(
   url: string,
   seconds: number,
@@ -261,6 +274,8 @@ export function measureBitrate(
     "-f",
     "mpegts",
     "pipe:1",
+    "-progress",
+    "pipe:2",
   ];
 
   return new Promise<number | null>((resolve) => {
@@ -268,6 +283,7 @@ export function measureBitrate(
       stdio: ["ignore", "pipe", "pipe"],
     });
     let bytes = 0;
+    let stderr = "";
     let settled = false;
 
     // Hard stop in case -t doesn't end it (stuck stream). A little past the
@@ -281,8 +297,13 @@ export function measureBitrate(
     }
 
     child.stdout.on("data", (d) => (bytes += d.length));
-    child.stderr.on("data", () => {});
+    child.stderr.on("data", (d) => (stderr += d));
     child.on("error", () => finish(null));
-    child.on("close", () => finish(bitrateKbps(bytes, window)));
+    child.on("close", () => {
+      // Fall back to the window if ffmpeg printed no progress, so we still get a
+      // rough number rather than nothing.
+      const elapsed = parseProgressSeconds(stderr) || window;
+      finish(bitrateKbps(bytes, elapsed));
+    });
   });
 }
