@@ -42,6 +42,7 @@ function stream(
   return {
     name,
     available: true,
+    autoDisabledAt: null,
     probeStatus: "ok",
     probeWidth: Math.round((height * 16) / 9),
     probeHeight: height,
@@ -116,8 +117,11 @@ describe("smartSort scoring", () => {
     expect(smartSort(list, DEFAULT)[0].name).toBe("working");
   });
 
-  it("orders working over unprobed over failed over unavailable", () => {
+  it("orders working over unprobed over failed over unavailable over auto-disabled", () => {
     const list = [
+      stream("autoDisabled", 1080, 50, "h264", "aac", 10, {
+        autoDisabledAt: new Date(0),
+      }),
       stream("unavailable", 1080, 50, "h264", "aac", 10, { available: false }),
       stream("failed", 1080, 50, "h264", "aac", 10, { probeStatus: "timeout" }),
       stream("unprobed", 1080, 50, "h264", "aac", 10, { probeStatus: null }),
@@ -128,6 +132,22 @@ describe("smartSort scoring", () => {
       "unprobed",
       "failed",
       "unavailable",
+      "autoDisabled",
+    ]);
+  });
+
+  it("sinks an auto-disabled stream below a plain failed one", () => {
+    // Both failed their probe, but we already gave up on the auto-disabled one.
+    const list = [
+      stream("autoDisabled", 1080, 50, "h264", "aac", 10, {
+        probeStatus: "error",
+        autoDisabledAt: new Date(0),
+      }),
+      stream("failed", 1080, 50, "h264", "aac", 10, { probeStatus: "error" }),
+    ];
+    expect(smartSort(list, DEFAULT).map((s) => s.name)).toEqual([
+      "failed",
+      "autoDisabled",
     ]);
   });
 
@@ -172,6 +192,14 @@ describe("factorsFor (preview breakdown)", () => {
       factorsFor(stream("d", 1080, 50, "h264", "aac", 8, { probeStatus: "error" }))
         .liveness,
     ).toBe("failed");
+    expect(
+      factorsFor(
+        stream("e", 1080, 50, "h264", "aac", 8, {
+          probeStatus: "error",
+          autoDisabledAt: new Date(0),
+        }),
+      ).liveness,
+    ).toBe("autoDisabled");
   });
 });
 
@@ -324,6 +352,48 @@ describe("smartSortGroup mutation", () => {
     expect(after.find((r) => r.primaryChannelId == null)!.id).toBe(id(a));
     expect(after.find((r) => r.id === id(c))!.altPosition).toBe(0);
     expect(after.find((r) => r.id === id(b))!.altPosition).toBe(1);
+  });
+
+  it("sinks an auto-disabled alternate to the bottom of the group", () => {
+    const a = addSourceChannel("a", "Primary", {
+      probeHeight: 1080,
+      probeFps: 50,
+      probeVideoCodec: "h264",
+      probeAudioCodec: "aac",
+      probeBitrate: 6000,
+    });
+    // A great stream on paper, but we auto-disabled it after it kept failing.
+    const b = addSourceChannel("b", "Auto off", {
+      probeStatus: "error",
+      probeHeight: 2160,
+      probeFps: 50,
+      probeVideoCodec: "hevc",
+      probeAudioCodec: "eac3",
+      probeBitrate: 20000,
+    });
+    addChannels(playlistId, categoryId, [a, b]);
+    const rows = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.playlistId, playlistId))
+      .all();
+    const id = (sc: number) => rows.find((r) => r.sourceChannelId === sc)!.id;
+    makeAlternates(playlistId, id(a), [id(b)]);
+    db.update(playlistChannels)
+      .set({ enabled: false, autoDisabledAt: new Date(0) })
+      .where(eq(playlistChannels.id, id(b)))
+      .run();
+
+    smartSortGroup(playlistId, id(a), DB_CONFIG);
+
+    const after = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.playlistId, playlistId))
+      .all();
+    // The auto-disabled stream stays an alternate despite its better quality.
+    expect(after.find((r) => r.primaryChannelId == null)!.id).toBe(id(a));
+    expect(after.find((r) => r.id === id(b))!.altPosition).toBe(0);
   });
 
   it("getAltGroupStreams returns the primary first, then alternates in order", () => {

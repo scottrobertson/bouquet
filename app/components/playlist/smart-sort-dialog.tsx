@@ -61,7 +61,9 @@ function ruleItems(config: SmartSortConfig): { text: string; bitrate?: boolean }
   if (config.audio)
     items.push({ text: "Ties broken by audio (surround over stereo)" });
   if (config.availableFirst)
-    items.push({ text: "Working streams first, then unprobed, then failed" });
+    items.push({
+      text: "Working streams first, then unprobed, failed, then auto-disabled",
+    });
   return items;
 }
 
@@ -117,6 +119,7 @@ const STATUS_LABEL: Record<SmartSortFactors["liveness"], string | null> = {
   unprobed: "Not probed",
   failed: "Probe failed",
   unavailable: "Unavailable",
+  autoDisabled: "Auto-disabled",
 };
 
 function StatusBadge({ factors }: { factors: SmartSortFactors }) {

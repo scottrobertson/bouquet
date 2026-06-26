@@ -822,6 +822,7 @@ export function smartSortGroup(
       epgSourceId: playlistChannels.epgSourceId,
       epgChannelId: playlistChannels.epgChannelId,
       available: sourceChannels.available,
+      autoDisabledAt: playlistChannels.autoDisabledAt,
       probeStatus: sourceChannels.probeStatus,
       probeWidth: sourceChannels.probeWidth,
       probeHeight: sourceChannels.probeHeight,

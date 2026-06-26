@@ -38,7 +38,7 @@ All notable changes to this project are recorded here. Newest first.
   probe data and promotes the best stream to primary. It ranks by resolution then frame rate then
   bitrate, with bitrate compared per codec so HEVC isn't punished for needing fewer bits, audio
   codec breaking near-ties (surround over stereo), and streams sunk to the bottom in the order
-  unprobed, then failed, then unavailable.
+  unprobed, then failed, then unavailable, then auto-disabled last.
   The group's name and guide stay put, so only the running order changes. Since it can change which
   stream is primary, it opens a preview first: the proposed order with each stream's data, how far
   each moves, a note when the primary changes, the old primary marked "Was primary" when it's
