@@ -19,6 +19,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@react-router/express": "^8.0.0",
     "@react-router/node": "8.0.0",
     "@tanstack/react-virtual": "^3.14.3",
     "better-sqlite3": "^12.11.1",
@@ -44,7 +45,6 @@
   },
   "devDependencies": {
     "@react-router/dev": "8.0.0",
-    "@react-router/express": "^8.0.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/compression": "^1.8.1",
