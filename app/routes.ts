@@ -35,10 +35,7 @@ export default [
   // SSE stream the editor/source pages listen to for live sync/probe updates.
   route("events", "routes/events.ts"),
 
-  // Public, no layout. Hit by IPTV players and the cron job.
-  route("internal/sync", "routes/internal.sync.tsx"),
-  route("internal/probe", "routes/internal.probe.tsx"),
-  route("internal/backup", "routes/internal.backup.tsx"),
+  // Public, no layout. Hit by IPTV players.
   route("output/m3u/:token", "routes/output.m3u.$token.tsx"),
   route("output/epg/:token", "routes/output.epg.$token.tsx"),
 ] satisfies RouteConfig;

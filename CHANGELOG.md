@@ -55,6 +55,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Scheduled sync, probe, and backup now run by calling the service functions directly in-process,
+  instead of the cron job making an HTTP call to internal `/internal/*` routes. Those routes are
+  removed. No config change: the same `SYNC_CRON`/`PROBE_CRON`/`BACKUP_CRON` env vars still control
+  timing. A tick is now skipped if the previous run of that job is still going.
 - The "Revert name" action moved off the channel row into the ⋯ menu, so it's no longer a separate
   icon button and now works on mobile too.
 - Sync now logs more detail: how long the catalog fetch took with category and stream counts, how
