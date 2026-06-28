@@ -62,15 +62,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Boot the built image. The image build runs `npm ci --omit=dev`, so this
-      # catches anything that's only broken at runtime with prod-only deps, like
+      # Boot the built image the same way it's run for real (NODE_ENV is baked
+      # into the image, not passed in). The image build runs `npm ci --omit=dev`,
+      # so this catches anything only broken at runtime with prod-only deps, like
       # a package server.js imports being in the wrong dependency group.
       - name: Smoke test the image boots
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
           docker run -d --name smoke \
-            -e NODE_ENV=production -e APP_PASSWORD=ci -e SESSION_SECRET=ci-secret \
-            -e CONFIG_PATH=/tmp/bouquet-data "$IMAGE"
+            -e APP_PASSWORD=ci -e SESSION_SECRET=ci-secret \
+            -e CONFIG_PATH=/data "$IMAGE"
           ok=
           for i in $(seq 1 30); do
             if docker logs smoke 2>&1 | grep -q "Bouquet listening"; then ok=1; break; fi
