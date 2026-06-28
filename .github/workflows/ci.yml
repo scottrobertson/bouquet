@@ -52,11 +52,35 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=long
 
+      # Build and load into the local docker so we can boot it before pushing.
       - uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.ref == 'refs/heads/main' }}
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Boot the built image. The image build runs `npm ci --omit=dev`, so this
+      # catches anything that's only broken at runtime with prod-only deps, like
+      # a package server.js imports being in the wrong dependency group.
+      - name: Smoke test the image boots
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run -d --name smoke \
+            -e NODE_ENV=production -e APP_PASSWORD=ci -e SESSION_SECRET=ci-secret \
+            -e CONFIG_PATH=/tmp/bouquet-data "$IMAGE"
+          ok=
+          for i in $(seq 1 30); do
+            if docker logs smoke 2>&1 | grep -q "Bouquet listening"; then ok=1; break; fi
+            if [ -z "$(docker ps -q -f name=smoke)" ]; then echo "container exited early"; break; fi
+            sleep 1
+          done
+          echo "--- container logs ---"
+          docker logs smoke
+          docker rm -f smoke >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "image did not boot"; exit 1; }
+
+      - if: github.ref == 'refs/heads/main'
+        run: echo "${{ steps.meta.outputs.tags }}" | xargs -n1 docker push
