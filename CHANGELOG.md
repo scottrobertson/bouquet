@@ -111,10 +111,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
-- Catchup requests from spec-compliant players (TiviMate, Kodi) no longer 404. The M3U's
-  catchup-source template used `{duration}`, which players fill in seconds, but the provider's
-  timeshift endpoint wants minutes, so requests asked for an impossible range. The template now
-  uses `{duration:60}`, the spec's token for minutes.
+- Catchup now works in TiviMate. The M3U used to hand players a catchup-source URL template,
+  but TiviMate leaves some of its placeholders unfilled and fills times in UTC when panels
+  expect their own timezone, so every catchup request 404'd. Channels with an archive now emit
+  `catchup="xc"` instead, which tells the player to build the timeshift URL from the stream URL
+  itself, and TiviMate builds exactly the URL the panel expects. The in-app guide still uses
+  the template internally, with its duration token fixed to minutes (`{duration:60}`), which is
+  what the timeshift endpoint reads.
 
 - Measured bitrate is now more accurate. It used to divide the bytes read by the full read-time
   window even when the stream delivered less than that (slow, stalled, or killed early), which read

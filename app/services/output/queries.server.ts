@@ -22,7 +22,8 @@ export interface ResolvedChannel {
   epgSourceId: number;
   streamUrl: string;
   // Days of catchup the channel offers, 0 when none. catchupSource is the
-  // timeshift URL template the player uses to play past programmes.
+  // timeshift URL template the in-app guide uses to play past programmes.
+  // The M3U doesn't emit it; players build their own URL via catchup="xc".
   catchupDays: number;
   catchupSource: string;
 }

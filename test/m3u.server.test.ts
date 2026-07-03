@@ -60,9 +60,8 @@ describe("buildM3u", () => {
       ],
       "http://host/epg",
     );
-    expect(out).toContain(
-      `catchup="default" catchup-days="7" catchup-source="http://example.com/timeshift/u/p/{duration:60}/{Y}-{m}-{d}:{H}-{M}/1.ts"`,
-    );
+    expect(out).toContain(`catchup="xc" catchup-days="7"`);
+    expect(out).not.toContain("catchup-source");
   });
 
   it("omits catchup attributes when there's no archive", () => {
