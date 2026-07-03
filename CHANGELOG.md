@@ -111,6 +111,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Catchup requests from spec-compliant players (TiviMate, Kodi) no longer 404. The M3U's
+  catchup-source template used `{duration}`, which players fill in seconds, but the provider's
+  timeshift endpoint wants minutes, so requests asked for an impossible range. The template now
+  uses `{duration:60}`, the spec's token for minutes.
+
 - Measured bitrate is now more accurate. It used to divide the bytes read by the full read-time
   window even when the stream delivered less than that (slow, stalled, or killed early), which read
   low. It now divides by the duration ffmpeg actually muxed, so the number is right however long the

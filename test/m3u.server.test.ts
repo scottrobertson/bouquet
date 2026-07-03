@@ -55,13 +55,13 @@ describe("buildM3u", () => {
         channel({
           catchupDays: 7,
           catchupSource:
-            "http://example.com/timeshift/u/p/{duration}/{Y}-{m}-{d}:{H}-{M}/1.ts",
+            "http://example.com/timeshift/u/p/{duration:60}/{Y}-{m}-{d}:{H}-{M}/1.ts",
         }),
       ],
       "http://host/epg",
     );
     expect(out).toContain(
-      `catchup="default" catchup-days="7" catchup-source="http://example.com/timeshift/u/p/{duration}/{Y}-{m}-{d}:{H}-{M}/1.ts"`,
+      `catchup="default" catchup-days="7" catchup-source="http://example.com/timeshift/u/p/{duration:60}/{Y}-{m}-{d}:{H}-{M}/1.ts"`,
     );
   });
 

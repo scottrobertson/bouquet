@@ -194,9 +194,10 @@ export function buildStreamUrl(
   )}/${streamId}.${ext}`;
 }
 
-/** Build the catchup-source template for a channel's archive. The {duration},
-    {Y}, {m}, {d}, {H}, {M} placeholders are filled in by the player when it
-    requests a past programme. */
+/** Build the catchup-source template for a channel's archive. The placeholders
+    are filled in by the player when it requests a past programme. It has to be
+    {duration:60}: plain {duration} means seconds in the catchup spec, but the
+    provider's timeshift endpoint wants minutes, so spec players 404. */
 export function buildTimeshiftSource(
   creds: XtreamCreds,
   streamId: string,
@@ -205,7 +206,7 @@ export function buildTimeshiftSource(
   const base = normalizeServerUrl(creds.serverUrl);
   return `${base}/timeshift/${encodeURIComponent(creds.username)}/${encodeURIComponent(
     creds.password,
-  )}/{duration}/{Y}-{m}-{d}:{H}-{M}/${streamId}.${ext}`;
+  )}/{duration:60}/{Y}-{m}-{d}:{H}-{M}/${streamId}.${ext}`;
 }
 
 function decodeBase64(s: string): string {

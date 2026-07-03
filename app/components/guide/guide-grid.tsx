@@ -514,7 +514,7 @@ function catchupUrl(template: string, startMs: number, stopMs: number): string {
   const d = new Date(startMs);
   const pad = (n: number) => String(n).padStart(2, "0");
   return template
-    .replace("{duration}", String(Math.round((stopMs - startMs) / 60000)))
+    .replace("{duration:60}", String(Math.round((stopMs - startMs) / 60000)))
     .replace("{Y}", String(d.getFullYear()))
     .replace("{m}", pad(d.getMonth() + 1))
     .replace("{d}", pad(d.getDate()))
