@@ -14,9 +14,13 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@flystorage/aws-s3": "^1.2.0",
+    "@flystorage/file-storage": "^1.2.2",
+    "@flystorage/local-fs": "^1.2.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@react-router/express": "^8.0.1",

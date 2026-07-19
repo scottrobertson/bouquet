@@ -11,6 +11,13 @@ All notable changes to this project are recorded here. Newest first.
   brings the channels back exactly as they were. Toggle it from the source's menu on the Sources
   list or the Disable button on the source page. Its channels still show in the playlist editor,
   marked "Source off", so they're never hidden from you or removed silently.
+- Playlists can now upload their M3U and EPG to external storage, so a player can point at those
+  files instead of at Bouquet directly. Add one or more destinations in playlist Settings: S3 (and
+  S3-compatible stores like R2, MinIO, Backblaze B2, Spaces, Wasabi and Storj via a custom endpoint)
+  or a local folder on the server. Set a destination's public URL base and the uploaded M3U's guide
+  link points at the uploaded EPG, so the uploaded playlist is self-contained. Uploads run when you
+  click Upload on a destination and automatically after a source syncs; a sync touching several
+  sources at once still uploads once.
 - Channels that keep failing their probe are now turned off automatically. Each playlist has an
   "Auto-disable failing channels" setting (default 3, 0 turns it off) that disables a channel once
   its stream fails that many probes in a row. A good probe resets the streak, and re-enabling a

@@ -5,7 +5,9 @@ import { EventEmitter } from "node:events";
 // the app is a single Node process (see server.js); a sync/probe run and the SSE
 // route that streams to the browser share this same emitter.
 
-export type SourceChange = { sourceId: number };
+// A source's sync/probe state moved, or a playlist's upload state moved. Tabs
+// don't read the payload, they just revalidate, so one channel covers both.
+export type SourceChange = { sourceId?: number; playlistId?: number };
 
 // Reuse one emitter across HMR reloads, like the db connection.
 const globalForEvents = globalThis as unknown as {
@@ -24,6 +26,11 @@ const CHANGE = "source-change";
     fire-and-forget; tabs decide whether they care. */
 export function bumpSource(sourceId: number): void {
   emitter.emit(CHANGE, { sourceId } satisfies SourceChange);
+}
+
+/** Tell any connected tabs that this playlist changed (e.g. an upload finished). */
+export function bumpPlaylist(playlistId: number): void {
+  emitter.emit(CHANGE, { playlistId } satisfies SourceChange);
 }
 
 /** Subscribe to source changes. Returns an unsubscribe function. */

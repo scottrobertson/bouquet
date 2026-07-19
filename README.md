@@ -91,6 +91,29 @@ channel's name and guide stay the same, only the running order changes. You can
 rank by bitrate first instead, and toggle the audio and working-first rules, in
 playlist Settings.
 
+## Upload destinations
+
+By default a player pulls a playlist's M3U and EPG straight from Bouquet, so it
+only works while Bouquet is reachable. Each playlist can also push those two
+files out to external storage, so a player can point at the copies there instead.
+
+- Add destinations in playlist Settings. Two types for now: **S3** (and anything
+  S3-compatible: Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces, Wasabi,
+  Storj, set the endpoint for these) and a **local folder** on the server (e.g. a
+  mounted volume served by something else).
+- Set a **public URL base** for a destination and Bouquet shows you the resulting
+  M3U/EPG URLs and points the uploaded M3U's guide link (`url-tvg`) at the uploaded
+  EPG, so the uploaded playlist is self-contained. Leave it blank and the uploaded
+  M3U just carries no guide link.
+- Uploads happen when you click **Upload** on a destination, and automatically
+  after a source syncs (not on every edit, which would be too chatty). A sync that
+  refreshes several sources at once still uploads once.
+
+Note: an M3U contains the provider's direct stream URLs, which carry your provider
+login. Treat an uploaded M3U's URL as sensitive, the same as Bouquet's own output
+URLs. Credentials for the destination are stored as-is (like the provider
+passwords), so keep the database private.
+
 ## Tech
 
 React Router 7 (framework mode), Tailwind + shadcn/ui, Drizzle + SQLite, run as
