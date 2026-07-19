@@ -470,6 +470,7 @@ export async function probeDueSources(): Promise<void> {
   const all = db
     .select({
       id: sources.id,
+      enabled: sources.enabled,
       probeEnabled: sources.probeEnabled,
       lastProbedAt: sources.lastProbedAt,
       probeIntervalMinutes: sources.probeIntervalMinutes,
@@ -478,7 +479,9 @@ export async function probeDueSources(): Promise<void> {
     .all();
   const due = all.filter(
     (s) =>
-      s.probeEnabled && isProbeDue(s.lastProbedAt, s.probeIntervalMinutes, now),
+      s.enabled &&
+      s.probeEnabled &&
+      isProbeDue(s.lastProbedAt, s.probeIntervalMinutes, now),
   );
   console.log(`[probe] ${due.length} of ${all.length} sources due`);
   for (const s of due) {

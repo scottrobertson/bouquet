@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Check, Gauge, History, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { Check, Gauge, History, Loader2, Pencil, Power, PowerOff, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "~/components/ui/alert-dialog";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Switch } from "~/components/ui/switch";
@@ -61,6 +62,7 @@ export async function loader({ params }: Route.LoaderArgs) {
     source: {
       id: source.id,
       name: source.name,
+      enabled: source.enabled,
       syncStatus: source.syncStatus,
       lastSyncedAt: source.lastSyncedAt ? source.lastSyncedAt.toISOString() : null,
       channelCount: source.channelCount,
@@ -99,6 +101,13 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (intent === "probe") {
     startProbe(id);
     return data({ intent: "probe" as const, started: true });
+  }
+
+  if (intent === "setEnabled") {
+    const enabled = form.get("enabled") === "true";
+    db.update(sources).set({ enabled }).where(eq(sources.id, id)).run();
+    invalidateAll();
+    return data({ intent: "setEnabled" as const, enabled });
   }
 
   if (intent === "delete") {
@@ -158,6 +167,8 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
       toast("Probe started", {
         description: "Checking the quality of channels used in playlists.",
       });
+    } else if ("intent" in actionData && actionData.intent === "setEnabled") {
+      toast.success(actionData.enabled ? "Source enabled" : "Source disabled");
     }
   }, [actionData]);
 
@@ -168,6 +179,11 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
         title={
           <span className="flex flex-wrap items-center gap-2.5">
             {source.name}
+            {source.enabled ? null : (
+              <Badge className="border-transparent bg-muted text-muted-foreground">
+                Disabled
+              </Badge>
+            )}
             <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
             {probing || source.probeStatus !== "idle" ? (
               <ProbeStatusBadge
@@ -205,6 +221,17 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
                 Edit
               </Link>
             </Button>
+            <Form method="post" className="contents">
+              <input type="hidden" name="enabled" value={String(!source.enabled)} />
+              <Button type="submit" name="intent" value="setEnabled" size="sm" variant="outline" className="w-full sm:w-auto">
+                {source.enabled ? (
+                  <PowerOff className="size-4" />
+                ) : (
+                  <Power className="size-4" />
+                )}
+                {source.enabled ? "Disable" : "Enable"}
+              </Button>
+            </Form>
             <DeleteSourceButton name={source.name} />
           </>
         }

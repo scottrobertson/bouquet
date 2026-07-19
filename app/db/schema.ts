@@ -35,6 +35,10 @@ export const sources = sqliteTable("sources", {
   autoImportGroups: integer("auto_import_groups", { mode: "boolean" })
     .notNull()
     .default(true),
+  // When off, the source is paused: its channels drop out of playlist output
+  // and the scheduler skips its sync and probe. Turning it back on restores
+  // everything as it was, since nothing is deleted.
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   // How often the scheduler auto-syncs this source, in minutes. 0 = manual only.
   syncIntervalMinutes: integer("sync_interval_minutes").notNull().default(1440),
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
@@ -220,6 +224,39 @@ export const playlists = sqliteTable("playlists", {
     .default(sql`(unixepoch())`),
 });
 
+/** Where a playlist's generated M3U and EPG get pushed, so a player can point at
+    those files instead of at Bouquet directly. A playlist can have several.
+    `type` picks the backend; `config` holds that backend's connection settings and
+    credentials (plaintext, same as source passwords). Credentials never leave this
+    box, but the uploaded M3U embeds provider stream URLs (which carry the provider
+    login), so treat the destination like the public output URLs. */
+export const uploadDestinations = sqliteTable("upload_destinations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playlistId: integer("playlist_id")
+    .notNull()
+    .references(() => playlists.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["s3", "local"] }).notNull(),
+  config: text("config", { mode: "json" }).$type<DestinationConfig>().notNull(),
+  // Object keys / paths the files are written to within the destination.
+  m3uPath: text("m3u_path").notNull().default("playlist.m3u"),
+  epgPath: text("epg_path").notNull().default("playlist.xml"),
+  // Where the uploaded files are reachable (bucket public base, CDN, etc). Used
+  // to build the uploaded M3U's url-tvg and shown to the user. Null = unknown.
+  publicUrlBase: text("public_url_base"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  uploadStatus: text("upload_status", {
+    enum: ["idle", "uploading", "ok", "error"],
+  })
+    .notNull()
+    .default("idle"),
+  lastUploadedAt: integer("last_uploaded_at", { mode: "timestamp" }),
+  uploadError: text("upload_error"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 /** A category (group) inside a playlist. When autoSourceId is set, it's an
     auto-sync group: its channels mirror one source category live (read-only),
     so there are no playlist_channels rows for it. */
@@ -363,3 +400,27 @@ export type EpgProgramme = typeof epgProgrammes.$inferSelect;
 export type Playlist = typeof playlists.$inferSelect;
 export type PlaylistCategory = typeof playlistCategories.$inferSelect;
 export type PlaylistChannel = typeof playlistChannels.$inferSelect;
+export type UploadDestination = typeof uploadDestinations.$inferSelect;
+
+/** Per-backend connection settings for an upload destination, discriminated by
+    the row's `type`. Credentials are stored plaintext. */
+export type S3Config = {
+  // Leave endpoint empty for real AWS S3; set it for S3-compatible stores
+  // (R2, MinIO, Backblaze B2, DigitalOcean Spaces, Wasabi, Storj).
+  endpoint?: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  // MinIO and some others need path-style URLs instead of the bucket subdomain.
+  forcePathStyle?: boolean;
+  // Prepended to every object key.
+  prefix?: string;
+};
+
+export type LocalConfig = {
+  // Directory the files are written into (e.g. a mounted volume served elsewhere).
+  path: string;
+};
+
+export type DestinationConfig = S3Config | LocalConfig;

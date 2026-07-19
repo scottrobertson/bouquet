@@ -79,6 +79,7 @@ export function getCategories(playlistId: number) {
       autoSourceId: playlistCategories.autoSourceId,
       autoCategoryName: playlistCategories.autoCategoryName,
       autoSourceName: sources.name,
+      autoSourceEnabled: sources.enabled,
     })
     .from(playlistCategories)
     .leftJoin(sources, eq(sources.id, playlistCategories.autoSourceId))
@@ -147,6 +148,7 @@ export function getPlaylistChannels(playlistId: number) {
       sourceEpgChannelId: sourceChannels.epgChannelId,
       streamId: sourceChannels.streamId,
       sourceProviderName: sources.name,
+      sourceEnabled: sources.enabled,
       serverUrl: sources.serverUrl,
       streamBaseUrl: sources.streamBaseUrl,
       username: sources.username,

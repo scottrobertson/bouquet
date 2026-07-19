@@ -121,6 +121,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
               sourceId: c.autoSourceId,
               sourceName: c.autoSourceName ?? "Unknown source",
               categoryName: c.autoCategoryName ?? "",
+              enabled: c.autoSourceEnabled ?? true,
             }
           : null,
     })),

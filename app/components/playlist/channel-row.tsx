@@ -426,10 +426,16 @@ export function ChannelRowBody({
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
-        {!channel.sourceAvailable ||
+        {!channel.sourceEnabled ||
+        !channel.sourceAvailable ||
         !channel.sourceCategoryEnabled ||
         (channel.autoDisabledAt && !enabled) ? (
           <div className="flex shrink-0 items-center gap-1">
+            {!channel.sourceEnabled ? (
+              <Badge className="border-transparent bg-muted text-muted-foreground">
+                Source off
+              </Badge>
+            ) : null}
             {!channel.sourceAvailable ? (
               <Badge className="border-transparent bg-warning/10 text-warning">
                 Unavailable

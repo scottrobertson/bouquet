@@ -101,6 +101,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
       and(
         eq(playlistChannels.playlistId, playlist.id),
         eq(playlistChannels.enabled, true),
+        eq(sources.enabled, true),
         eq(sourceChannels.available, true),
         // Exclude channels whose source category is disabled.
         or(isNull(sourceCategories.id), eq(sourceCategories.enabled, true)),
@@ -269,6 +270,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
       .where(
         and(
           eq(sourceChannels.sourceId, sourceId),
+          eq(sources.enabled, true),
           eq(sourceChannels.categoryName, categoryName),
           eq(sourceChannels.available, true),
         ),

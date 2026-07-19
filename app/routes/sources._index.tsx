@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Gauge, MoreHorizontal, Plus, Radio, RefreshCw } from "lucide-react";
+import { Gauge, MoreHorizontal, Pencil, Plus, Power, PowerOff, Radio, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link, data, useFetcher } from "react-router";
@@ -41,8 +41,10 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { Badge } from "~/components/ui/badge";
 import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
+import { invalidateAll } from "~/services/output/cache.server";
 import { sourceCategorySummaries } from "~/services/sources/categories.server";
 import { startSync } from "~/services/sync/sync.server";
 import { startProbe } from "~/services/probe/probe.server";
@@ -64,6 +66,7 @@ export async function loader() {
       return {
         id: s.id,
         name: s.name,
+        enabled: s.enabled,
         host: hostFromUrl(s.serverUrl),
         username: s.username,
         outputFormat: s.outputFormat,
@@ -93,7 +96,12 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = form.get("intent");
 
   if (intent === "syncAll") {
-    const ids = db.select({ id: sources.id }).from(sources).all().map((r) => r.id);
+    const ids = db
+      .select({ id: sources.id })
+      .from(sources)
+      .where(eq(sources.enabled, true))
+      .all()
+      .map((r) => r.id);
     for (const sourceId of ids) startSync(sourceId);
     return data({ intent: "syncAll" as const, started: ids.length });
   }
@@ -111,6 +119,13 @@ export async function action({ request }: Route.ActionArgs) {
   if (intent === "probe") {
     startProbe(id);
     return data({ intent: "probe" as const, started: true });
+  }
+
+  if (intent === "setEnabled") {
+    const enabled = form.get("enabled") === "true";
+    db.update(sources).set({ enabled }).where(eq(sources.id, id)).run();
+    invalidateAll();
+    return data({ intent: "setEnabled" as const, enabled });
   }
 
   if (intent === "delete") {
@@ -256,6 +271,8 @@ function SourceRow({ source }: { source: Row }) {
       toast(`Probing ${source.name}`, {
         description: "Checking stream quality in the background.",
       });
+    } else if (res.intent === "setEnabled") {
+      toast.success(res.enabled ? `Enabled ${source.name}` : `Disabled ${source.name}`);
     } else if (res.intent === "delete" && res.ok) {
       toast.success(`Deleted ${source.name}`);
     }
@@ -277,9 +294,19 @@ function SourceRow({ source }: { source: Row }) {
   return (
     <TableRow className="border-white/5 hover:bg-white/[0.02]">
       <TableCell className="pl-4 font-medium md:pl-2">
-        <Link to={`/sources/${source.id}`} className="hover:text-primary">
-          {source.name}
-        </Link>
+        <span className="flex items-center gap-2">
+          <Link
+            to={`/sources/${source.id}`}
+            className={source.enabled ? "hover:text-primary" : "text-muted-foreground hover:text-primary"}
+          >
+            {source.name}
+          </Link>
+          {source.enabled ? null : (
+            <Badge className="border-transparent bg-muted text-muted-foreground">
+              Disabled
+            </Badge>
+          )}
+        </span>
       </TableCell>
       <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
         {source.host}
@@ -337,7 +364,25 @@ function SourceRow({ source }: { source: Row }) {
               Probe now
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link to={`/sources/${source.id}/edit`}>Edit</Link>
+              <Link to={`/sources/${source.id}/edit`}>
+                <Pencil className="size-4" />
+                Edit
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                fetcher.submit(
+                  { intent: "setEnabled", id: source.id, enabled: String(!source.enabled) },
+                  { method: "post" },
+                )
+              }
+            >
+              {source.enabled ? (
+                <PowerOff className="size-4" />
+              ) : (
+                <Power className="size-4" />
+              )}
+              {source.enabled ? "Disable" : "Enable"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

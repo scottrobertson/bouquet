@@ -137,6 +137,11 @@ export function CategoryGroup({
             </span>
           </span>
         ) : null}
+        {isAuto && !auto.enabled ? (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+            Source off
+          </span>
+        ) : null}
         <div className="ml-auto">
           <CategoryMenu category={category} count={count} />
         </div>

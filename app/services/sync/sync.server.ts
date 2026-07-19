@@ -9,6 +9,7 @@ import {
 } from "~/db/schema";
 import { invalidateAll } from "~/services/output/cache.server";
 import { bumpSource } from "~/services/events.server";
+import { requestUploadSoon } from "~/services/upload/upload.server";
 import { isIntervalDue, mapPool } from "~/lib/pool";
 import {
   recordSyncChanges,
@@ -352,6 +353,10 @@ export async function runSync(sourceId: number): Promise<void> {
 
   const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(`[sync] ${source.name}: done in ${secs}s`);
+
+  // Fresh catalog and guide, so push playlists to their upload destinations.
+  // Debounced, so a cron tick syncing several sources uploads once.
+  requestUploadSoon();
 }
 
 /** Rebuild a source's epg channel list (the matching dropdown) from its
@@ -418,13 +423,14 @@ export async function syncDueSources(): Promise<void> {
   const all = db
     .select({
       id: sources.id,
+      enabled: sources.enabled,
       lastSyncedAt: sources.lastSyncedAt,
       syncIntervalMinutes: sources.syncIntervalMinutes,
     })
     .from(sources)
     .all();
-  const due = all.filter((s) =>
-    isSyncDue(s.lastSyncedAt, s.syncIntervalMinutes, now),
+  const due = all.filter(
+    (s) => s.enabled && isSyncDue(s.lastSyncedAt, s.syncIntervalMinutes, now),
   );
   console.log(`[sync] ${due.length} of ${all.length} sources due`);
   for (const s of due) {

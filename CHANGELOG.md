@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Sources can now be disabled without deleting them. A disabled source drops out of every playlist's
+  output and the scheduler skips its sync and probe, but nothing is deleted, so enabling it again
+  brings the channels back exactly as they were. Toggle it from the source's menu on the Sources
+  list or the Disable button on the source page. Its channels still show in the playlist editor,
+  marked "Source off", so they're never hidden from you or removed silently.
 - Channels that keep failing their probe are now turned off automatically. Each playlist has an
   "Auto-disable failing channels" setting (default 3, 0 turns it off) that disables a channel once
   its stream fails that many probes in a row. A good probe resets the streak, and re-enabling a

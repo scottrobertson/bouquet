@@ -20,6 +20,9 @@ export type EditorChannel = {
   channelSourceId: number;
   sourceEpgChannelId: string | null;
   sourceProviderName: string;
+  // When off, the whole source is disabled, so this channel is kept out of
+  // output. Shown in the editor but marked, never silently dropped.
+  sourceEnabled: boolean;
   sourceCategoryEnabled: boolean;
   // The provider's direct stream URL, for the Play in VLC / copy actions.
   streamUrl: string;
@@ -45,7 +48,14 @@ export type EditorCategory = {
   id: number;
   name: string;
   // Set when this is an auto-sync category mirroring one source category.
-  auto: { sourceId: number; sourceName: string; categoryName: string } | null;
+  // enabled is false when that source is disabled, so its channels are kept
+  // out of output even though the editor still lists them.
+  auto: {
+    sourceId: number;
+    sourceName: string;
+    categoryName: string;
+    enabled: boolean;
+  } | null;
 };
 
 /** A read-only channel inside an auto-sync category (derived live from source). */
