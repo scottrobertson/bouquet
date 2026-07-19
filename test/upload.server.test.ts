@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -102,14 +102,18 @@ describe("uploadDestination", () => {
       .returning({ id: playlists.id })
       .get();
 
-    // A path that can't be created, so the write fails.
+    // Root the storage at a regular file, so writing a child path under it
+    // fails fast with ENOTDIR on every OS. An unwritable dir path behaves
+    // differently across platforms (macOS vs Linux /proc) and can hang.
+    const notADir = join(tempDir(), "not-a-dir");
+    writeFileSync(notADir, "x");
     const dest = db
       .insert(uploadDestinations)
       .values({
         playlistId: playlist.id,
         name: "Broken",
         type: "local",
-        config: { path: "/proc/nonexistent/definitely-not-writable" },
+        config: { path: notADir },
       })
       .returning({ id: uploadDestinations.id })
       .get();
