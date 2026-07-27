@@ -24,8 +24,9 @@ All notable changes to this project are recorded here. Newest first.
   channel gives it a fresh start. If the failing channel is the primary of an alt group, a working
   alternate is promoted first so the group keeps playing. Auto-disabled channels show an
   "Auto-disabled" badge in the editor so you can tell them apart from ones you turned off yourself.
-  The probe menu has a "Probe auto-disabled" option that re-checks those channels and turns any
-  that work again back on.
+  Recovery is automatic: scheduled probes keep checking auto-disabled channels, and any probe that
+  finds one working again turns it back on. The probe menu also has a "Probe auto-disabled" option
+  to re-check them on demand.
 - The playlist channel list now shows why a probe failed instead of just "Probe failed". The
   reason (e.g. "Black screen" or "No video stream found") shows on the channel's quality line,
   with the full message on hover.

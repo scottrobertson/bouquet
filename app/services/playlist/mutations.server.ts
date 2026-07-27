@@ -1029,13 +1029,12 @@ export function autoDisableFailedChannels(sourceChannelIds: number[]): void {
   for (const token of tokens) invalidate(token);
 }
 
-/** Turn auto-disabled channels in this playlist back on if their stream now
-    probes ok, clearing the marker. Called after the "probe auto-disabled" run
-    re-checks them. */
-export function reviveRecoveredChannels(
-  playlistId: number,
-  sourceChannelIds: number[],
-): void {
+/** Turn auto-disabled channels back on if their stream now probes ok, clearing
+    the marker. Covers every playlist using the stream, matching how auto-disable
+    turns them off everywhere. Called after each probe run with the source
+    channels it touched. Manually disabled channels have no marker, so they stay
+    off. */
+export function reviveRecoveredChannels(sourceChannelIds: number[]): void {
   if (sourceChannelIds.length === 0) return;
   const rows = db
     .select({
@@ -1050,7 +1049,6 @@ export function reviveRecoveredChannels(
     .innerJoin(playlists, eq(playlistChannels.playlistId, playlists.id))
     .where(
       and(
-        eq(playlistChannels.playlistId, playlistId),
         inArray(playlistChannels.sourceChannelId, sourceChannelIds),
         isNotNull(playlistChannels.autoDisabledAt),
         eq(sourceChannels.probeStatus, "ok"),

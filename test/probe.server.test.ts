@@ -100,6 +100,17 @@ describe("channelsToProbe", () => {
     expect(channelsToProbe(sourceId)).toEqual([]);
   });
 
+  it("includes auto-disabled channels so they can recover", () => {
+    const dead = addSourceChannel("dead");
+    addChannels(playlistId, categoryId, [dead]);
+    db.update(playlistChannels)
+      .set({ enabled: false, autoDisabledAt: new Date() })
+      .where(eq(playlistChannels.sourceChannelId, dead))
+      .run();
+
+    expect(channelsToProbe(sourceId).map((c) => c.streamId)).toEqual(["dead"]);
+  });
+
   it("skips channels in a disabled source category", () => {
     const used = addSourceChannel("used", { categoryName: "Adult" });
     addChannels(playlistId, categoryId, [used]);

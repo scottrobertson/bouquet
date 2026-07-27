@@ -187,7 +187,7 @@ describe("reviveRecoveredChannels", () => {
     autoDisableFailedChannels([a]);
     setProbeStatus(a, "ok");
 
-    reviveRecoveredChannels(playlistId, [a]);
+    reviveRecoveredChannels([a]);
 
     expect(pcRow(pcA).enabled).toBe(true);
     expect(pcRow(pcA).autoDisabledAt).toBeNull();
@@ -199,7 +199,7 @@ describe("reviveRecoveredChannels", () => {
     const pcA = pcId(a);
     autoDisableFailedChannels([a]);
 
-    reviveRecoveredChannels(playlistId, [a]);
+    reviveRecoveredChannels([a]);
 
     expect(pcRow(pcA).enabled).toBe(false);
     expect(pcRow(pcA).autoDisabledAt).toBeInstanceOf(Date);
@@ -211,8 +211,44 @@ describe("reviveRecoveredChannels", () => {
     const pcA = pcId(a);
     toggleChannel(playlistId, pcA, false);
 
-    reviveRecoveredChannels(playlistId, [a]);
+    reviveRecoveredChannels([a]);
 
     expect(pcRow(pcA).enabled).toBe(false);
+  });
+
+  it("revives the channel in every playlist that auto-disabled it", () => {
+    const a = addSourceChannel("a", "Channel A", { status: "error", failures: 3 });
+    addChannels(playlistId, categoryId, [a]);
+
+    const pl2 = db
+      .insert(playlists)
+      .values({ name: "PL2", outputToken: "tok2" })
+      .returning({ id: playlists.id })
+      .get().id;
+    const cat2 = db
+      .insert(playlistCategories)
+      .values({ playlistId: pl2, name: "UK", position: 0 })
+      .returning({ id: playlistCategories.id })
+      .get().id;
+    addChannels(pl2, cat2, [a]);
+
+    autoDisableFailedChannels([a]);
+    const rows = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.sourceChannelId, a))
+      .all();
+    expect(rows.map((r) => r.enabled)).toEqual([false, false]);
+
+    setProbeStatus(a, "ok");
+    reviveRecoveredChannels([a]);
+
+    const revived = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.sourceChannelId, a))
+      .all();
+    expect(revived.map((r) => r.enabled)).toEqual([true, true]);
+    expect(revived.map((r) => r.autoDisabledAt)).toEqual([null, null]);
   });
 });
