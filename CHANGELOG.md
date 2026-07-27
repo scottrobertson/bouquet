@@ -67,6 +67,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Channels that can't reach output are now greyed out in the playlist editor, whatever the reason:
+  source disabled, dropped by the provider, or in a disabled source category. Before only manually
+  or auto-disabled channels dimmed, so a "Source off" row looked active when it wasn't.
+- Smart sort now treats a channel from a disabled source like an unavailable one: it sinks below
+  working, unprobed, failed and unavailable streams (staying above auto-disabled) and can't be
+  picked as the group's primary. The preview shows a "Source off" badge on those streams.
 - Scheduled sync, probe, and backup now run by calling the service functions directly in-process,
   instead of the cron job making an HTTP call to internal `/internal/*` routes. Those routes are
   removed. No config change: the same `SYNC_CRON`/`PROBE_CRON`/`BACKUP_CRON` env vars still control

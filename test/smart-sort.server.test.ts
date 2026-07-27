@@ -42,6 +42,7 @@ function stream(
   return {
     name,
     available: true,
+    sourceEnabled: true,
     autoDisabledAt: null,
     probeStatus: "ok",
     probeWidth: Math.round((height * 16) / 9),
@@ -117,11 +118,12 @@ describe("smartSort scoring", () => {
     expect(smartSort(list, DEFAULT)[0].name).toBe("working");
   });
 
-  it("orders working over unprobed over failed over unavailable over auto-disabled", () => {
+  it("orders working over unprobed over failed over unavailable over source-off over auto-disabled", () => {
     const list = [
       stream("autoDisabled", 1080, 50, "h264", "aac", 10, {
         autoDisabledAt: new Date(0),
       }),
+      stream("sourceOff", 1080, 50, "h264", "aac", 10, { sourceEnabled: false }),
       stream("unavailable", 1080, 50, "h264", "aac", 10, { available: false }),
       stream("failed", 1080, 50, "h264", "aac", 10, { probeStatus: "timeout" }),
       stream("unprobed", 1080, 50, "h264", "aac", 10, { probeStatus: null }),
@@ -132,6 +134,7 @@ describe("smartSort scoring", () => {
       "unprobed",
       "failed",
       "unavailable",
+      "sourceOff",
       "autoDisabled",
     ]);
   });
@@ -200,6 +203,10 @@ describe("factorsFor (preview breakdown)", () => {
         }),
       ).liveness,
     ).toBe("autoDisabled");
+    expect(
+      factorsFor(stream("f", 1080, 50, "h264", "aac", 8, { sourceEnabled: false }))
+        .liveness,
+    ).toBe("sourceOff");
   });
 });
 
@@ -392,6 +399,65 @@ describe("smartSortGroup mutation", () => {
       .where(eq(playlistChannels.playlistId, playlistId))
       .all();
     // The auto-disabled stream stays an alternate despite its better quality.
+    expect(after.find((r) => r.primaryChannelId == null)!.id).toBe(id(a));
+    expect(after.find((r) => r.id === id(b))!.altPosition).toBe(0);
+  });
+
+  it("keeps a stream from a switched-off source out of the primary slot", () => {
+    const a = addSourceChannel("a", "Primary", {
+      probeHeight: 1080,
+      probeFps: 50,
+      probeVideoCodec: "h264",
+      probeAudioCodec: "aac",
+      probeBitrate: 6000,
+    });
+    // A better stream, but its whole source is disabled so it can't be output.
+    const offSourceId = db
+      .insert(sources)
+      .values({
+        name: "Off",
+        serverUrl: "http://s2",
+        streamBaseUrl: "http://s2",
+        username: "u",
+        password: "p",
+        enabled: false,
+      })
+      .returning({ id: sources.id })
+      .get().id;
+    const b = db
+      .insert(sourceChannels)
+      .values({
+        sourceId: offSourceId,
+        streamId: "b",
+        name: "Better",
+        epgChannelId: "b.epg",
+        categoryName: "UK",
+        position: 0,
+        probeStatus: "ok",
+        probeHeight: 2160,
+        probeFps: 50,
+        probeVideoCodec: "hevc",
+        probeAudioCodec: "eac3",
+        probeBitrate: 20000,
+      })
+      .returning({ id: sourceChannels.id })
+      .get().id;
+    addChannels(playlistId, categoryId, [a, b]);
+    const rows = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.playlistId, playlistId))
+      .all();
+    const id = (sc: number) => rows.find((r) => r.sourceChannelId === sc)!.id;
+    makeAlternates(playlistId, id(a), [id(b)]);
+
+    smartSortGroup(playlistId, id(a), DB_CONFIG);
+
+    const after = db
+      .select()
+      .from(playlistChannels)
+      .where(eq(playlistChannels.playlistId, playlistId))
+      .all();
     expect(after.find((r) => r.primaryChannelId == null)!.id).toBe(id(a));
     expect(after.find((r) => r.id === id(b))!.altPosition).toBe(0);
   });

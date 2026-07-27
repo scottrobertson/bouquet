@@ -18,6 +18,9 @@ export type SmartSortConfig = {
 /** Only the fields the sort reads, so DB rows and test fixtures both fit. */
 export type SmartSortStream = {
   available: boolean;
+  // Whether the channel's whole source is enabled. An off source keeps the
+  // channel out of output, so it can't be a sensible primary.
+  sourceEnabled: boolean;
   // Set when we turned this channel off after repeated probe failures.
   autoDisabledAt: Date | null;
   probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
@@ -102,26 +105,31 @@ function audioRank(s: SmartSortStream): number {
 }
 
 // Working first, then never-probed (unknown, might be fine), then a failed probe
-// (we tried and it broke), then gone from the provider, then auto-disabled last
-// since we already gave up on those. A never-probed stream sits above a failed
-// one on purpose: no result yet beats a known failure.
+// (we tried and it broke), then gone from the provider, then a switched-off
+// source, then auto-disabled last since we already gave up on those. A
+// never-probed stream sits above a failed one on purpose: no result yet beats a
+// known failure. Source off sits above auto-disabled because the stream itself
+// may be fine once the source comes back on.
 export type Liveness =
   | "working"
   | "unprobed"
   | "failed"
   | "unavailable"
+  | "sourceOff"
   | "autoDisabled";
 
 const LIVENESS_RANK: Record<Liveness, number> = {
-  working: 4,
-  unprobed: 3,
-  failed: 2,
-  unavailable: 1,
+  working: 5,
+  unprobed: 4,
+  failed: 3,
+  unavailable: 2,
+  sourceOff: 1,
   autoDisabled: 0,
 };
 
 function liveness(s: SmartSortStream): Liveness {
   if (s.autoDisabledAt != null) return "autoDisabled";
+  if (!s.sourceEnabled) return "sourceOff";
   if (!s.available) return "unavailable";
   if (s.probeStatus === "error" || s.probeStatus === "timeout") return "failed";
   if (s.probeStatus === "ok") return "working";

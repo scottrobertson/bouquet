@@ -5,6 +5,7 @@ import {
   playlistChannels,
   playlists,
   sourceChannels,
+  sources,
 } from "~/db/schema";
 import { invalidate } from "~/services/output/cache.server";
 import { nextCategoryPosition, nextChannelPosition } from "./queries.server";
@@ -822,6 +823,7 @@ export function smartSortGroup(
       epgSourceId: playlistChannels.epgSourceId,
       epgChannelId: playlistChannels.epgChannelId,
       available: sourceChannels.available,
+      sourceEnabled: sources.enabled,
       autoDisabledAt: playlistChannels.autoDisabledAt,
       probeStatus: sourceChannels.probeStatus,
       probeWidth: sourceChannels.probeWidth,
@@ -836,6 +838,7 @@ export function smartSortGroup(
       sourceChannels,
       eq(playlistChannels.sourceChannelId, sourceChannels.id),
     )
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
     .where(
       and(
         eq(playlistChannels.playlistId, playlistId),

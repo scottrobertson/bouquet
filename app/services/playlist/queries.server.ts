@@ -265,6 +265,7 @@ export function getAltGroupStreams(playlistId: number, primaryId: number) {
       providerName: sources.name,
       categoryName: sourceChannels.categoryName,
       available: sourceChannels.available,
+      sourceEnabled: sources.enabled,
       autoDisabledAt: playlistChannels.autoDisabledAt,
       probeStatus: sourceChannels.probeStatus,
       probeWidth: sourceChannels.probeWidth,

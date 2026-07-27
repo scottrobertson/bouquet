@@ -62,7 +62,7 @@ function ruleItems(config: SmartSortConfig): { text: string; bitrate?: boolean }
     items.push({ text: "Ties broken by audio (surround over stereo)" });
   if (config.availableFirst)
     items.push({
-      text: "Working streams first, then unprobed, failed, then auto-disabled",
+      text: "Working streams first, then unprobed, failed, source off, then auto-disabled",
     });
   return items;
 }
@@ -119,6 +119,7 @@ const STATUS_LABEL: Record<SmartSortFactors["liveness"], string | null> = {
   unprobed: "Not probed",
   failed: "Probe failed",
   unavailable: "Unavailable",
+  sourceOff: "Source off",
   autoDisabled: "Auto-disabled",
 };
 
@@ -126,7 +127,14 @@ function StatusBadge({ factors }: { factors: SmartSortFactors }) {
   const label = STATUS_LABEL[factors.liveness];
   if (!label) return null;
   return (
-    <Badge className="border-transparent bg-warning/10 text-warning">
+    <Badge
+      className={
+        // Muted like the editor's Source off badge; the rest warn in amber.
+        factors.liveness === "sourceOff"
+          ? "border-transparent bg-muted text-muted-foreground"
+          : "border-transparent bg-warning/10 text-warning"
+      }
+    >
       {label}
     </Badge>
   );

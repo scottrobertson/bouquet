@@ -334,9 +334,15 @@ export function ChannelRowBody({
       ? fetcher.formData.get("enabled") === "true"
       : undefined;
   const enabled = submittedEnabled ?? channel.enabled;
-  // Dim a row when it won't reach output: its own toggle is off, or it's an
-  // alternate whose primary is disabled (the primary gates the group).
-  const dimmed = !enabled || (isAlternate && group?.primaryEnabled === false);
+  // Dim a row when it won't reach output: its own toggle is off, its source or
+  // source category is off, the provider dropped it, or it's an alternate whose
+  // primary is disabled (the primary gates the group).
+  const dimmed =
+    !enabled ||
+    !channel.sourceEnabled ||
+    !channel.sourceAvailable ||
+    !channel.sourceCategoryEnabled ||
+    (isAlternate && group?.primaryEnabled === false);
   const renamed =
     !isAlternate && !!channel.customName && channel.customName !== baseName;
   // This row's own probe is in flight. The server status only catches up on the
