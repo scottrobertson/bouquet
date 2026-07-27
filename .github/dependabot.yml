@@ -8,6 +8,11 @@ updates:
       all:
         patterns:
           - "*"
+    ignore:
+      # v13 always compiles from source, which fails in the toolchain-free
+      # Docker image. Unpin when https://github.com/WiseLibs/better-sqlite3/issues/1503 is fixed.
+      - dependency-name: "better-sqlite3"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/"

@@ -129,6 +129,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Fixed the Docker image failing to build. The dependency update to better-sqlite3 v13 hit an
+  upstream packaging bug (WiseLibs/better-sqlite3#1503) where installs always compile from source
+  instead of using the bundled prebuilt binaries, and the slim image has no compiler or Python.
+  Pinned back to v12, which uses its prebuilt binary, and told Dependabot to skip the v13 major
+  until the bug is fixed.
+
 - Catchup now works in TiviMate. The M3U used to hand players a catchup-source URL template,
   but TiviMate leaves some of its placeholders unfilled and fills times in UTC when panels
   expect their own timezone, so every catchup request 404'd. Channels with an archive now emit
