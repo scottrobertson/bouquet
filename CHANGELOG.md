@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Sync now deletes channels the provider has removed, as long as no playlist uses them. Providers
+  that "rename" channels actually delete and recreate them under new stream IDs, which left the old
+  names sitting in the source browser as unavailable forever. Channels that are in a playlist are
+  still kept and shown as unavailable, so your edits survive a provider hiccup and you can repoint
+  them if the channel is gone for good.
+
 - Sources can now be disabled without deleting them. A disabled source drops out of every playlist's
   output and the scheduler skips its sync and probe, but nothing is deleted, so enabling it again
   brings the channels back exactly as they were. Toggle it from the source's menu on the Sources

@@ -1,7 +1,8 @@
-import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
 import { db } from "~/db/index.server";
 import {
   epgProgrammes,
+  playlistChannels,
   sourceCategories,
   sourceChannels,
   sourceEpgChannels,
@@ -217,6 +218,12 @@ export async function runSync(sourceId: number): Promise<void> {
     } catch (err) {
       console.error("[sync] recording changes failed", err);
     }
+
+    // After the change log, so the diff above still sees the rows.
+    const pruned = pruneUnavailableChannels(sourceId);
+    if (pruned > 0) {
+      console.log(`[sync] ${source.name}: pruned ${pruned} dead channels`);
+    }
   } catch (err) {
     console.error(`[sync] ${source.name}: failed`, err);
     db.update(sources)
@@ -357,6 +364,29 @@ export async function runSync(sourceId: number): Promise<void> {
   // Fresh catalog and guide, so push playlists to their upload destinations.
   // Debounced, so a cron tick syncing several sources uploads once.
   requestUploadSoon();
+}
+
+/** Delete a source's unavailable channels that no playlist uses, so channels
+    the provider removed for good don't clutter the browser forever. Channels
+    in a playlist are kept: the edit has to survive a provider hiccup, and the
+    editor shows them as unavailable so they can be repointed. Returns the
+    number deleted. */
+export function pruneUnavailableChannels(sourceId: number): number {
+  return db
+    .delete(sourceChannels)
+    .where(
+      and(
+        eq(sourceChannels.sourceId, sourceId),
+        eq(sourceChannels.available, false),
+        notInArray(
+          sourceChannels.id,
+          db
+            .select({ id: playlistChannels.sourceChannelId })
+            .from(playlistChannels),
+        ),
+      ),
+    )
+    .run().changes;
 }
 
 /** Rebuild a source's epg channel list (the matching dropdown) from its
