@@ -51,4 +51,4 @@ There is no separate lint step. CI runs typecheck + tests, then builds the Docke
 - **Auth is not wired up yet.** Despite the README mentioning an `APP_PASSWORD` login, `app/routes/_app.tsx` notes auth guards are still to come and every in-app screen is currently open. The only token check today is the internal cron endpoints.
 - Tests run in a plain node environment (no React Router plugin). `test/setup-db.ts` points `CONFIG_PATH` at a fresh temp dir before any app module loads, so DB-backed tests never touch `./data/bouquet.db`.
 - In dev, missing `APP_PASSWORD` / `SESSION_SECRET` fall back to insecure defaults; production refuses to start without them (`app/lib/env.server.ts`).
-- Keep `CHANGELOG.md` updated with every feature/fix.
+- Keep `CHANGELOG.md` updated with every feature/fix. Always add new entries, never go back and edit existing ones unless explicitly fixing a mistake.
