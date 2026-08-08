@@ -90,6 +90,7 @@ import { invalidate } from "~/services/output/cache.server";
 import {
   clearPlaylistProbes,
   probeSingleChannel,
+  probeAddedChannels,
   startProbeAutoDisabled,
   startProbeCategory,
   startProbeFailed,
@@ -201,7 +202,8 @@ export async function action({ request, params }: Route.ActionArgs) {
       const insertIndex =
         indexRaw != null && indexRaw !== "" ? Number(indexRaw) : undefined;
       const added = addChannels(playlistId, categoryId, ids, insertIndex);
-      return data({ ok: true, intent, added });
+      probeAddedChannels(added);
+      return data({ ok: true, intent, added: added.length });
     }
 
     case "addSourceCategory": {
@@ -221,7 +223,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         return data({ ok: false, error: "Could not create category" }, { status: 400 });
       }
       const added = addChannels(playlistId, cat.id, ids);
-      return data({ ok: true, intent, added });
+      probeAddedChannels(added);
+      return data({ ok: true, intent, added: added.length });
     }
 
     case "addMatching": {
@@ -241,7 +244,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         return data({ ok: false, error: "Pick a category" }, { status: 400 });
       }
       const added = addChannels(playlistId, categoryId, ids);
-      return data({ ok: true, intent, added });
+      probeAddedChannels(added);
+      return data({ ok: true, intent, added: added.length });
     }
 
     case "createCategory": {
@@ -395,7 +399,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         .map((v) => Number(v))
         .filter((n) => Number.isFinite(n));
       const added = addAlternates(playlistId, primaryId, ids);
-      return data({ ok: true, intent, added });
+      probeAddedChannels(added);
+      return data({ ok: true, intent, added: added.length });
     }
 
     case "reorderAlternates": {
