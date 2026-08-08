@@ -261,6 +261,7 @@ function PrimaryGroup({
           hasAlternates: alternates.length > 0,
           altCount: alternates.length,
           needsSort: groupApi.needsSort.has(primary.id),
+          dragDisabled: groupApi.dragDisabled,
           collapsed,
           onToggleCollapse: () => groupApi.onToggleGroup(primary.id),
           onUngroupPrimary: () => groupApi.onUngroupPrimary(primary.id),

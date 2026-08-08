@@ -121,6 +121,8 @@ export type GroupControls = {
   altCount: number;
   // Smart sort would put this group's streams in a different order.
   needsSort?: boolean;
+  // The list is filtered to a subset of rows, so dragging is off.
+  dragDisabled?: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onUngroupPrimary: () => void;
@@ -155,12 +157,14 @@ export function PrimaryRow({
   dragHandleProps?: Record<string, unknown>;
   insertAbove?: boolean;
 }) {
+  const dragDisabled = group?.dragDisabled ?? false;
   return (
     // The whole row is the drag handle. Interactive controls below stop
     // propagation so they click/toggle instead of starting a drag.
     <div
       className={cn(
-        "group/row flex cursor-grab items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors hover:bg-white/[0.02] active:cursor-grabbing sm:gap-2 sm:px-3",
+        "group/row flex items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors hover:bg-white/[0.02] sm:gap-2 sm:px-3",
+        !dragDisabled && "cursor-grab active:cursor-grabbing",
         selected && "bg-primary/5",
       )}
       style={insertAbove ? { boxShadow: "inset 0 2px 0 0 var(--primary)" } : undefined}
@@ -168,7 +172,9 @@ export function PrimaryRow({
     >
       {/* The whole row is the drag handle; the grip is just an affordance, so
           hide it on mobile to claw back width. */}
-      <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/50 sm:block" />
+      {dragDisabled ? null : (
+        <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/50 sm:block" />
+      )}
       <span
         onClick={(e) => {
           e.preventDefault();
