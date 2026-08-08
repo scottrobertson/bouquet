@@ -825,9 +825,33 @@ export function EditorBoard({
       .map((c) => ({
         id: c.id,
         name: c.customName ?? c.sourceName,
+        // Both names count when suggesting a group, since a channel renamed to
+        // something short would otherwise stop matching the provider's name.
+        names: c.customName ? [c.customName, c.sourceName] : [c.sourceName],
+        epgChannelId: c.epgChannelId ?? c.sourceEpgChannelId,
         hint: catName.get(c.categoryId),
       }));
   }, [items, cats]);
+
+  // What the pickers base their suggestions on: the channels you've selected in
+  // each pane.
+  const pickedSource = useMemo(
+    () =>
+      browserResults
+        .filter((c) => selected.has(c.id))
+        .map((c) => ({ name: c.name, epgChannelId: c.epgChannelId })),
+    [browserResults, selected],
+  );
+  const pickedPlaylist = useMemo(
+    () =>
+      items
+        .filter((c) => selectedPl.has(c.id))
+        .map((c) => ({
+          name: c.customName ?? c.sourceName,
+          epgChannelId: c.epgChannelId ?? c.sourceEpgChannelId,
+        })),
+    [items, selectedPl],
+  );
 
   // Fold the selected playlist channels into a group as alternates of the
   // chosen primary. Picking one of the selected channels makes the rest its
@@ -1030,6 +1054,7 @@ export function EditorBoard({
             onShowAlreadyAdded={showAlreadyAdded}
             playlistCategories={cats}
             primaries={primaries}
+            picked={pickedSource}
             selected={selected}
             onSelect={selectSource}
             onAdd={submitAdd}
@@ -1188,6 +1213,7 @@ export function EditorBoard({
               </Select>
               <PrimaryPicker
                 primaries={primaries}
+                picked={pickedPlaylist}
                 onPick={makeAlternateOf}
                 label="Make alternate of…"
               />

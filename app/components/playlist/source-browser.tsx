@@ -36,12 +36,21 @@ import {
 } from "~/components/ui/select";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
+import type { MatchTarget } from "~/services/playlist/channel-match";
 import { PrimaryPicker } from "./primary-picker";
 import type { BrowserChannel, EditorCategory } from "./types";
 
 const UNCATEGORISED = "Uncategorised";
 
 export type AddTarget = { categoryId: number };
+
+type PrimaryOption = {
+  id: number;
+  name: string;
+  names?: string[];
+  epgChannelId?: string | null;
+  hint?: string;
+};
 
 type CatGroup = { name: string; channels: BrowserChannel[] };
 type SourceGroup = {
@@ -71,6 +80,7 @@ export function SourceBrowser({
   loading,
   playlistCategories,
   primaries,
+  picked,
   selected,
   onSelect,
   onAdd,
@@ -89,7 +99,10 @@ export function SourceBrowser({
   alreadyAdded: number;
   loading: boolean;
   playlistCategories: EditorCategory[];
-  primaries: { id: number; name: string; hint?: string }[];
+  primaries: PrimaryOption[];
+  // The selected source channels, which the alternate picker suggests a group
+  // from.
+  picked: MatchTarget[];
   selected: Set<number>;
   onSelect: (id: number, shiftKey: boolean, orderedIds: number[]) => void;
   onAdd: (ids: number[], target: AddTarget) => void;
@@ -629,6 +642,7 @@ export function SourceBrowser({
               <span className="text-[11px] text-muted-foreground">or</span>
               <PrimaryPicker
                 primaries={primaries}
+                picked={picked}
                 onPick={onAddAlternateOf}
                 label="Add as alternate of…"
               />

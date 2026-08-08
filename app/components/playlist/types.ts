@@ -83,6 +83,9 @@ export type BrowserChannel = {
   logo: string | null;
   categoryName: string | null;
   available: boolean;
+  // The provider's EPG id, used to spot which playlist channel this is a
+  // duplicate of when adding it as an alternate.
+  epgChannelId: string | null;
   sourceId: number;
   sourceName: string;
   // When off, nothing from this source reaches output. Its group is pushed to

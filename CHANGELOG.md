@@ -6,6 +6,15 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Both alternate pickers now suggest the group a channel belongs in, so you don't have to type the
+  name out every time. Pick some channels, open "Add as alternate of…" or "Make alternate of…", and
+  the likely groups sit at the top under "Suggested", with the best one already highlighted so Enter
+  takes it. A suggestion comes from the provider's EPG id matching, or from the names matching once
+  the noise is stripped off, so "UK: Sky Sports Main Event FHD2" finds "Sky Sports Main Event" and
+  "UK: ITV1" finds "ITV 1". Channels that only look alike are kept apart: TNT Sports 1 is not TNT
+  Sports 2, Sky Sports Cricket is not Sky Sports Golf, a "+1" is not its parent channel, and US: TNT
+  is not BRA: TNT. When nothing fits, nothing is suggested and you get the plain list as before.
+
 - The playlist editor has a filter box over the playlist itself. Until now the only way to find a
   channel you'd already added was to scroll, which on a big playlist means thousands of pixels. It
   matches on the channel's name, the name it had at the source, the provider and the source

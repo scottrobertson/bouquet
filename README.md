@@ -68,7 +68,9 @@ editor and keeps their names and metadata in step with the primary.
   Rename the primary and every alternate follows, using a per-playlist template
   (default `{name} (Alt {n})`, editable in Settings).
 - Group channels with "Make alternate of…" in the playlist, or "Add as alternate of…"
-  when pulling them in from the Source Channels pane.
+  when pulling them in from the Source Channels pane. Both pickers put the groups
+  that look like the right home at the top, worked out from the EPG id and the
+  name once the provider's country tag and quality suffix are stripped off.
 - Promote an alternate into the primary spot at any time, and it reverts to its own name.
 - "Smart sort" orders a group by stream quality and promotes the best one to primary.
 
