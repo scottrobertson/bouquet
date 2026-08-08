@@ -15,6 +15,8 @@ Bouquet is a self-hosted IPTV playlist manager. You add Xtream Codes providers (
 - Run a single test file: `npx vitest run test/m3u.server.test.ts`
 - Filter by name: `npx vitest run -t "alternate"`
 
+Before starting `npm run dev`, check whether port 5173 is already in use (`lsof -i :5173`). The dev server is often already running manually in another terminal tab. If it's up, use that one instead of starting a second.
+
 Database (Drizzle + SQLite):
 - `npm run db:generate` — generate a migration after editing `app/db/schema.ts`
 - `npm run db:migrate` — apply migrations manually (the app also applies them automatically on startup)
@@ -52,3 +54,4 @@ There is no separate lint step. CI runs typecheck + tests, then builds the Docke
 - Tests run in a plain node environment (no React Router plugin). `test/setup-db.ts` points `CONFIG_PATH` at a fresh temp dir before any app module loads, so DB-backed tests never touch `./data/bouquet.db`.
 - In dev, missing `APP_PASSWORD` / `SESSION_SECRET` fall back to insecure defaults; production refuses to start without them (`app/lib/env.server.ts`).
 - Keep `CHANGELOG.md` updated with every feature/fix. Always add new entries, never go back and edit existing ones unless explicitly fixing a mistake.
+- Use the Safari MCP to load the app and check UI changes actually work, rather than assuming they do from the code alone.
