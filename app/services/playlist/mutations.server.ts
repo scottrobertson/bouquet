@@ -239,19 +239,20 @@ export function reorderCategories(playlistId: number, ids: number[]) {
 }
 
 /** Add many source channels into a category, defaulting EPG to the channel's
-    own. Appends by default, or inserts at insertIndex within the category. */
+    own. Appends by default, or inserts at insertIndex within the category.
+    Returns the source channels it actually added. */
 export function addChannels(
   playlistId: number,
   categoryId: number,
   sourceChannelIds: number[],
   insertIndex?: number,
-) {
+): number[] {
   if (
     !categoryInPlaylist(playlistId, categoryId) ||
     categoryIsAuto(categoryId) ||
     sourceChannelIds.length === 0
   ) {
-    return 0;
+    return [];
   }
 
   // Preserve the order the ids were given in.
@@ -277,7 +278,7 @@ export function addChannels(
       .map((r) => r.sourceChannelId),
   );
   const toAdd = channels.filter((ch) => !existing.has(ch.id));
-  if (toAdd.length === 0) return 0;
+  if (toAdd.length === 0) return [];
 
   db.transaction((tx) => {
     const current = tx
@@ -316,7 +317,7 @@ export function addChannels(
         .run();
     });
   });
-  return toAdd.length;
+  return toAdd.map((ch) => ch.id);
 }
 
 /** Persist a drag: move one channel to a category and reorder the affected categories. */
@@ -727,14 +728,15 @@ export function makeAlternates(
   });
 }
 
-/** Add source channels as new alternates of a primary, inheriting its EPG. */
+/** Add source channels as new alternates of a primary, inheriting its EPG.
+    Returns the source channels it actually added. */
 export function addAlternates(
   playlistId: number,
   primaryId: number,
   sourceChannelIds: number[],
-) {
+): number[] {
   const primary = primaryCandidate(playlistId, primaryId);
-  if (!primary || sourceChannelIds.length === 0) return 0;
+  if (!primary || sourceChannelIds.length === 0) return [];
 
   const order = new Map(sourceChannelIds.map((id, i) => [id, i]));
   const channels = db
@@ -754,7 +756,7 @@ export function addAlternates(
       .map((r) => r.sourceChannelId),
   );
   const toAdd = channels.filter((ch) => !existing.has(ch.id));
-  if (!toAdd.length) return 0;
+  if (!toAdd.length) return [];
 
   db.transaction((tx) => {
     let next = maxAltPosition(tx, primaryId) + 1;
@@ -773,7 +775,7 @@ export function addAlternates(
         .run();
     }
   });
-  return toAdd.length;
+  return toAdd.map((ch) => ch.id);
 }
 
 /** Persist the order of a primary's alternates. */

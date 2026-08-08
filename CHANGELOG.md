@@ -6,6 +6,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Adding a channel to a playlist now probes it straight away, as long as its source has probing
+  turned on. Before this you added a stream and had nothing to judge it by until the next scheduled
+  probe came round, which could be a day later. Only streams with no probe result yet are picked up,
+  so adding one you've already probed elsewhere doesn't open another connection to the provider, and
+  a burst of adds is collected into a single run rather than one per channel. This covers the source
+  browser, adding a whole group, adding everything matching a search, and adding alternates.
+
 - When there's exactly one group the channels you picked could belong to, the source pane offers it
   as a button, so grouping an alternate is one click with no popover to open. The button says which
   group and why it matched ("Same EPG id", "Same name"), and the picker sits next to it as "Pick
@@ -189,6 +196,14 @@ All notable changes to this project are recorded here. Newest first.
   the primary brings them back as they were. The group's alternates dim in the editor too.
 
 ### Fixed
+
+- A channel that fails its probe no longer keeps the resolution, frame rate, codec and bitrate the
+  probe read. Every failure used to clear them except a black screen, which ffprobe reads like any
+  working stream, so a dead channel kept a full set of numbers. Smart sort then ranked it on them and
+  offered a dead 4K stream as a group's new primary, while the preview said "No probe data" for the
+  same stream. The numbers are cleared when a channel is next probed, so probe the affected channels
+  again to clear the ones already stored. "Probe all" skips auto-disabled channels, so use "Probe
+  auto-disabled" for those.
 
 - Cancelling a drag in the playlist editor no longer leaves the "Drop here to remove" overlay
   covering the source browser until you drag something else.

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "~/db/index.server";
 import {
   playlistCategories,
@@ -10,7 +10,14 @@ import {
   sources,
 } from "~/db/schema";
 import { addChannels } from "~/services/playlist/mutations.server";
-import { channelsToProbe } from "~/services/probe/probe.server";
+import * as ffprobe from "~/services/probe/ffprobe.server";
+import {
+  addedProbeRunner,
+  channelsToProbe,
+  channelsToProbeOnAdd,
+  probeAddedChannels,
+  probeSingleChannel,
+} from "~/services/probe/probe.server";
 
 let sourceId: number;
 let playlistId: number;
@@ -119,5 +126,153 @@ describe("channelsToProbe", () => {
       .run();
 
     expect(channelsToProbe(sourceId)).toEqual([]);
+  });
+});
+
+describe("channelsToProbeOnAdd", () => {
+  beforeEach(() => {
+    db.update(sources).set({ probeEnabled: true }).where(eq(sources.id, sourceId)).run();
+  });
+
+  it("returns channels whose source has probing on", () => {
+    const one = addSourceChannel("one");
+    expect(channelsToProbeOnAdd([one]).map((c) => c.streamId)).toEqual(["one"]);
+  });
+
+  it("skips channels whose source has probing off", () => {
+    db.update(sources).set({ probeEnabled: false }).where(eq(sources.id, sourceId)).run();
+    const one = addSourceChannel("one");
+    expect(channelsToProbeOnAdd([one])).toEqual([]);
+  });
+
+  it("skips channels from a disabled source", () => {
+    db.update(sources).set({ enabled: false }).where(eq(sources.id, sourceId)).run();
+    const one = addSourceChannel("one");
+    expect(channelsToProbeOnAdd([one])).toEqual([]);
+  });
+
+  it("skips channels that already have a probe result", () => {
+    const one = addSourceChannel("one");
+    db.update(sourceChannels)
+      .set({ probeStatus: "ok" })
+      .where(eq(sourceChannels.id, one))
+      .run();
+    expect(channelsToProbeOnAdd([one])).toEqual([]);
+  });
+
+  it("skips unavailable channels", () => {
+    const gone = addSourceChannel("gone", { available: false });
+    expect(channelsToProbeOnAdd([gone])).toEqual([]);
+  });
+});
+
+describe("probeAddedChannels", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    db.update(sources).set({ probeEnabled: true }).where(eq(sources.id, sourceId)).run();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("marks the channels as waiting before the run starts", () => {
+    vi.spyOn(addedProbeRunner, "run").mockReturnValue(0);
+    const a = addSourceChannel("a");
+
+    probeAddedChannels([a]);
+
+    const row = db
+      .select({ probeStatus: sourceChannels.probeStatus })
+      .from(sourceChannels)
+      .where(eq(sourceChannels.id, a))
+      .get();
+    expect(row?.probeStatus).toBe("queued");
+    vi.advanceTimersByTime(10_000);
+  });
+
+  it("collects a burst of adds into one probe run", () => {
+    const run = vi.spyOn(addedProbeRunner, "run").mockReturnValue(0);
+    const a = addSourceChannel("a");
+    const b = addSourceChannel("b");
+
+    probeAddedChannels([a]);
+    probeAddedChannels([b]);
+    vi.advanceTimersByTime(10_000);
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0].map((c) => c.streamId).sort()).toEqual(["a", "b"]);
+  });
+
+  it("does not start a run when nothing needs probing", () => {
+    const run = vi.spyOn(addedProbeRunner, "run").mockReturnValue(0);
+    db.update(sources).set({ probeEnabled: false }).where(eq(sources.id, sourceId)).run();
+
+    probeAddedChannels([addSourceChannel("a")]);
+    vi.advanceTimersByTime(10_000);
+
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("storing a probe result", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps no quality for a stream that failed the black screen check", async () => {
+    // ffprobe reads a black stream like any other, so this is the one failure
+    // that arrives with a full set of numbers attached.
+    vi.spyOn(ffprobe, "probeStream").mockResolvedValue({
+      status: "ok",
+      width: 3840,
+      height: 2160,
+      fps: 50,
+      videoCodec: "hevc",
+      audioCodec: "eac3",
+      bitrate: 20000,
+      error: null,
+    });
+    vi.spyOn(ffprobe, "detectBlackScreen").mockResolvedValue(true);
+    db.update(sources)
+      .set({ probeDetectBlackScreen: true })
+      .where(eq(sources.id, sourceId))
+      .run();
+    const id = addSourceChannel("black");
+
+    await probeSingleChannel(id);
+
+    const row = db.select().from(sourceChannels).where(eq(sourceChannels.id, id)).get();
+    expect(row?.probeStatus).toBe("error");
+    expect(row?.probeError).toBe("Black screen");
+    expect(row?.probeHeight).toBeNull();
+    expect(row?.probeWidth).toBeNull();
+    expect(row?.probeFps).toBeNull();
+    expect(row?.probeVideoCodec).toBeNull();
+    expect(row?.probeAudioCodec).toBeNull();
+    expect(row?.probeBitrate).toBeNull();
+  });
+
+  it("stores the quality when the probe passes", async () => {
+    vi.spyOn(ffprobe, "probeStream").mockResolvedValue({
+      status: "ok",
+      width: 1920,
+      height: 1080,
+      fps: 50,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      bitrate: 8000,
+      error: null,
+    });
+    vi.spyOn(ffprobe, "detectBlackScreen").mockResolvedValue(false);
+    const id = addSourceChannel("good");
+
+    await probeSingleChannel(id);
+
+    const row = db.select().from(sourceChannels).where(eq(sourceChannels.id, id)).get();
+    expect(row?.probeStatus).toBe("ok");
+    expect(row?.probeHeight).toBe(1080);
+    expect(row?.probeBitrate).toBe(8000);
   });
 });

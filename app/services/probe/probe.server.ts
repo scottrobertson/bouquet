@@ -123,16 +123,34 @@ async function probeAndStore(
     console.warn(`[probe] ${source.name}: "${ch.name}" ${r.status}: ${r.error}`);
   }
 
+  // Only keep the measurements when the probe passed. A black screen is read by
+  // ffprobe like any other stream, so it would otherwise leave a full set of
+  // numbers on a channel we know is broken, and everything that ranks or
+  // displays quality would treat it as a good stream.
+  const quality =
+    r.status === "ok"
+      ? {
+          probeWidth: r.width,
+          probeHeight: r.height,
+          probeFps: r.fps,
+          probeVideoCodec: r.videoCodec,
+          probeAudioCodec: r.audioCodec,
+          probeBitrate: bitrate,
+        }
+      : {
+          probeWidth: null,
+          probeHeight: null,
+          probeFps: null,
+          probeVideoCodec: null,
+          probeAudioCodec: null,
+          probeBitrate: null,
+        };
+
   db.update(sourceChannels)
     .set({
       probedAt: new Date(),
       probeStatus: r.status,
-      probeWidth: r.width,
-      probeHeight: r.height,
-      probeFps: r.fps,
-      probeVideoCodec: r.videoCodec,
-      probeAudioCodec: r.audioCodec,
-      probeBitrate: bitrate,
+      ...quality,
       probeError: r.error,
       consecutiveProbeFailures:
         r.status === "ok" ? 0 : sql`${sourceChannels.consecutiveProbeFailures} + 1`,
@@ -411,6 +429,100 @@ export function startProbeChannels(sourceChannelIds: number[]): number {
     void probeChannelList(source, channels).catch((err) => markError(sourceId, err));
   }
   return rows.length;
+}
+
+// SQLite caps how many values one query can bind, so id lists get looked up in
+// batches.
+const ID_CHUNK = 500;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// How long to wait before probing streams that were just added, so dropping
+// channels in one at a time still ends up as a single probe run.
+const ADDED_DEBOUNCE_MS = 3000;
+
+// Held on globalThis so a dev HMR reload doesn't lose channels waiting to probe.
+const addedState = globalThis as unknown as {
+  __probeAddedTargets?: Map<number, ProbeTarget & { sourceId: number }>;
+  __probeAddedTimer?: ReturnType<typeof setTimeout>;
+};
+
+/** Of the channels just added, the ones worth probing: their source is on and
+    has probing turned on, the stream is still available, and we have no probe
+    result for it yet. */
+export function channelsToProbeOnAdd(
+  sourceChannelIds: number[],
+): (ProbeTarget & { sourceId: number })[] {
+  const out: (ProbeTarget & { sourceId: number })[] = [];
+  for (const ids of chunk(sourceChannelIds, ID_CHUNK)) {
+    out.push(
+      ...db
+        .select({
+          id: sourceChannels.id,
+          streamId: sourceChannels.streamId,
+          name: sourceChannels.name,
+          sourceId: sourceChannels.sourceId,
+        })
+        .from(sourceChannels)
+        .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
+        .where(
+          and(
+            inArray(sourceChannels.id, ids),
+            eq(sources.enabled, true),
+            eq(sources.probeEnabled, true),
+            eq(sourceChannels.available, true),
+            isNull(sourceChannels.probeStatus),
+          ),
+        )
+        .all(),
+    );
+  }
+  return out;
+}
+
+// Indirection so the debounce timer's target can be observed in tests.
+export const addedProbeRunner = { run: startProbeTargets };
+
+/** Probe streams that were just added to a playlist, so their quality shows up
+    without waiting for the next scheduled probe. Adds within a few seconds of
+    each other are collected into one run. */
+export function probeAddedChannels(sourceChannelIds: number[]): void {
+  if (sourceChannelIds.length === 0) return;
+  const targets = channelsToProbeOnAdd(sourceChannelIds);
+  if (targets.length === 0) return;
+
+  // Mark them waiting straight away, before the delay below. The editor only
+  // listens for live probe results while something is probing, so if the rows
+  // still read as unprobed when the page reloads after the add, the quality
+  // wouldn't appear until you reloaded by hand.
+  for (const ids of chunk(targets.map((t) => t.id), ID_CHUNK)) {
+    db.update(sourceChannels)
+      .set({ probeStatus: "queued" })
+      .where(inArray(sourceChannels.id, ids))
+      .run();
+  }
+  for (const sourceId of new Set(targets.map((t) => t.sourceId))) bumpSource(sourceId);
+
+  const pending = (addedState.__probeAddedTargets ??= new Map());
+  for (const t of targets) pending.set(t.id, t);
+
+  if (addedState.__probeAddedTimer) clearTimeout(addedState.__probeAddedTimer);
+  addedState.__probeAddedTimer = setTimeout(() => {
+    addedState.__probeAddedTimer = undefined;
+    const batch = [...pending.values()];
+    pending.clear();
+    if (batch.length === 0) return;
+    try {
+      console.log(`[probe] probing ${batch.length} newly added channel(s)`);
+      addedProbeRunner.run(batch);
+    } catch (err) {
+      console.error("[probe] probing added channels failed", err);
+    }
+  }, ADDED_DEBOUNCE_MS);
 }
 
 /** Probe a whole alternate group: the primary plus all its alternates. Their
