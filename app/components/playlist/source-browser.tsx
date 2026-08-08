@@ -2,11 +2,13 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronDown,
   ChevronRight,
+  CornerDownRight,
   ListFilter,
   Plus,
   Radio,
   RefreshCw,
   Search,
+  Sparkles,
   Tv,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,21 +38,16 @@ import {
 } from "~/components/ui/select";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
-import type { MatchTarget } from "~/services/playlist/channel-match";
-import { PrimaryPicker } from "./primary-picker";
+import {
+  PrimaryPicker,
+  type Primary,
+  type SuggestedPrimary,
+} from "./primary-picker";
 import type { BrowserChannel, EditorCategory } from "./types";
 
 const UNCATEGORISED = "Uncategorised";
 
 export type AddTarget = { categoryId: number };
-
-type PrimaryOption = {
-  id: number;
-  name: string;
-  names?: string[];
-  epgChannelId?: string | null;
-  hint?: string;
-};
 
 type CatGroup = { name: string; channels: BrowserChannel[] };
 type SourceGroup = {
@@ -80,7 +77,7 @@ export function SourceBrowser({
   loading,
   playlistCategories,
   primaries,
-  picked,
+  suggested,
   selected,
   onSelect,
   onAdd,
@@ -99,10 +96,9 @@ export function SourceBrowser({
   alreadyAdded: number;
   loading: boolean;
   playlistCategories: EditorCategory[];
-  primaries: PrimaryOption[];
-  // The selected source channels, which the alternate picker suggests a group
-  // from.
-  picked: MatchTarget[];
+  primaries: Primary[];
+  // Groups that look like the right home for the selected channels.
+  suggested: SuggestedPrimary[];
   selected: Set<number>;
   onSelect: (id: number, shiftKey: boolean, orderedIds: number[]) => void;
   onAdd: (ids: number[], target: AddTarget) => void;
@@ -638,13 +634,35 @@ export function SourceBrowser({
             </Button>
           </div>
           {mode === "selected" && primaries.length > 0 ? (
-            <div className="flex items-center gap-2 border-t border-border pt-2">
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
               <span className="text-[11px] text-muted-foreground">or</span>
+              {/* With one clear group to file these under, offer it as a button
+                  so you don't have to open the picker at all. */}
+              {suggested.length === 1 ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-w-0 max-w-full font-normal"
+                  onClick={() => onAddAlternateOf(suggested[0].id)}
+                  title={`Add as an alternate of ${suggested[0].name}`}
+                >
+                  <CornerDownRight className="size-4" />
+                  <span className="truncate">Add to {suggested[0].name}</span>
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                    <Sparkles className="size-3" />
+                    {suggested[0].reason}
+                  </span>
+                </Button>
+              ) : null}
               <PrimaryPicker
                 primaries={primaries}
-                picked={picked}
+                suggested={suggested}
                 onPick={onAddAlternateOf}
-                label="Add as alternate of…"
+                label={
+                  suggested.length === 1
+                    ? "Pick another…"
+                    : "Add as alternate of…"
+                }
               />
             </div>
           ) : null}

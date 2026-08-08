@@ -70,7 +70,7 @@ import {
 } from "./category-group";
 import { ChannelRowBody } from "./channel-row";
 import { ChannelTools } from "./channel-tools";
-import { PrimaryPicker } from "./primary-picker";
+import { PrimaryPicker, suggestedPrimaries } from "./primary-picker";
 import { SourceBrowser, type AddTarget } from "./source-browser";
 import type {
   AutoChannelView,
@@ -833,8 +833,8 @@ export function EditorBoard({
       }));
   }, [items, cats]);
 
-  // What the pickers base their suggestions on: the channels you've selected in
-  // each pane.
+  // The channels you've selected in each pane, which is what the suggested alt
+  // groups are worked out from.
   const pickedSource = useMemo(
     () =>
       browserResults
@@ -851,6 +851,23 @@ export function EditorBoard({
           epgChannelId: c.epgChannelId ?? c.sourceEpgChannelId,
         })),
     [items, selectedPl],
+  );
+
+  const suggestedForSource = useMemo(
+    () => suggestedPrimaries(pickedSource, primaries),
+    [pickedSource, primaries],
+  );
+  // A selected channel can still be picked as the primary from the full list,
+  // which starts a group from the rest of the selection. It's no use as a
+  // suggestion though: with one channel selected, filing it under itself does
+  // nothing.
+  const suggestedForPlaylist = useMemo(
+    () =>
+      suggestedPrimaries(
+        pickedPlaylist,
+        primaries.filter((p) => !selectedPl.has(p.id)),
+      ),
+    [pickedPlaylist, primaries, selectedPl],
   );
 
   // Fold the selected playlist channels into a group as alternates of the
@@ -1054,7 +1071,7 @@ export function EditorBoard({
             onShowAlreadyAdded={showAlreadyAdded}
             playlistCategories={cats}
             primaries={primaries}
-            picked={pickedSource}
+            suggested={suggestedForSource}
             selected={selected}
             onSelect={selectSource}
             onAdd={submitAdd}
@@ -1213,7 +1230,7 @@ export function EditorBoard({
               </Select>
               <PrimaryPicker
                 primaries={primaries}
-                picked={pickedPlaylist}
+                suggested={suggestedForPlaylist}
                 onPick={makeAlternateOf}
                 label="Make alternate of…"
               />
