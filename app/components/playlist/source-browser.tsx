@@ -384,7 +384,10 @@ export function SourceBrowser({
       const row = cursor == null ? null : flatRows[cursor];
       if (row?.kind === "channel" && target) {
         onAdd([row.channel.id], { categoryId: Number(target) });
-      } else if (canAdd) {
+      } else if (mode === "selected" && canAdd) {
+        // Enter never adds every matching channel. You have to point at a
+        // channel or tick some first, otherwise a stray Enter after typing a
+        // search dumps hundreds of channels into the playlist.
         add();
       }
       return;

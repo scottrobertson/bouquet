@@ -206,6 +206,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- Pressing Enter in the source search box no longer adds every channel matching what you typed.
+  Enter was meant to add the channel you'd walked to with the arrow keys, but with no arrow key
+  cursor it fell through to the same thing as the "Add all" button, so finishing a search with Enter
+  out of habit dumped hundreds of channels into your playlist. It now only adds the channel under
+  the cursor, or the ones you've ticked. Adding everything matching a search still needs the button.
+
 - The smart sort hint on a group no longer appears while any of the group's channels are queued or
   being probed. A channel waiting on a probe counts as never-probed for ranking, so during a probe
   run groups lit up saying they needed sorting, and once the results landed the suggestion went away
