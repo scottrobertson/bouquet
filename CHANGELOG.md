@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- Hovering the "Probing 166…" button in the playlist header now lists the channels the probe is
+  working through, the ones on a stream right now at the top and the rest waiting below. The count on
+  its own told you a probe was running but not how far along it was or whether it was stuck on
+  something, and you had to hunt through the playlist for the rows marked "Probing…" to find out.
+
 - Adding a channel to a playlist now probes it straight away, as long as its source has probing
   turned on. Before this you added a stream and had nothing to judge it by until the next scheduled
   probe came round, which could be a day later. Only streams with no probe result yet are picked up,
