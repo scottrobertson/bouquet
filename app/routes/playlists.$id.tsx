@@ -35,7 +35,13 @@ import {
 } from "~/components/ui/dialog";
 import { externalOrigin } from "~/lib/url.server";
 import { EditorBoard } from "~/components/playlist/editor-board";
+import { ProbeQueue, probeQueue } from "~/components/playlist/probe-queue";
 import { Button } from "~/components/ui/button";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "~/components/ui/hover-card";
 import {
   Popover,
   PopoverContent,
@@ -514,10 +520,10 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   const { playlist, categories, channels, autoChannels, output, anyProbing } =
     loaderData;
 
-  // Channels waiting on or mid-probe right now, for the live header count.
-  const probingCount = channels.filter(
-    (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
-  ).length;
+  // Channels waiting on or mid-probe right now, for the live header count and
+  // the list you get by hovering it.
+  const probeRows = probeQueue(channels);
+  const probingCount = probeRows.length;
 
   // Counts for the probe submenu, scoped to enabled channels to match what the
   // server actually probes. Missing = never probed, failed = last probe errored.
@@ -577,7 +583,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
               probe={probe}
               submitting={submitting}
               probing={probing}
-              probingCount={probingCount}
+              probeRows={probeRows}
               missingCount={missingCount}
               failedCount={failedCount}
               autoDisabledCount={autoDisabledCount}
@@ -604,7 +610,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
             probe={probe}
             submitting={submitting}
             probing={probing}
-            probingCount={probingCount}
+            probeRows={probeRows}
             missingCount={missingCount}
             failedCount={failedCount}
             autoDisabledCount={autoDisabledCount}
@@ -661,7 +667,7 @@ type ProbeProps = {
   probe: (intent: ProbeIntent) => void;
   submitting: boolean;
   probing: boolean;
-  probingCount: number;
+  probeRows: ReturnType<typeof probeQueue>;
   missingCount: number;
   failedCount: number;
   autoDisabledCount: number;
@@ -676,20 +682,43 @@ function ProbeAllButton({
   probe,
   submitting,
   probing,
-  probingCount,
+  probeRows,
   missingCount,
   failedCount,
   autoDisabledCount,
 }: ProbeProps) {
   const busy = submitting || probing;
 
-  // Mid-probe: a single button showing progress, no dropdown.
+  // Mid-probe: a single button showing progress, no dropdown. Hovering it lists
+  // the channels left to go. The button can't be `disabled` or the browser
+  // swallows the hover.
   if (probing) {
-    return (
-      <Button size="sm" variant="outline" disabled>
+    const label =
+      probeRows.length > 0 ? `Probing ${probeRows.length}…` : "Probing…";
+    const button = (
+      <Button
+        size="sm"
+        variant="outline"
+        aria-disabled
+        className="cursor-default text-muted-foreground"
+      >
         <Gauge className="size-4 animate-pulse" />
-        {probingCount > 0 ? `Probing ${probingCount}…` : "Probing…"}
+        {label}
       </Button>
+    );
+    // A probe started elsewhere can leave this playlist with nothing queued, and
+    // an empty list is worse than no list.
+    if (probeRows.length === 0) return button;
+    return (
+      <HoverCard openDelay={100} closeDelay={100}>
+        <HoverCardTrigger asChild>{button}</HoverCardTrigger>
+        <HoverCardContent
+          align="end"
+          className="w-80 max-w-[calc(100vw-2rem)] p-0"
+        >
+          <ProbeQueue queue={probeRows} />
+        </HoverCardContent>
+      </HoverCard>
     );
   }
 
@@ -780,7 +809,7 @@ function HeaderMenu({
   probe,
   submitting,
   probing,
-  probingCount,
+  probeRows,
   missingCount,
   failedCount,
   autoDisabledCount,
@@ -821,8 +850,8 @@ function HeaderMenu({
           <DropdownMenuItem disabled={busy} onClick={() => probe("probeAll")}>
             <Gauge className={cn("size-4", probing && "animate-pulse")} />
             {probing
-              ? probingCount > 0
-                ? `Probing ${probingCount}…`
+              ? probeRows.length > 0
+                ? `Probing ${probeRows.length}…`
                 : "Probing…"
               : "Probe enabled"}
           </DropdownMenuItem>
