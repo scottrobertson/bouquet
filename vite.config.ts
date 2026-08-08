@@ -7,6 +7,14 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  server: {
+    // Safari holds on to the js it has already downloaded, even when the dev
+    // server says not to. When the dep optimizer re-bundles, the file names it
+    // hands out change, and Safari keeps asking for the old ones until you empty
+    // its cache by hand. The page then loads half broken with 504s in the
+    // console. Nothing here is worth caching, it's all coming from localhost.
+    headers: { "Cache-Control": "no-store" },
+  },
   // Pre-bundle the client deps up front so adding a component that imports one
   // of them later doesn't trigger a mid-session re-optimize, which is what
   // 504'd ("Outdated Optimize Dep") an already-open tab. This is Vite's
