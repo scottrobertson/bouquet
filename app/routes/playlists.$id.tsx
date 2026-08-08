@@ -705,12 +705,12 @@ function ProbeAllButton({
             onClick={() => probe("probeAll")}
           >
             <Gauge className="size-4" />
-            Probe all
+            Probe enabled
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          Probes every channel in this playlist, even ones whose source has probing
-          turned off.
+          Probes every channel that's switched on, even ones whose source has
+          probing turned off. Switched-off channels are skipped.
         </TooltipContent>
       </Tooltip>
       <DropdownMenu>
@@ -824,7 +824,7 @@ function HeaderMenu({
               ? probingCount > 0
                 ? `Probing ${probingCount}…`
                 : "Probing…"
-              : "Probe all"}
+              : "Probe enabled"}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={busy || missingCount === 0}

@@ -118,6 +118,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The editor's "Probe all" button is now "Probe enabled", because it never probed everything. It
+  skips channels you've switched off and channels that were auto-disabled, which is why "Probe
+  auto-disabled" sits under it as its own action. The tooltip says so now too.
+
 - Searching the source browser now shows the channels it found instead of a list of closed groups.
   A search for "sky sports" used to come back as four collapsed category names and no channel, so
   every search needed an "Expand all" click before you could see anything. Groups still start closed
@@ -202,8 +206,8 @@ All notable changes to this project are recorded here. Newest first.
   working stream, so a dead channel kept a full set of numbers. Smart sort then ranked it on them and
   offered a dead 4K stream as a group's new primary, while the preview said "No probe data" for the
   same stream. The numbers are cleared when a channel is next probed, so probe the affected channels
-  again to clear the ones already stored. "Probe all" skips auto-disabled channels, so use "Probe
-  auto-disabled" for those.
+  again to clear the ones already stored. "Probe enabled" skips auto-disabled channels, so use
+  "Probe auto-disabled" for those.
 
 - Cancelling a drag in the playlist editor no longer leaves the "Drop here to remove" overlay
   covering the source browser until you drag something else.
