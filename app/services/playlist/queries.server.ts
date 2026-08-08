@@ -423,6 +423,22 @@ export function browserChannels(opts: BrowserFilter) {
     .where(where)
     .get();
 
+  // Matches the browser is hiding because the playlist already covers them,
+  // whether added directly or through an auto-sync category. Counting the same
+  // filter without the playlist exclusion and taking the difference catches
+  // both. Without this, searching for a channel you already added just says
+  // "no channels match", which reads as "this channel doesn't exist".
+  let alreadyAdded = 0;
+  if (opts.excludePlaylistId != null) {
+    const { excludePlaylistId: _covered, ...ignoringPlaylist } = opts;
+    const everything = db
+      .select({ n: count() })
+      .from(sourceChannels)
+      .where(browserWhere(ignoringPlaylist))
+      .get();
+    alreadyAdded = (everything?.n ?? 0) - (total?.n ?? 0);
+  }
+
   const rows = db
     .select({
       id: sourceChannels.id,
@@ -449,7 +465,7 @@ export function browserChannels(opts: BrowserFilter) {
     .limit(BROWSER_LIMIT)
     .all();
 
-  return { rows, total: total?.n ?? 0 };
+  return { rows, total: total?.n ?? 0, alreadyAdded };
 }
 
 /** Every source-channel id matching a filter (no cap), in display order. For

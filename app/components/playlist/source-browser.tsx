@@ -67,6 +67,7 @@ export function SourceBrowser({
   categories,
   results,
   total,
+  alreadyAdded,
   loading,
   playlistCategories,
   primaries,
@@ -77,11 +78,15 @@ export function SourceBrowser({
   onAutoSync,
   onAddMatching,
   onAddAlternateOf,
+  onShowAlreadyAdded,
   adding,
 }: {
   categories: string[];
   results: BrowserChannel[];
   total: number;
+  // Matching channels the playlist already covers, which are hidden from these
+  // results.
+  alreadyAdded: number;
   loading: boolean;
   playlistCategories: EditorCategory[];
   primaries: { id: number; name: string; hint?: string }[];
@@ -92,13 +97,16 @@ export function SourceBrowser({
   onAutoSync: (sourceId: number, categoryName: string, name: string) => void;
   onAddMatching: (target: AddTarget) => void;
   onAddAlternateOf: (primaryId: number) => void;
+  // Points the playlist pane's filter at the current search, so the channels
+  // hidden from these results can be found on the other side.
+  onShowAlreadyAdded: (query: string) => void;
   adding: boolean;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedCategories = (searchParams.get("categories") ?? "")
-    .split(",")
-    .filter(Boolean);
+  const categoriesParam = searchParams.get("categories") ?? "";
+  const selectedCategories = categoriesParam.split(",").filter(Boolean);
   const q = searchParams.get("q") ?? "";
+  const hasFilter = q.trim().length > 0 || selectedCategories.length > 0;
 
   // What's in the box, which only reaches the URL after a short pause in typing.
   const [searchInput, setSearchInput] = useState(q);
@@ -184,36 +192,49 @@ export function SourceBrowser({
   const [openedSources, setOpenedSources] = useState<Map<number, boolean>>(
     new Map(),
   );
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  // Groups you've opened or closed by hand. Everything else follows the default
+  // below.
+  const [catOverrides, setCatOverrides] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  // Browsing 900 channels is easier with the groups shut. A search is the
+  // opposite: you asked for those channels, so showing four closed group names
+  // and no channel is just a second thing to click.
   const catIsExpanded = (sourceId: number, name: string) =>
-    expandedCats.has(catKey(sourceId, name));
+    catOverrides.get(catKey(sourceId, name)) ?? hasFilter;
+
+  // Each new search starts fresh, so a group you closed while looking for one
+  // thing isn't still closed when you go looking for the next.
+  useEffect(() => {
+    setCatOverrides(new Map());
+  }, [q, categoriesParam]);
 
   function toggleSource(id: number, expanded: boolean) {
     setOpenedSources((prev) => new Map(prev).set(id, !expanded));
   }
   function toggleCat(sourceId: number, name: string) {
-    setExpandedCats((prev) => {
-      const next = new Set(prev);
-      const k = catKey(sourceId, name);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
+    const open = catIsExpanded(sourceId, name);
+    setCatOverrides((prev) =>
+      new Map(prev).set(catKey(sourceId, name), !open),
+    );
   }
+
+  const allExpanded =
+    sourceGroups.length > 0 &&
+    sourceGroups.every((s) =>
+      s.cats.every((c) => catIsExpanded(s.sourceId, c.name)),
+    );
 
   // The all-toggle opens every source and category group, including the
   // disabled sources that start closed.
-  const anyCatExpanded = expandedCats.size > 0;
   function toggleAll() {
-    if (anyCatExpanded) {
-      setExpandedCats(new Set());
-    } else {
+    const next = new Map<string, boolean>();
+    for (const s of sourceGroups) {
+      for (const c of s.cats) next.set(catKey(s.sourceId, c.name), !allExpanded);
+    }
+    setCatOverrides(next);
+    if (!allExpanded) {
       setOpenedSources(new Map(sourceGroups.map((s) => [s.sourceId, true])));
-      setExpandedCats(
-        new Set(
-          sourceGroups.flatMap((s) => s.cats.map((c) => catKey(s.sourceId, c.name))),
-        ),
-      );
     }
   }
 
@@ -246,7 +267,7 @@ export function SourceBrowser({
       }
     }
     return out;
-  }, [sourceGroups, showSourceRows, openedSources, expandedCats]);
+  }, [sourceGroups, showSourceRows, openedSources, catOverrides, hasFilter]);
 
   // The visible channel rows in display order, so a shift+click range only spans
   // what's actually on screen (collapsed groups aren't included).
@@ -283,7 +304,6 @@ export function SourceBrowser({
   }
 
   const capped = total > results.length;
-  const hasFilter = q.trim().length > 0 || selectedCategories.length > 0;
   const mode: "selected" | "matching" | null =
     selected.size > 0 ? "selected" : hasFilter && total > 0 ? "matching" : null;
   const canAdd = mode !== null && target !== "";
@@ -292,6 +312,79 @@ export function SourceBrowser({
     const t: AddTarget = { categoryId: Number(target) };
     if (mode === "selected") onAdd(Array.from(selected), t);
     else if (mode === "matching") onAddMatching(t);
+  }
+
+  // Row the arrow keys are sitting on, as an index into flatRows.
+  const [cursor, setCursor] = useState<number | null>(null);
+  useEffect(() => setCursor(null), [results]);
+
+  const searchRef = useRef<HTMLInputElement>(null);
+  // "/" jumps to the search box from anywhere on the page.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      )
+        return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function moveCursor(dir: 1 | -1) {
+    const channelRows: number[] = [];
+    flatRows.forEach((r, i) => {
+      if (r.kind === "channel") channelRows.push(i);
+    });
+    if (!channelRows.length) return;
+    const at = cursor == null ? -1 : channelRows.indexOf(cursor);
+    const next =
+      at < 0
+        ? dir === 1
+          ? 0
+          : channelRows.length - 1
+        : Math.min(Math.max(at + dir, 0), channelRows.length - 1);
+    const index = channelRows[next];
+    setCursor(index);
+    rowVirtualizer.scrollToIndex(index, { align: "auto" });
+  }
+
+  // Arrows walk the results and Enter adds, so a search can be finished without
+  // reaching for the mouse.
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveCursor(1);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveCursor(-1);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const row = cursor == null ? null : flatRows[cursor];
+      if (row?.kind === "channel" && target) {
+        onAdd([row.channel.id], { categoryId: Number(target) });
+      } else if (canAdd) {
+        add();
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (searchInput) setSearchInput("");
+      else searchRef.current?.blur();
+    }
   }
 
   return (
@@ -308,7 +401,7 @@ export function SourceBrowser({
                 onClick={toggleAll}
                 className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground"
               >
-                {anyCatExpanded ? "Collapse all" : "Expand all"}
+                {allExpanded ? "Collapse all" : "Expand all"}
               </button>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {multiSource
@@ -328,23 +421,51 @@ export function SourceBrowser({
           <div className="relative w-1/2">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={searchRef}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={onSearchKeyDown}
               placeholder="Search all sources..."
-              className="h-8 pl-8"
+              className="h-8 px-8"
             />
+            {searchInput ? null : (
+              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">
+                /
+              </kbd>
+            )}
           </div>
         </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {results.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px] text-muted-foreground">
-            {loading
-              ? "Loading..."
-              : hasFilter
-                ? "No channels match your filters."
-                : "No channels available. Add a source and sync, or enable some categories."}
+          <div className="space-y-3 px-4 py-12 text-center text-[13px] text-muted-foreground">
+            {loading ? (
+              "Loading..."
+            ) : !hasFilter ? (
+              "No channels available. Add a source and sync, or enable some categories."
+            ) : alreadyAdded > 0 ? (
+              // The browser hides channels the playlist already has, so without
+              // saying this the search just looks like the channel doesn't exist.
+              <>
+                <p>
+                  Nothing left to add.{" "}
+                  {alreadyAdded === 1
+                    ? "The 1 matching channel is"
+                    : `All ${alreadyAdded.toLocaleString()} matching channels are`}{" "}
+                  already in this playlist.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onShowAlreadyAdded(q)}
+                >
+                  Search the playlist
+                </Button>
+              </>
+            ) : (
+              "No channels match your filters."
+            )}
           </div>
         ) : (
           <div
@@ -433,6 +554,7 @@ export function SourceBrowser({
                     <SourceRow
                       channel={row.channel}
                       checked={selected.has(row.channel.id)}
+                      highlighted={vi.index === cursor}
                       onSelect={(shiftKey) =>
                         onSelect(row.channel.id, shiftKey, orderedChannelIds)
                       }
@@ -450,6 +572,23 @@ export function SourceBrowser({
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
           Showing the first {results.length.toLocaleString()} of{" "}
           {total.toLocaleString()}. Refine filters to narrow the list.
+        </div>
+      ) : null}
+
+      {hasFilter && results.length > 0 && alreadyAdded > 0 ? (
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            {alreadyAdded.toLocaleString()} more{" "}
+            {alreadyAdded === 1 ? "match is" : "matches are"} already in this
+            playlist.
+          </span>
+          <button
+            type="button"
+            onClick={() => onShowAlreadyAdded(q)}
+            className="cursor-pointer font-medium text-primary hover:underline"
+          >
+            Search the playlist
+          </button>
         </div>
       ) : null}
 
@@ -634,11 +773,14 @@ function AutoSyncButton({
 function SourceRow({
   channel,
   checked,
+  highlighted,
   onSelect,
   indented,
 }: {
   channel: BrowserChannel;
   checked: boolean;
+  // The row the arrow keys are on. Enter adds it.
+  highlighted?: boolean;
   onSelect: (shiftKey: boolean) => void;
   indented?: boolean;
 }) {
@@ -649,6 +791,7 @@ function SourceRow({
         "flex cursor-pointer items-center gap-2 px-3 py-3.5 transition-colors hover:bg-white/[0.02] md:py-1.5",
         indented && "pl-4",
         checked && "bg-primary/5",
+        highlighted && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}
     >
       <Checkbox checked={checked} className="pointer-events-none" />

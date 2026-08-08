@@ -24,7 +24,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     .filter(Boolean);
   const q = (url.searchParams.get("q") ?? "").trim();
 
-  const { rows, total } = browserChannels({
+  const { rows, total, alreadyAdded } = browserChannels({
     categories: categories.length ? categories : undefined,
     q: q || undefined,
     excludePlaylistId: playlistId,
@@ -34,6 +34,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     channels: rows,
     categories: browserCategories(),
     total,
+    alreadyAdded,
     limit: BROWSER_LIMIT,
   };
 }

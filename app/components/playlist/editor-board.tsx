@@ -22,7 +22,15 @@ import {
   useVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
-import { ListVideo, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  ListVideo,
+  Loader2,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -80,7 +88,12 @@ type BrowserData = {
   channels: BrowserChannel[];
   categories: string[];
   total: number;
+  alreadyAdded: number;
 };
+
+// Stand-in for "nothing collapsed", so the filtered view doesn't build a new
+// empty Set on every render and re-run the row builder.
+const EMPTY_COLLAPSED: Set<number> = new Set();
 
 export function EditorBoard({
   playlistId,
@@ -177,6 +190,7 @@ export function EditorBoard({
     (c) => !hiddenIds.has(c.id),
   );
   const browserTotal = browserFetcher.data?.total ?? 0;
+  const browserAlreadyAdded = browserFetcher.data?.alreadyAdded ?? 0;
   const browserCategories = browserFetcher.data?.categories ?? [];
   const browserLoading =
     browserFetcher.state === "loading" || !browserFetcher.data;
@@ -617,22 +631,81 @@ export function EditorBoard({
   const [selectedPl, setSelectedPl] = useState<Set<number>>(new Set());
   const [lastClicked, setLastClicked] = useState<number | null>(null);
 
+  // Filter box over the playlist itself. Without it the only way to find a
+  // channel you've already added is to scroll the whole list.
+  const [plQuery, setPlQuery] = useState("");
+  const needle = plQuery.trim().toLowerCase();
+
+  // Everything a channel can be matched on, built once per edit rather than per
+  // keystroke.
+  const searchText = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of items) {
+      map.set(
+        c.id,
+        [
+          c.customName ?? c.sourceName,
+          c.sourceName,
+          c.sourceProviderName,
+          c.sourceCategoryName ?? "",
+        ]
+          .join(" ")
+          .toLowerCase(),
+      );
+    }
+    return map;
+  }, [items]);
+
+  // A group matches if the primary or any of its alternates does, so searching
+  // an alternate's name still finds the group it lives in.
+  const matches = useCallback(
+    (primary: EditorChannel) => {
+      if ((searchText.get(primary.id) ?? "").includes(needle)) return true;
+      return (alternatesByPrimary.get(primary.id) ?? []).some((a) =>
+        (searchText.get(a.id) ?? "").includes(needle),
+      );
+    },
+    [searchText, alternatesByPrimary, needle],
+  );
+
   // The list the pane actually renders: categories and channels flattened into
   // one array so it can be virtualised.
   const visibleByCategory = useMemo(() => {
-    if (!filtering) return byCategory;
+    if (!filtering && !needle) return byCategory;
     const map = new Map<number, EditorChannel[]>();
     for (const [catId, list] of byCategory) {
-      const kept = list.filter((ch) => needsSort.has(ch.id));
+      let kept = list;
+      if (filtering) kept = kept.filter((ch) => needsSort.has(ch.id));
+      if (needle) kept = kept.filter(matches);
       if (kept.length) map.set(catId, kept);
     }
     return map;
-  }, [byCategory, filtering, needsSort]);
+  }, [byCategory, filtering, needsSort, needle, matches]);
+
+  // Narrowing the list hides rows between the ones you can see, so a drop would
+  // land somewhere you didn't point at. Dragging is off while either filter is
+  // on.
+  const narrowed = filtering || needle.length > 0;
 
   const visibleCats = useMemo(
-    () => (filtering ? cats.filter((c) => visibleByCategory.has(c.id)) : cats),
-    [cats, filtering, visibleByCategory],
+    () => (narrowed ? cats.filter((c) => visibleByCategory.has(c.id)) : cats),
+    [cats, narrowed, visibleByCategory],
   );
+
+  // Open any group that only matched because of one of its alternates, so the
+  // row you searched for is actually on screen.
+  const shownGroups = useMemo(() => {
+    if (!needle) return expandedGroups;
+    const open = new Set(expandedGroups);
+    for (const [primaryId, alts] of alternatesByPrimary) {
+      if (alts.some((a) => (searchText.get(a.id) ?? "").includes(needle)))
+        open.add(primaryId);
+    }
+    return open;
+  }, [expandedGroups, needle, alternatesByPrimary, searchText]);
+
+  // A filter is no use if the category it matched in happens to be collapsed.
+  const shownCollapsed = needle ? EMPTY_COLLAPSED : collapsedCats;
 
   const rows = useMemo(
     () =>
@@ -641,17 +714,35 @@ export function EditorBoard({
         channelsByCategory: visibleByCategory,
         alternatesByPrimary,
         autoChannels,
-        collapsedCats,
-        expandedGroups,
+        collapsedCats: shownCollapsed,
+        expandedGroups: shownGroups,
       }),
     [
       visibleCats,
       visibleByCategory,
       alternatesByPrimary,
       autoChannels,
-      collapsedCats,
-      expandedGroups,
+      shownCollapsed,
+      shownGroups,
     ],
+  );
+
+  // "Find them in the playlist" on the source side: copy the search over here
+  // and, on a phone where only one pane shows at a time, switch to this one.
+  const plSearchRef = useRef<HTMLInputElement>(null);
+  function showAlreadyAdded(query: string) {
+    setPlQuery(query);
+    setView("playlist");
+    plSearchRef.current?.focus();
+  }
+
+  const matchCount = useMemo(
+    () =>
+      rows.reduce(
+        (n, r) => (r.kind === "primary" || r.kind === "alternate" ? n + 1 : n),
+        0,
+      ),
+    [rows],
   );
 
   // Every id dnd-kit can sort, in the order they appear. Categories and channels
@@ -822,7 +913,7 @@ export function EditorBoard({
   // Stable so the memoised rows only re-render when their own data changes.
   const groupApi = useMemo<GroupApi>(
     () => ({
-      dragDisabled: filtering,
+      dragDisabled: narrowed,
       onToggleGroup: toggleGroup,
       onUngroupPrimary: ungroupPrimary,
       onUngroupAlternate: ungroupAlternate,
@@ -832,7 +923,7 @@ export function EditorBoard({
       onSelectChannel: selectPl,
     }),
     [
-      filtering,
+      narrowed,
       toggleGroup,
       ungroupPrimary,
       ungroupAlternate,
@@ -934,7 +1025,9 @@ export function EditorBoard({
             categories={browserCategories}
             results={browserResults}
             total={browserTotal}
+            alreadyAdded={browserAlreadyAdded}
             loading={browserLoading}
+            onShowAlreadyAdded={showAlreadyAdded}
             playlistCategories={cats}
             primaries={primaries}
             selected={selected}
@@ -996,7 +1089,7 @@ export function EditorBoard({
                     {needsSort.size} need{needsSort.size === 1 ? "s" : ""} sorting
                   </button>
                 ) : null}
-                {cats.length > 0 && !filtering ? (
+                {cats.length > 0 && !narrowed ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -1012,11 +1105,40 @@ export function EditorBoard({
                   </button>
                 ) : null}
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {cats.length} categories · {items.length} channels
+                  {needle
+                    ? `${matchCount.toLocaleString()} of ${items.length.toLocaleString()} channels`
+                    : `${cats.length} categories · ${items.length} channels`}
                 </span>
               </div>
             </div>
             <div className="flex gap-2">
+              <div className="relative w-1/2">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  ref={plSearchRef}
+                  value={plQuery}
+                  onChange={(e) => setPlQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      if (plQuery) setPlQuery("");
+                      else e.currentTarget.blur();
+                    }
+                  }}
+                  placeholder="Filter this playlist..."
+                  className="h-8 px-8"
+                />
+                {plQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setPlQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
+                    aria-label="Clear filter"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
               <Input
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
@@ -1122,6 +1244,10 @@ export function EditorBoard({
                 <p className="text-[13px] text-muted-foreground">
                   Add a category above, then drag channels in from the left.
                 </p>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="px-4 py-12 text-center text-[13px] text-muted-foreground">
+                No channels in this playlist match “{plQuery.trim()}”.
               </div>
             ) : (
               <SortableContext

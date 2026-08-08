@@ -6,6 +6,23 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The playlist editor has a filter box over the playlist itself. Until now the only way to find a
+  channel you'd already added was to scroll, which on a big playlist means thousands of pixels. It
+  matches on the channel's name, the name it had at the source, the provider and the source
+  category, so "uhd/4k" or a provider name works as well as a channel name. A group whose alternate
+  matched opens up so you can see the row you searched for. Dragging is off while the filter is on,
+  since the rows in between are hidden and a drop would land somewhere you didn't point at.
+
+- The source browser can now be driven from the keyboard. Press "/" anywhere to jump to the search
+  box, arrow up and down to walk the results, and Enter to add the highlighted channel to the target
+  category. Escape clears the box. So a channel can go from search to playlist without touching the
+  mouse.
+
+- Searching the source browser now says when the matches are already in your playlist. The browser
+  hides channels the playlist already covers, so a search for one of them used to come back "no
+  channels match", which reads as "this channel doesn't exist". It now says how many are already
+  there and offers to search the playlist for them.
+
 - The playlist editor now shows which alt groups smart sort would reorder, so you don't have to open
   the preview on each one to find out. A group that's out of order gets a sparkle next to its "N
   alts" badge; click it to go straight to the preview. The playlist header shows how many groups are
@@ -79,6 +96,11 @@ All notable changes to this project are recorded here. Newest first.
   since they have no channels of their own to probe.
 
 ### Changed
+
+- Searching the source browser now shows the channels it found instead of a list of closed groups.
+  A search for "sky sports" used to come back as four collapsed category names and no channel, so
+  every search needed an "Expand all" click before you could see anything. Groups still start closed
+  when you're browsing with no search, where they keep a long list scannable.
 
 - The playlist side of the editor now only renders the rows you can see, the way the source browser
   already did. On a 1,200 channel playlist it was building every row up front: 44,000 elements, and
