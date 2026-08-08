@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- When there's exactly one group the channels you picked could belong to, the source pane offers it
+  as a button, so grouping an alternate is one click with no popover to open. The button says which
+  group and why it matched ("Same EPG id", "Same name"), and the picker sits next to it as "Pick
+  another…" for when the guess is wrong.
+
 - Both alternate pickers now suggest the group a channel belongs in, so you don't have to type the
   name out every time. Pick some channels, open "Add as alternate of…" or "Make alternate of…", and
   the likely groups sit at the top under "Suggested", with the best one already highlighted so Enter

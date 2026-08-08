@@ -57,7 +57,21 @@ export function normaliseChannelName(name: string): string {
   return channelKey(name).name;
 }
 
+// Pulling a name apart is the slow half of a suggestion, and the editor asks for
+// suggestions again on every click of a checkbox, over the same playlist names
+// each time. Names are stable strings, so the answer can just be kept.
+const KEY_CACHE = new Map<string, ChannelKey>();
+const KEY_CACHE_LIMIT = 50_000;
+
 export function channelKey(raw: string): ChannelKey {
+  const cached = KEY_CACHE.get(raw);
+  if (cached) return cached;
+  const key = parseName(raw);
+  if (KEY_CACHE.size < KEY_CACHE_LIMIT) KEY_CACHE.set(raw, key);
+  return key;
+}
+
+function parseName(raw: string): ChannelKey {
   // NFKD turns the decorated letters into plain ones and splits accents off, so
   // the accents can be dropped.
   let s = raw.normalize("NFKD").replace(/\p{M}/gu, "");
