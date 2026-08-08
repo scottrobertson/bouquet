@@ -119,6 +119,8 @@ export type GroupControls = {
   // Primary that has alternates.
   hasAlternates: boolean;
   altCount: number;
+  // Smart sort would put this group's streams in a different order.
+  needsSort?: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onUngroupPrimary: () => void;
@@ -419,6 +421,25 @@ export function ChannelRowBody({
             <Badge className="shrink-0 border-transparent bg-white/[0.06] text-muted-foreground">
               {group.altCount} alt{group.altCount === 1 ? "" : "s"}
             </Badge>
+          ) : null}
+          {group?.needsSort && !overlay ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setSmartSortOpen(true)}
+                  className="shrink-0 cursor-pointer text-primary hover:text-primary/80"
+                  aria-label="Smart sort available"
+                >
+                  <Sparkles className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Smart sort would put this group in a different order. Click to
+                see it.
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
         <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">

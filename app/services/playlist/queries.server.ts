@@ -2,6 +2,7 @@ import {
   and,
   asc,
   count,
+  desc,
   eq,
   inArray,
   like,
@@ -431,12 +432,16 @@ export function browserChannels(opts: BrowserFilter) {
       available: sourceChannels.available,
       sourceId: sourceChannels.sourceId,
       sourceName: sources.name,
+      sourceEnabled: sources.enabled,
       epgChannelId: sourceChannels.epgChannelId,
     })
     .from(sourceChannels)
     .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
     .where(where)
+    // Channels from a disabled source can't go in output, so they sit at the
+    // bottom of the browser and are the first to be dropped by the row limit.
     .orderBy(
+      desc(sources.enabled),
       asc(sources.name),
       asc(sourceChannels.position),
       asc(sourceChannels.id),

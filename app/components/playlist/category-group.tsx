@@ -43,6 +43,12 @@ import type { AutoChannelView, EditorCategory, EditorChannel } from "./types";
 /** Group actions wired up by the board, applied per primary/alternate here. */
 export type GroupApi = {
   expandedGroups: Set<number>;
+  // Primaries whose alternates smart sort would reorder.
+  needsSort: Set<number>;
+  // True while the list is filtered down to a subset of rows. Dropping a row
+  // between two that are far apart in the real list would move it somewhere you
+  // didn't point at, so dragging is off.
+  dragDisabled: boolean;
   onToggleGroup: (primaryId: number) => void;
   onUngroupPrimary: (primaryId: number) => void;
   onUngroupAlternate: (channelId: number) => void;
@@ -84,7 +90,11 @@ export function CategoryGroup({
   const count = isAuto ? autoChannels.length : channels.length + altTotal;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: `cat-${category.id}`, data: { type: "categoryHeader", categoryId: category.id } });
+    useSortable({
+      id: `cat-${category.id}`,
+      data: { type: "categoryHeader", categoryId: category.id },
+      disabled: groupApi.dragDisabled,
+    });
 
   // Channels drop into the category container itself when it has no rows to land
   // on. Auto categories are read-only, so we never attach this as a drop target.
@@ -102,14 +112,16 @@ export function CategoryGroup({
       className={cn("border-b-2 border-border", isDragging && "opacity-60")}
     >
       <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-border bg-secondary px-3 py-2.5">
-        <button
-          type="button"
-          className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" />
-        </button>
+        {groupApi.dragDisabled ? null : (
+          <button
+            type="button"
+            className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -220,7 +232,11 @@ function PrimaryGroup({
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: primary.id, data: { type: "channel", channel: primary } });
+  } = useSortable({
+    id: primary.id,
+    data: { type: "channel", channel: primary },
+    disabled: groupApi.dragDisabled,
+  });
 
   // Show the insert line only when adding from the source list (it lands above
   // this group). Reordering already shows dnd-kit's gap.
@@ -244,6 +260,7 @@ function PrimaryGroup({
           isAlternate: false,
           hasAlternates: alternates.length > 0,
           altCount: alternates.length,
+          needsSort: groupApi.needsSort.has(primary.id),
           collapsed,
           onToggleCollapse: () => groupApi.onToggleGroup(primary.id),
           onUngroupPrimary: () => groupApi.onUngroupPrimary(primary.id),

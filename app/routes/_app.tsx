@@ -1,6 +1,6 @@
 import { Menu, Tv } from "lucide-react";
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { Outlet, type ShouldRevalidateFunctionArgs } from "react-router";
 import type { Route } from "./+types/_app";
 import { AppSidebar, SidebarContent } from "~/components/app-sidebar";
 import { Button } from "~/components/ui/button";
@@ -10,6 +10,22 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "~/components/ui/sheet";
+
+// Screens put their filters in the URL. The sidebar doesn't care about those,
+// and revalidating here would still cost a server round trip per keystroke in a
+// search box, so skip it when only the query string changed.
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  const filtersOnly =
+    !formMethod &&
+    currentUrl.pathname === nextUrl.pathname &&
+    currentUrl.search !== nextUrl.search;
+  return filtersOnly ? false : defaultShouldRevalidate;
+}
 
 // Read the collapsed choice on the server so the sidebar renders at the right
 // width before hydration, no flash.

@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The playlist editor now shows which alt groups smart sort would reorder, so you don't have to open
+  the preview on each one to find out. A group that's out of order gets a sparkle next to its "N
+  alts" badge; click it to go straight to the preview. The playlist header shows how many groups are
+  affected, and clicking that count filters the list down to just those so you can work through them.
+  As probes land and the picture changes, the count updates on its own.
+
 - Sync now deletes channels the provider has removed, as long as no playlist uses them. Providers
   that "rename" channels actually delete and recreate them under new stream IDs, which left the old
   names sitting in the source browser as unavailable forever. Channels that are in a playlist are
@@ -74,6 +80,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- Disabled sources now sit at the bottom of the playlist editor's source browser and start
+  collapsed, with a "Source off" badge on the group. Their channels are still there if you want
+  them, they're just out of the way of the sources you're actually using. "Expand all" opens them
+  along with everything else.
 - Channels that can't reach output are now greyed out in the playlist editor, whatever the reason:
   source disabled, dropped by the provider, or in a disabled source category. Before only manually
   or auto-disabled channels dimmed, so a "Source off" row looked active when it wasn't.
@@ -135,6 +145,12 @@ All notable changes to this project are recorded here. Newest first.
   the primary brings them back as they were. The group's alternates dim in the editor too.
 
 ### Fixed
+
+- Searching the source browser no longer eats what you type. The box waits for a pause in typing
+  before it searches, and when the results landed it put the older text back in the box, so typing
+  slowly lost the last letters. It also reloaded the entire playlist from the server every time the
+  search changed, which is what made the editor feel laggy. The browser's own results are the only
+  thing that reloads now.
 
 - Fixed the Docker image failing to build. The dependency update to better-sqlite3 v13 hit an
   upstream packaging bug (WiseLibs/better-sqlite3#1503) where installs always compile from source

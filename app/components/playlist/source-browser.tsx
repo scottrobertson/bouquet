@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -43,10 +44,22 @@ const UNCATEGORISED = "Uncategorised";
 export type AddTarget = { categoryId: number };
 
 type CatGroup = { name: string; channels: BrowserChannel[] };
-type SourceGroup = { sourceId: number; sourceName: string; cats: CatGroup[] };
+type SourceGroup = {
+  sourceId: number;
+  sourceName: string;
+  enabled: boolean;
+  cats: CatGroup[];
+};
 
 type FlatRow =
-  | { kind: "source"; sourceId: number; name: string; count: number }
+  | {
+      kind: "source";
+      sourceId: number;
+      name: string;
+      count: number;
+      enabled: boolean;
+      expanded: boolean;
+    }
   | { kind: "category"; sourceId: number; name: string; count: number }
   | { kind: "channel"; channel: BrowserChannel };
 
@@ -87,11 +100,13 @@ export function SourceBrowser({
     .filter(Boolean);
   const q = searchParams.get("q") ?? "";
 
+  // What's in the box, which only reaches the URL after a short pause in typing.
   const [searchInput, setSearchInput] = useState(q);
-  useEffect(() => setSearchInput(q), [q]);
+  const pushedToUrl = useRef(q);
   useEffect(() => {
-    if (searchInput === q) return;
+    if (searchInput === pushedToUrl.current) return;
     const t = setTimeout(() => {
+      pushedToUrl.current = searchInput;
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -103,7 +118,16 @@ export function SourceBrowser({
       );
     }, 200);
     return () => clearTimeout(t);
-  }, [searchInput, q, setSearchParams]);
+  }, [searchInput, setSearchParams]);
+
+  // Follow the URL when something else changes it, like the back button. Our own
+  // write is ignored, otherwise typing "abc" slowly puts "a" back in the box the
+  // moment the search for "a" lands.
+  useEffect(() => {
+    if (q === pushedToUrl.current) return;
+    pushedToUrl.current = q;
+    setSearchInput(q);
+  }, [q]);
 
   // Auto-sync categories are read-only, so they can't be add targets.
   const addTargets = playlistCategories.filter((c) => !c.auto);
@@ -122,12 +146,16 @@ export function SourceBrowser({
   const sourceGroups = useMemo<SourceGroup[]>(() => {
     const map = new Map<
       number,
-      { sourceName: string; cats: Map<string, BrowserChannel[]> }
+      {
+        sourceName: string;
+        enabled: boolean;
+        cats: Map<string, BrowserChannel[]>;
+      }
     >();
     for (const r of results) {
       let s = map.get(r.sourceId);
       if (!s) {
-        s = { sourceName: r.sourceName, cats: new Map() };
+        s = { sourceName: r.sourceName, enabled: r.sourceEnabled, cats: new Map() };
         map.set(r.sourceId, s);
       }
       const key = r.categoryName ?? UNCATEGORISED;
@@ -138,30 +166,30 @@ export function SourceBrowser({
     return [...map].map(([sourceId, v]) => ({
       sourceId,
       sourceName: v.sourceName,
+      enabled: v.enabled,
       cats: [...v.cats].map(([name, channels]) => ({ name, channels })),
     }));
   }, [results]);
 
   const multiSource = sourceGroups.length > 1;
+  const anyDisabledSource = sourceGroups.some((s) => !s.enabled);
+  // A single source doesn't need a header row of its own, unless it's disabled,
+  // where the header is what says so and lets you open it back up.
+  const showSourceRows = multiSource || anyDisabledSource;
   const categoryCount = sourceGroups.reduce((n, s) => n + s.cats.length, 0);
 
-  // Sources are open by default (track the collapsed ones); category groups are
-  // closed by default (track the expanded ones).
+  // Enabled sources are open by default and disabled ones closed. Clicking a
+  // source header records a choice here, which then wins.
   const catKey = (sourceId: number, name: string) => `${sourceId}::${name}`;
-  const [collapsedSources, setCollapsedSources] = useState<Set<number>>(new Set());
+  const [openedSources, setOpenedSources] = useState<Map<number, boolean>>(
+    new Map(),
+  );
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
-  const sourceExpanded = (id: number) =>
-    !multiSource || !collapsedSources.has(id);
   const catIsExpanded = (sourceId: number, name: string) =>
     expandedCats.has(catKey(sourceId, name));
 
-  function toggleSource(id: number) {
-    setCollapsedSources((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function toggleSource(id: number, expanded: boolean) {
+    setOpenedSources((prev) => new Map(prev).set(id, !expanded));
   }
   function toggleCat(sourceId: number, name: string) {
     setExpandedCats((prev) => {
@@ -173,13 +201,14 @@ export function SourceBrowser({
     });
   }
 
-  // The all-toggle opens/closes the category groups (sources stay as set).
+  // The all-toggle opens every source and category group, including the
+  // disabled sources that start closed.
   const anyCatExpanded = expandedCats.size > 0;
   function toggleAll() {
     if (anyCatExpanded) {
       setExpandedCats(new Set());
     } else {
-      setCollapsedSources(new Set());
+      setOpenedSources(new Map(sourceGroups.map((s) => [s.sourceId, true])));
       setExpandedCats(
         new Set(
           sourceGroups.flatMap((s) => s.cats.map((c) => catKey(s.sourceId, c.name))),
@@ -191,10 +220,18 @@ export function SourceBrowser({
   const flatRows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
     for (const s of sourceGroups) {
-      if (multiSource) {
+      if (showSourceRows) {
         const count = s.cats.reduce((n, c) => n + c.channels.length, 0);
-        out.push({ kind: "source", sourceId: s.sourceId, name: s.sourceName, count });
-        if (!sourceExpanded(s.sourceId)) continue;
+        const expanded = openedSources.get(s.sourceId) ?? s.enabled;
+        out.push({
+          kind: "source",
+          sourceId: s.sourceId,
+          name: s.sourceName,
+          count,
+          enabled: s.enabled,
+          expanded,
+        });
+        if (!expanded) continue;
       }
       for (const cat of s.cats) {
         out.push({
@@ -209,8 +246,7 @@ export function SourceBrowser({
       }
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceGroups, multiSource, collapsedSources, expandedCats]);
+  }, [sourceGroups, showSourceRows, openedSources, expandedCats]);
 
   // The visible channel rows in display order, so a shift+click range only spans
   // what's actually on screen (collapsed groups aren't included).
@@ -328,18 +364,28 @@ export function SourceBrowser({
                   {row.kind === "source" ? (
                     <button
                       type="button"
-                      onClick={() => toggleSource(row.sourceId)}
+                      onClick={() => toggleSource(row.sourceId, row.expanded)}
                       className="flex w-full cursor-pointer items-center gap-1.5 border-b border-border bg-secondary px-3 py-3 text-left md:py-2"
                     >
-                      {collapsedSources.has(row.sourceId) ? (
-                        <ChevronRight className="size-3.5 text-muted-foreground" />
-                      ) : (
+                      {row.expanded ? (
                         <ChevronDown className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="size-3.5 text-muted-foreground" />
                       )}
                       <Radio className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-[13px] font-semibold">
+                      <span
+                        className={cn(
+                          "truncate text-[13px] font-semibold",
+                          !row.enabled && "text-muted-foreground",
+                        )}
+                      >
                         {row.name}
                       </span>
+                      {!row.enabled ? (
+                        <Badge className="shrink-0 border-transparent bg-muted px-1.5 py-0 text-[11px] font-medium text-muted-foreground">
+                          Source off
+                        </Badge>
+                      ) : null}
                       <span className="ml-auto rounded-full bg-white/[0.06] px-1.5 text-[11px] tabular-nums text-muted-foreground">
                         {row.count.toLocaleString()}
                       </span>
@@ -348,7 +394,7 @@ export function SourceBrowser({
                     <div
                       className={cn(
                         "group/grp flex w-full items-center gap-1.5 border-b border-white/5 bg-card px-3 py-3.5 md:py-1.5",
-                        multiSource && "pl-4",
+                        showSourceRows && "pl-4",
                       )}
                     >
                       <button
@@ -390,7 +436,7 @@ export function SourceBrowser({
                       onSelect={(shiftKey) =>
                         onSelect(row.channel.id, shiftKey, orderedChannelIds)
                       }
-                      indented={multiSource}
+                      indented={showSourceRows}
                     />
                   )}
                 </div>

@@ -16,7 +16,7 @@ import {
   arrayMove,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ListVideo, Loader2, Plus, Trash2 } from "lucide-react";
+import { ListVideo, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -41,6 +41,10 @@ import {
   SelectTrigger,
 } from "~/components/ui/select";
 import { cn } from "~/lib/utils";
+import {
+  needsSmartSort,
+  type SmartSortConfig,
+} from "~/services/playlist/smart-sort";
 import { CategoryGroup } from "./category-group";
 import { ChannelRowBody } from "./channel-row";
 import { ChannelTools } from "./channel-tools";
@@ -69,11 +73,13 @@ export function EditorBoard({
   categories,
   channels,
   autoChannels,
+  smartSort,
 }: {
   playlistId: number;
   categories: EditorCategory[];
   channels: EditorChannel[];
   autoChannels: Record<number, AutoChannelView[]>;
+  smartSort: SmartSortConfig;
 }) {
   const reorderFetcher = useFetcher();
   const reorderCatFetcher = useFetcher();
@@ -210,6 +216,25 @@ export function EditorBoard({
       list.sort((a, b) => a.altPosition - b.altPosition);
     return map;
   }, [items]);
+
+  // Primaries whose group smart sort would put in a different order, so the row
+  // can say so without anyone opening the preview. Everything the sort reads is
+  // already on the row, and a group is only a handful of streams, so this is
+  // cheap enough to redo on every edit.
+  const needsSort = useMemo(() => {
+    const flagged = new Set<number>();
+    for (const primary of items) {
+      if (primary.primaryChannelId != null) continue;
+      const alts = alternatesByPrimary.get(primary.id);
+      if (!alts?.length) continue;
+      const members = [primary, ...alts].map((c) => ({
+        ...c,
+        available: c.sourceAvailable,
+      }));
+      if (needsSmartSort(members, smartSort)) flagged.add(primary.id);
+    }
+    return flagged;
+  }, [items, alternatesByPrimary, smartSort]);
 
   // Auto-sync categories are read-only: nothing can be dropped into them.
   const autoIds = useMemo(
@@ -527,6 +552,41 @@ export function EditorBoard({
     );
   }
 
+  // Narrows the list to groups smart sort would reorder, so they can be worked
+  // through one at a time. Turns itself off once none are left.
+  const [onlyNeedsSort, setOnlyNeedsSort] = useState(false);
+  const filtering = onlyNeedsSort && needsSort.size > 0;
+  useEffect(() => {
+    if (needsSort.size === 0) setOnlyNeedsSort(false);
+  }, [needsSort]);
+
+  // Turning the filter on opens what it leaves behind. Filtering down to four
+  // rows and still having to click each one open would defeat the point.
+  function toggleNeedsSortFilter() {
+    if (!onlyNeedsSort) {
+      setExpandedGroups((prev) => new Set([...prev, ...needsSort]));
+      setCollapsedCats((prev) => {
+        const next = new Set(prev);
+        for (const cat of cats) {
+          if ((byCategory.get(cat.id) ?? []).some((ch) => needsSort.has(ch.id)))
+            next.delete(cat.id);
+        }
+        return next;
+      });
+    }
+    setOnlyNeedsSort((v) => !v);
+  }
+
+  const visibleCats = filtering
+    ? cats.filter((c) =>
+        (byCategory.get(c.id) ?? []).some((ch) => needsSort.has(ch.id)),
+      )
+    : cats;
+  function visibleChannels(catId: number) {
+    const list = byCategory.get(catId) ?? [];
+    return filtering ? list.filter((ch) => needsSort.has(ch.id)) : list;
+  }
+
   // Multi-select of playlist channels for bulk actions.
   const [selectedPl, setSelectedPl] = useState<Set<number>>(new Set());
   const [lastClicked, setLastClicked] = useState<number | null>(null);
@@ -672,6 +732,8 @@ export function EditorBoard({
 
   const groupApi = {
     expandedGroups,
+    needsSort,
+    dragDisabled: filtering,
     onToggleGroup: toggleGroup,
     onUngroupPrimary: ungroupPrimary,
     onUngroupAlternate: ungroupAlternate,
@@ -769,7 +831,22 @@ export function EditorBoard({
                 ) : null}
               </div>
               <div className="flex items-center gap-3">
-                {cats.length > 0 ? (
+                {needsSort.size > 0 ? (
+                  <button
+                    type="button"
+                    onClick={toggleNeedsSortFilter}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal",
+                      filtering
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-primary/15 text-primary hover:bg-primary/25",
+                    )}
+                  >
+                    <Sparkles className="size-3" />
+                    {needsSort.size} need{needsSort.size === 1 ? "s" : ""} sorting
+                  </button>
+                ) : null}
+                {cats.length > 0 && !filtering ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -898,14 +975,14 @@ export function EditorBoard({
               </div>
             ) : (
               <SortableContext
-                items={cats.map((c) => `cat-${c.id}`)}
+                items={visibleCats.map((c) => `cat-${c.id}`)}
                 strategy={verticalListSortingStrategy}
               >
-                {cats.map((cat) => (
+                {visibleCats.map((cat) => (
                   <CategoryGroup
                     key={cat.id}
                     category={cat}
-                    channels={byCategory.get(cat.id) ?? []}
+                    channels={visibleChannels(cat.id)}
                     alternatesByPrimary={alternatesByPrimary}
                     autoChannels={autoChannels[cat.id] ?? []}
                     playlistId={playlistId}

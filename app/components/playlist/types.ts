@@ -85,4 +85,7 @@ export type BrowserChannel = {
   available: boolean;
   sourceId: number;
   sourceName: string;
+  // When off, nothing from this source reaches output. Its group is pushed to
+  // the bottom of the browser and starts collapsed.
+  sourceEnabled: boolean;
 };

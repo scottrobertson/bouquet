@@ -10,7 +10,13 @@ import {
   Tv,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, data, useFetcher, useFetchers } from "react-router";
+import {
+  Link,
+  data,
+  useFetcher,
+  useFetchers,
+  type ShouldRevalidateFunctionArgs,
+} from "react-router";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
 import {
@@ -97,6 +103,22 @@ export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `${loaderData?.playlist.name ?? "Playlist"} · Bouquet` }];
 }
 
+// The source browser keeps its search and category filters in the URL, and
+// nothing here reads them. Without this, every keystroke in the search box
+// reloads the whole playlist from the server and the editor feels laggy.
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  const filtersOnly =
+    !formMethod &&
+    currentUrl.pathname === nextUrl.pathname &&
+    currentUrl.search !== nextUrl.search;
+  return filtersOnly ? false : defaultShouldRevalidate;
+}
+
 // Kept light on purpose: the source browser loads from its own endpoint, so
 // editing the playlist revalidates only the playlist itself.
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -107,7 +129,17 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const origin = externalOrigin(request);
   const cats = getCategories(id);
   return {
-    playlist: { id: playlist.id, name: playlist.name },
+    playlist: {
+      id: playlist.id,
+      name: playlist.name,
+      // The editor runs the same sort on the client to flag groups that are out
+      // of order, so it needs the settings the real sort would use.
+      smartSort: {
+        prefer: playlist.smartSortPrefer,
+        audio: playlist.smartSortAudio,
+        availableFirst: playlist.smartSortAvailableFirst,
+      },
+    },
     output: {
       m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
       epgUrl: `${origin}/output/epg/${playlist.outputToken}`,
@@ -581,6 +613,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
           categories={categories}
           channels={channels}
           autoChannels={autoChannels}
+          smartSort={playlist.smartSort}
         />
       </div>
     </div>

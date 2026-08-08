@@ -18,6 +18,7 @@ import {
 import { getAltGroupStreams } from "~/services/playlist/queries.server";
 import {
   factorsFor,
+  needsSmartSort,
   smartSort,
   type SmartSortConfig,
   type SmartSortStream,
@@ -161,6 +162,71 @@ describe("smartSort scoring", () => {
     ];
     expect(smartSort(list, { ...DEFAULT, availableFirst: false })[0].name).toBe(
       "working",
+    );
+  });
+});
+
+describe("needsSmartSort", () => {
+  it("is false when the group is already best-first", () => {
+    const list = [
+      stream("primary", 1080, 50, "h264", "eac3", 9),
+      stream("alt1", 1080, 50, "h264", "aac", 6),
+      stream("alt2", 720, 25, "h264", "aac", 3),
+    ];
+    expect(needsSmartSort(list, DEFAULT)).toBe(false);
+  });
+
+  it("is true when a better stream sits below the primary", () => {
+    const list = [
+      stream("primary", 720, 25, "h264", "aac", 3),
+      stream("alt1", 1080, 50, "h264", "eac3", 9),
+    ];
+    expect(needsSmartSort(list, DEFAULT)).toBe(true);
+  });
+
+  it("is true when only the alternates below the primary are out of order", () => {
+    const list = [
+      stream("primary", 1080, 50, "h264", "eac3", 9),
+      stream("alt1", 720, 25, "h264", "aac", 3),
+      stream("alt2", 1080, 25, "h264", "aac", 5),
+    ];
+    expect(needsSmartSort(list, DEFAULT)).toBe(true);
+  });
+
+  it("is false when nothing has been probed, so the editor stays quiet", () => {
+    const unprobed = (name: string): SmartSortStream & { name: string } => ({
+      name,
+      available: true,
+      sourceEnabled: true,
+      autoDisabledAt: null,
+      probeStatus: null,
+      probeWidth: null,
+      probeHeight: null,
+      probeFps: null,
+      probeVideoCodec: null,
+      probeAudioCodec: null,
+      probeBitrate: null,
+    });
+    expect(
+      needsSmartSort([unprobed("primary"), unprobed("alt1")], DEFAULT),
+    ).toBe(false);
+  });
+
+  it("only flags a dead primary while availableFirst is on", () => {
+    // Same quality on both, so liveness is the only thing that could reorder it.
+    const list = [
+      stream("primary", 1080, 50, "h264", "aac", 6, { available: false }),
+      stream("alt1", 1080, 50, "h264", "aac", 6),
+    ];
+    expect(needsSmartSort(list, DEFAULT)).toBe(true);
+    expect(needsSmartSort(list, { ...DEFAULT, availableFirst: false })).toBe(
+      false,
+    );
+  });
+
+  it("is false for a channel with no alternates", () => {
+    expect(needsSmartSort([stream("solo", 1080, 50, "h264", "aac", 6)], DEFAULT)).toBe(
+      false,
     );
   });
 });

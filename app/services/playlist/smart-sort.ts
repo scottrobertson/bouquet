@@ -178,6 +178,18 @@ export function smartSort<T extends SmartSortStream>(
   return [...streams].sort((a, b) => compareStreams(a, b, config));
 }
 
+/** Whether smart sort would change this group. Pass the members in the order
+    they're in now, primary first. Lets the editor flag groups worth sorting
+    without opening the preview on each one. */
+export function needsSmartSort(
+  members: SmartSortStream[],
+  config: SmartSortConfig,
+): boolean {
+  if (members.length < 2) return false;
+  const sorted = smartSort(members, config);
+  return sorted.some((s, i) => s !== members[i]);
+}
+
 /** The values that fed the sort, in display-ready form, so the preview can show
     why a stream ranks where it does. */
 export type SmartSortFactors = {
