@@ -264,11 +264,21 @@ export function EditorBoard({
       if (primary.primaryChannelId != null) continue;
       const alts = alternatesByPrimary.get(primary.id);
       if (!alts?.length) continue;
-      const members = [primary, ...alts].map((c) => ({
+      const members = [primary, ...alts];
+      // A channel waiting on a probe counts as never-probed until the result
+      // lands, so the group would shuffle around mid-run and we'd suggest an
+      // order we're about to change our mind about. Say nothing until it's done.
+      if (
+        members.some(
+          (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
+        )
+      )
+        continue;
+      const streams = members.map((c) => ({
         ...c,
         available: c.sourceAvailable,
       }));
-      if (needsSmartSort(members, smartSort)) flagged.add(primary.id);
+      if (needsSmartSort(streams, smartSort)) flagged.add(primary.id);
     }
     return flagged;
   }, [items, alternatesByPrimary, smartSort]);

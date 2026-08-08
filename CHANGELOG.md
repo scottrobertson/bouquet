@@ -201,6 +201,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Fixed
 
+- The smart sort hint on a group no longer appears while any of the group's channels are queued or
+  being probed. A channel waiting on a probe counts as never-probed for ranking, so during a probe
+  run groups lit up saying they needed sorting, and once the results landed the suggestion went away
+  again. It also fed the "needs sorting" count and filter in the toolbar. Groups stay quiet now until
+  their probes finish.
+
 - A channel that fails its probe no longer keeps the resolution, frame rate, codec and bitrate the
   probe read. Every failure used to clear them except a black screen, which ffprobe reads like any
   working stream, so a dead channel kept a full set of numbers. Smart sort then ranked it on them and
