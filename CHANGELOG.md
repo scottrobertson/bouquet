@@ -80,6 +80,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Changed
 
+- The playlist side of the editor now only renders the rows you can see, the way the source browser
+  already did. On a 1,200 channel playlist it was building every row up front: 44,000 elements, and
+  every click had to re-render all of them, so ticking a checkbox froze the page for about 300ms and
+  selecting ten channels took three seconds. Now a click lands in under 10ms, the page loads in a
+  fifth of the time, and it stays that way however big the playlist gets. Category headers still stick
+  to the top as you scroll, and drag, multi-select and shift+click all work across the whole list, not
+  just the part on screen.
+
 - Disabled sources now sit at the bottom of the playlist editor's source browser and start
   collapsed, with a "Source off" badge on the group. Their channels are still there if you want
   them, they're just out of the way of the sources you're actually using. "Expand all" opens them
@@ -145,6 +153,9 @@ All notable changes to this project are recorded here. Newest first.
   the primary brings them back as they were. The group's alternates dim in the editor too.
 
 ### Fixed
+
+- Cancelling a drag in the playlist editor no longer leaves the "Drop here to remove" overlay
+  covering the source browser until you drag something else.
 
 - Searching the source browser no longer eats what you type. The box waits for a pause in typing
   before it searches, and when the results landed it put the older text back in the box, so typing

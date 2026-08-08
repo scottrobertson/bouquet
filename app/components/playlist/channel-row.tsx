@@ -19,7 +19,7 @@ import {
   Tv,
   Unlink,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -48,7 +48,7 @@ import type { EditorChannel } from "./types";
     when the last probe failed, and nothing when the channel was never probed (so
     unprobed lists stay clean). `probing` is the row's own in-flight probe, which
     the server status doesn't reflect until the next poll. */
-function QualityLine({
+const QualityLine = memo(function QualityLine({
   channel,
   probing,
 }: {
@@ -107,7 +107,7 @@ function QualityLine({
       ))}
     </div>
   );
-}
+});
 
 /** Row actions in the ⋯ menu: ungroup on a primary, reorder/ungroup on an
     alternate, and delete on both. */

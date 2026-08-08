@@ -9,6 +9,7 @@ import {
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { SafePointerSensor } from "~/lib/dnd-sensors";
 import {
@@ -16,8 +17,13 @@ import {
   arrayMove,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type Range,
+} from "@tanstack/react-virtual";
 import { ListVideo, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import {
@@ -45,7 +51,15 @@ import {
   needsSmartSort,
   type SmartSortConfig,
 } from "~/services/playlist/smart-sort";
-import { CategoryGroup } from "./category-group";
+import { buildBoardRows, estimateRowHeight } from "./board-rows";
+import {
+  AutoChannelRow,
+  CategoryHeaderRow,
+  EmptyCategoryRow,
+  SortableAlternateRow,
+  SortablePrimaryRow,
+  type GroupApi,
+} from "./category-group";
 import { ChannelRowBody } from "./channel-row";
 import { ChannelTools } from "./channel-tools";
 import { PrimaryPicker } from "./primary-picker";
@@ -86,6 +100,13 @@ export function EditorBoard({
   const addFetcher = useFetcher();
   const createCatFetcher = useFetcher();
   const bulkFetcher = useFetcher();
+
+  // Row callbacks have to keep the same identity across renders or every row
+  // re-renders on each keystroke, so they read their fetchers through refs.
+  const bulkRef = useRef(bulkFetcher);
+  bulkRef.current = bulkFetcher;
+  const reorderRef = useRef(reorderFetcher);
+  reorderRef.current = reorderFetcher;
 
   // Confirm the batch actions, which otherwise only show via the save status.
   useFetcherToast(addFetcher, (d) => {
@@ -193,8 +214,8 @@ export function EditorBoard({
   };
 
   // Only primaries (and standalone channels) sit in a category's draggable
-  // list. Alternates render nested under their primary, matched by id, so they
-  // follow the primary even mid-drag before the server catches up.
+  // list. Alternates render as their own rows below their primary, matched by
+  // id, so they follow the primary even mid-drag before the server catches up.
   const byCategory = useMemo(() => {
     const map = new Map<number, EditorChannel[]>();
     for (const cat of cats) map.set(cat.id, []);
@@ -216,6 +237,8 @@ export function EditorBoard({
       list.sort((a, b) => a.altPosition - b.altPosition);
     return map;
   }, [items]);
+  const alternatesRef = useRef(alternatesByPrimary);
+  alternatesRef.current = alternatesByPrimary;
 
   // Primaries whose group smart sort would put in a different order, so the row
   // can say so without anyone opening the preview. Everything the sort reads is
@@ -333,7 +356,7 @@ export function EditorBoard({
     const type = a.data.current?.type;
 
     if (type === "categoryHeader") {
-      reorderCats(a.id, over.id);
+      reorderCats(a.id, over);
       clearStuckHover();
       return;
     }
@@ -357,9 +380,25 @@ export function EditorBoard({
     );
   }
 
-  function reorderCats(activeId: string | number, overId: string | number) {
+  // Which category a drop landed on, whether you aimed at its header, its empty
+  // placeholder, or one of its channels.
+  function categoryIdFromOver(over: NonNullable<DragEndEvent["over"]>) {
+    const d = over.data.current as
+      | { type?: string; channel?: EditorChannel; categoryId?: number }
+      | undefined;
+    if (d?.type === "category" || d?.type === "categoryHeader")
+      return Number(d.categoryId);
+    if (d?.type === "channel") return d.channel?.categoryId;
+    return undefined;
+  }
+
+  function reorderCats(
+    activeId: string | number,
+    over: NonNullable<DragEndEvent["over"]>,
+  ) {
     const from = cats.findIndex((c) => `cat-${c.id}` === String(activeId));
-    const to = cats.findIndex((c) => `cat-${c.id}` === String(overId));
+    const overCatId = categoryIdFromOver(over);
+    const to = cats.findIndex((c) => c.id === overCatId);
     if (from < 0 || to < 0 || from === to) return;
     const next = arrayMove(cats, from, to);
     setCats(next);
@@ -396,10 +435,7 @@ export function EditorBoard({
     const overChannel = overData?.type === "channel" ? overData.channel : undefined;
     // Dropping onto one of the rows being dragged is a no-op.
     if (overChannel && movingSet.has(overChannel.id)) return;
-    const toCategoryId =
-      overData?.type === "category" || overData?.type === "categoryHeader"
-        ? Number(overData.categoryId)
-        : (overChannel?.categoryId ?? moved.categoryId);
+    const toCategoryId = categoryIdFromOver(over) ?? moved.categoryId;
     // Can't move channels into a read-only auto-sync category.
     if (autoIds.has(toCategoryId)) return;
 
@@ -520,32 +556,32 @@ export function EditorBoard({
 
   const adding = addFetcher.state !== "idle";
 
-  // Collapsing categories keeps the DOM small for big playlists. Auto-sync
-  // categories start collapsed, since they're read-only mirrors of a source.
+  // Auto-sync categories start collapsed, since they're read-only mirrors of a
+  // source.
   const [collapsedCats, setCollapsedCats] = useState<Set<number>>(
     () => new Set(categories.filter((c) => c.auto).map((c) => c.id)),
   );
-  function toggleCatCollapse(id: number) {
+  const toggleCatCollapse = useCallback((id: number) => {
     setCollapsedCats((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
   const allCollapsed = cats.length > 0 && cats.every((c) => collapsedCats.has(c.id));
 
   // Alternates are collapsed by default to keep the list compact; track which
   // groups the user has opened. Adding to a group opens it so the result shows.
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
-  function toggleGroup(primaryId: number) {
+  const toggleGroup = useCallback((primaryId: number) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(primaryId)) next.delete(primaryId);
       else next.add(primaryId);
       return next;
     });
-  }
+  }, []);
   function expandGroup(primaryId: number) {
     setExpandedGroups((prev) =>
       prev.has(primaryId) ? prev : new Set([...prev, primaryId]),
@@ -577,29 +613,74 @@ export function EditorBoard({
     setOnlyNeedsSort((v) => !v);
   }
 
-  const visibleCats = filtering
-    ? cats.filter((c) =>
-        (byCategory.get(c.id) ?? []).some((ch) => needsSort.has(ch.id)),
-      )
-    : cats;
-  function visibleChannels(catId: number) {
-    const list = byCategory.get(catId) ?? [];
-    return filtering ? list.filter((ch) => needsSort.has(ch.id)) : list;
-  }
-
   // Multi-select of playlist channels for bulk actions.
   const [selectedPl, setSelectedPl] = useState<Set<number>>(new Set());
   const [lastClicked, setLastClicked] = useState<number | null>(null);
+
+  // The list the pane actually renders: categories and channels flattened into
+  // one array so it can be virtualised.
+  const visibleByCategory = useMemo(() => {
+    if (!filtering) return byCategory;
+    const map = new Map<number, EditorChannel[]>();
+    for (const [catId, list] of byCategory) {
+      const kept = list.filter((ch) => needsSort.has(ch.id));
+      if (kept.length) map.set(catId, kept);
+    }
+    return map;
+  }, [byCategory, filtering, needsSort]);
+
+  const visibleCats = useMemo(
+    () => (filtering ? cats.filter((c) => visibleByCategory.has(c.id)) : cats),
+    [cats, filtering, visibleByCategory],
+  );
+
+  const rows = useMemo(
+    () =>
+      buildBoardRows({
+        categories: visibleCats,
+        channelsByCategory: visibleByCategory,
+        alternatesByPrimary,
+        autoChannels,
+        collapsedCats,
+        expandedGroups,
+      }),
+    [
+      visibleCats,
+      visibleByCategory,
+      alternatesByPrimary,
+      autoChannels,
+      collapsedCats,
+      expandedGroups,
+    ],
+  );
+
+  // Every id dnd-kit can sort, in the order they appear. Categories and channels
+  // share one context because they're interleaved in the flat list.
+  const sortableIds = useMemo(
+    () =>
+      rows.flatMap<UniqueIdentifier>((r) =>
+        r.kind === "category"
+          ? [r.key]
+          : r.kind === "primary"
+            ? [r.channel.id]
+            : [],
+      ),
+    [rows],
+  );
+
+  // Selectable rows in display order, so a shift+click range spans what's on
+  // screen rather than the underlying data order.
   const orderedIds = useMemo(
     () =>
-      cats.flatMap((c) =>
-        (byCategory.get(c.id) ?? []).flatMap((ch) => [
-          ch.id,
-          ...(alternatesByPrimary.get(ch.id) ?? []).map((a) => a.id),
-        ]),
+      rows.flatMap((r) =>
+        r.kind === "primary" || r.kind === "alternate" ? [r.channel.id] : [],
       ),
-    [cats, byCategory, alternatesByPrimary],
+    [rows],
   );
+  const orderedIdsRef = useRef(orderedIds);
+  orderedIdsRef.current = orderedIds;
+  const lastClickedRef = useRef(lastClicked);
+  lastClickedRef.current = lastClicked;
 
   // Drop selections for channels that no longer exist (e.g. after bulk remove).
   useEffect(() => {
@@ -610,25 +691,28 @@ export function EditorBoard({
     });
   }, [items]);
 
-  function selectPl(id: number, shiftKey: boolean) {
-    if (shiftKey && lastClicked != null) {
-      const a = orderedIds.indexOf(lastClicked);
-      const b = orderedIds.indexOf(id);
+  const selectPl = useCallback((id: number, shiftKey: boolean) => {
+    const last = lastClickedRef.current;
+    const ordered = orderedIdsRef.current;
+    if (shiftKey && last != null) {
+      const a = ordered.indexOf(last);
+      const b = ordered.indexOf(id);
       if (a >= 0 && b >= 0) {
         const [lo, hi] = a < b ? [a, b] : [b, a];
-        const range = orderedIds.slice(lo, hi + 1);
+        const range = ordered.slice(lo, hi + 1);
         setSelectedPl((prev) => new Set([...prev, ...range]));
+        setLastClicked(id);
+        return;
       }
-    } else {
-      setSelectedPl((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
     }
+    setSelectedPl((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
     setLastClicked(id);
-  }
+  }, []);
 
   function bulkSubmit(intent: string, extra?: Record<string, string>) {
     if (selectedPl.size === 0) return;
@@ -683,64 +767,127 @@ export function EditorBoard({
     setSelected(new Set());
   }
 
-  function ungroupPrimary(primaryId: number) {
-    bulkFetcher.submit(
+  const ungroupPrimary = useCallback((primaryId: number) => {
+    bulkRef.current.submit(
       { intent: "ungroupPrimary", primaryId: String(primaryId) },
       { method: "post" },
     );
-  }
+  }, []);
 
-  function ungroupAlternate(channelId: number) {
-    bulkFetcher.submit(
+  const ungroupAlternate = useCallback((channelId: number) => {
+    bulkRef.current.submit(
       { intent: "ungroupAlternate", channelId: String(channelId) },
       { method: "post" },
     );
-  }
+  }, []);
 
   // Promote an alternate into the primary spot (the top alternate's "move up").
   // The promoted channel becomes the new primary, so expand it to keep the group
   // open (expandedGroups is keyed by primary id).
-  function promoteAlternate(channelId: number) {
-    bulkFetcher.submit(
+  const promoteAlternate = useCallback((channelId: number) => {
+    bulkRef.current.submit(
       { intent: "promoteAlternate", channelId: String(channelId) },
       { method: "post" },
     );
-    expandGroup(channelId);
-  }
+    setExpandedGroups((prev) =>
+      prev.has(channelId) ? prev : new Set([...prev, channelId]),
+    );
+  }, []);
 
   // Move an alternate up or down among its primary's alternates.
-  function moveAlternate(primaryId: number, channelId: number, dir: -1 | 1) {
-    const list = (alternatesByPrimary.get(primaryId) ?? []).map((a) => a.id);
-    const from = list.indexOf(channelId);
-    const to = from + dir;
-    if (from < 0 || to < 0 || to >= list.length) return;
-    const next = arrayMove(list, from, to);
-    const fd = new FormData();
-    fd.set("intent", "reorderAlternates");
-    fd.set("primaryId", String(primaryId));
-    for (const id of next) fd.append("alternateIds", String(id));
-    reorderFetcher.submit(fd, { method: "post" });
-  }
+  const moveAlternate = useCallback(
+    (primaryId: number, channelId: number, dir: -1 | 1) => {
+      const list = (alternatesRef.current.get(primaryId) ?? []).map((a) => a.id);
+      const from = list.indexOf(channelId);
+      const to = from + dir;
+      if (from < 0 || to < 0 || to >= list.length) return;
+      const next = arrayMove(list, from, to);
+      const fd = new FormData();
+      fd.set("intent", "reorderAlternates");
+      fd.set("primaryId", String(primaryId));
+      for (const id of next) fd.append("alternateIds", String(id));
+      reorderRef.current.submit(fd, { method: "post" });
+    },
+    [],
+  );
 
   // Remove a single channel from the playlist (the row's ⋯ → Delete).
-  function deleteChannel(channelId: number) {
-    bulkFetcher.submit(
+  const deleteChannel = useCallback((channelId: number) => {
+    bulkRef.current.submit(
       { intent: "removeChannel", channelId: String(channelId) },
       { method: "post" },
     );
-  }
+  }, []);
 
-  const groupApi = {
-    expandedGroups,
-    needsSort,
-    dragDisabled: filtering,
-    onToggleGroup: toggleGroup,
-    onUngroupPrimary: ungroupPrimary,
-    onUngroupAlternate: ungroupAlternate,
-    onMoveAlternate: moveAlternate,
-    onPromoteAlternate: promoteAlternate,
-    onRemove: deleteChannel,
-  };
+  // Stable so the memoised rows only re-render when their own data changes.
+  const groupApi = useMemo<GroupApi>(
+    () => ({
+      dragDisabled: filtering,
+      onToggleGroup: toggleGroup,
+      onUngroupPrimary: ungroupPrimary,
+      onUngroupAlternate: ungroupAlternate,
+      onMoveAlternate: moveAlternate,
+      onPromoteAlternate: promoteAlternate,
+      onRemove: deleteChannel,
+      onSelectChannel: selectPl,
+    }),
+    [
+      filtering,
+      toggleGroup,
+      ungroupPrimary,
+      ungroupAlternate,
+      moveAlternate,
+      promoteAlternate,
+      deleteChannel,
+      selectPl,
+    ],
+  );
+
+  // Category rows pin to the top as you scroll past them, so you can always see
+  // which category you're looking at.
+  const categoryRowIndexes = useMemo(
+    () =>
+      rows.reduce<number[]>((acc, r, i) => {
+        if (r.kind === "category") acc.push(i);
+        return acc;
+      }, []),
+    [rows],
+  );
+  // Index of the row being dragged, so the range extractor can keep it mounted.
+  const activeChannelId = active?.type === "channel" ? active.channel.id : null;
+  const activeIndexRef = useRef(-1);
+  activeIndexRef.current =
+    activeChannelId == null
+      ? -1
+      : rows.findIndex(
+          (r) => r.kind === "primary" && r.channel.id === activeChannelId,
+        );
+
+  const stickyIndexRef = useRef(-1);
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const pinned =
+        [...categoryRowIndexes].reverse().find((i) => range.startIndex >= i) ?? -1;
+      stickyIndexRef.current = pinned;
+      const keep = new Set(defaultRangeExtractor(range));
+      if (pinned >= 0) keep.add(pinned);
+      // The row being dragged has to stay mounted even once it scrolls out, or
+      // dnd-kit loses the drag halfway through.
+      if (activeIndexRef.current >= 0) keep.add(activeIndexRef.current);
+      return [...keep].sort((a, b) => a - b);
+    },
+    [categoryRowIndexes],
+  );
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => estimateRowHeight(rows[i]),
+    getItemKey: (i) => rows[i].key,
+    rangeExtractor,
+    overscan: 10,
+  });
 
   return (
     <DndContext
@@ -751,6 +898,9 @@ export function EditorBoard({
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      // Without this a cancelled drag (Escape, or the row scrolling out of the
+      // list mid-drag) leaves the "drop here to remove" overlay stuck on screen.
+      onDragCancel={() => setActive(null)}
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden md:grid md:grid-cols-[minmax(320px,2fr)_3fr]">
         {/* Mobile pane switcher. The two panes can't sit side by side on a
@@ -963,7 +1113,7 @@ export function EditorBoard({
             </div>
           ) : null}
 
-          <div ref={listRef} className="flex-1 overflow-y-auto">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
             {cats.length === 0 ? (
               <div className="px-4 py-12 text-center">
                 <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
@@ -975,24 +1125,45 @@ export function EditorBoard({
               </div>
             ) : (
               <SortableContext
-                items={visibleCats.map((c) => `cat-${c.id}`)}
+                items={sortableIds}
                 strategy={verticalListSortingStrategy}
               >
-                {visibleCats.map((cat) => (
-                  <CategoryGroup
-                    key={cat.id}
-                    category={cat}
-                    channels={visibleChannels(cat.id)}
-                    alternatesByPrimary={alternatesByPrimary}
-                    autoChannels={autoChannels[cat.id] ?? []}
-                    playlistId={playlistId}
-                    collapsed={collapsedCats.has(cat.id)}
-                    onToggleCollapse={() => toggleCatCollapse(cat.id)}
-                    selectedChannels={selectedPl}
-                    onSelectChannel={selectPl}
-                    groupApi={groupApi}
-                  />
-                ))}
+                <div
+                  ref={listRef}
+                  className="relative w-full"
+                  style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+                >
+                  {rowVirtualizer.getVirtualItems().map((vi) => {
+                    const row = rows[vi.index];
+                    const pinned = vi.index === stickyIndexRef.current;
+                    return (
+                      <div
+                        key={vi.key}
+                        data-index={vi.index}
+                        ref={rowVirtualizer.measureElement}
+                        className="left-0 top-0 w-full"
+                        style={
+                          pinned
+                            ? { position: "sticky", zIndex: 10 }
+                            : {
+                                position: "absolute",
+                                transform: `translateY(${vi.start}px)`,
+                              }
+                        }
+                      >
+                        <BoardRowView
+                          row={row}
+                          playlistId={playlistId}
+                          selectedPl={selectedPl}
+                          needsSort={needsSort}
+                          activeChannelId={activeChannelId}
+                          groupApi={groupApi}
+                          onToggleCollapse={toggleCatCollapse}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </SortableContext>
             )}
           </div>
@@ -1013,6 +1184,68 @@ export function EditorBoard({
       </DragOverlay>
     </DndContext>
   );
+}
+
+/** Picks the component for one flat row. Kept tiny so the memo on each row
+    component is what decides whether it re-renders. */
+function BoardRowView({
+  row,
+  playlistId,
+  selectedPl,
+  needsSort,
+  activeChannelId,
+  groupApi,
+  onToggleCollapse,
+}: {
+  row: ReturnType<typeof buildBoardRows>[number];
+  playlistId: number;
+  selectedPl: Set<number>;
+  needsSort: Set<number>;
+  activeChannelId: number | null;
+  groupApi: GroupApi;
+  onToggleCollapse: (categoryId: number) => void;
+}) {
+  switch (row.kind) {
+    case "category":
+      return (
+        <CategoryHeaderRow
+          category={row.category}
+          count={row.count}
+          collapsed={row.collapsed}
+          dragDisabled={groupApi.dragDisabled}
+          onToggleCollapse={onToggleCollapse}
+        />
+      );
+    case "empty":
+      return <EmptyCategoryRow categoryId={row.categoryId} auto={row.auto} />;
+    case "auto":
+      return <AutoChannelRow channel={row.channel} />;
+    case "primary":
+      return (
+        <SortablePrimaryRow
+          channel={row.channel}
+          alternates={row.alternates}
+          playlistId={playlistId}
+          collapsed={row.collapsed}
+          selected={selectedPl.has(row.channel.id)}
+          needsSort={needsSort.has(row.channel.id)}
+          groupApi={groupApi}
+        />
+      );
+    case "alternate":
+      return (
+        <SortableAlternateRow
+          channel={row.channel}
+          primary={row.primary}
+          index={row.index}
+          total={row.total}
+          playlistId={playlistId}
+          selected={selectedPl.has(row.channel.id)}
+          dimmed={activeChannelId === row.primary.id}
+          groupApi={groupApi}
+        />
+      );
+  }
 }
 
 const BULK_TOAST: Record<string, string> = {
