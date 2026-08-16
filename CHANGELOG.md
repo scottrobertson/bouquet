@@ -6,6 +6,17 @@ All notable changes to this project are recorded here. Newest first.
 
 ### Added
 
+- The category list on a source now opens up, so you can see the channels inside a category without
+  turning it on first. Click a category name and its channels appear underneath, with their logos
+  and a note on any that the provider has marked unavailable.
+
+- The search box on a source searches channel names as well as category names. Type a channel you're
+  looking for and the list narrows to the categories that hold it, each showing how many channels
+  matched, and opens them up so you can see the channel itself. Finding out which group a channel
+  lives in used to mean enabling a likely looking category, checking, and turning it off again.
+  Searches that match a lot of categories leave them closed, since opening twenty of them at once
+  buries the answer.
+
 - Hovering the "Probing 166…" button in the playlist header now lists the channels the probe is
   working through, the ones on a stream right now at the top and the rest waiting below. The count on
   its own told you a probe was running but not how far along it was or whether it was stuck on

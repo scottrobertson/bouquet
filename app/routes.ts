@@ -14,6 +14,7 @@ export default [
     route("sources/:id", "routes/sources.$id.tsx"),
     route("sources/:id/edit", "routes/sources.$id.edit.tsx"),
     route("sources/:id/changes", "routes/sources.$id.changes.tsx"),
+    route("sources/:id/channels", "routes/sources.$id.channels.ts"),
 
     route("playlists", "routes/playlists._index.tsx"),
     route("playlists/:id", "routes/playlists.$id.tsx"),
