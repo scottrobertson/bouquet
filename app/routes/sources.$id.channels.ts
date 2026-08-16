@@ -1,4 +1,5 @@
 import {
+  AUTO_OPEN_LIMIT,
   SOURCE_CHANNEL_LIMIT,
   listSourceChannels,
   searchCategoryCounts,
@@ -25,11 +26,20 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     return { q, channels, total, counts: null, limit: SOURCE_CHANNEL_LIMIT };
   }
 
-  return {
-    q,
-    channels: [],
-    total: 0,
-    counts: q ? searchCategoryCounts(sourceId, q) : [],
-    limit: SOURCE_CHANNEL_LIMIT,
-  };
+  if (!q) {
+    return { q, channels: [], total: 0, counts: [], limit: SOURCE_CHANNEL_LIMIT };
+  }
+
+  const counts = searchCategoryCounts(sourceId, q);
+
+  // A search that landed in only a few categories gets those channels sent
+  // along with the counts. The screen opens those categories straight away, and
+  // fetching them separately would mean the rows appeared first and the
+  // channels dropped in underneath a moment later.
+  const narrow = counts.length > 0 && counts.length <= AUTO_OPEN_LIMIT;
+  const { channels, total } = narrow
+    ? listSourceChannels(sourceId, { q })
+    : { channels: [], total: counts.reduce((n, c) => n + c.count, 0) };
+
+  return { q, channels, total, counts, limit: SOURCE_CHANNEL_LIMIT };
 }
