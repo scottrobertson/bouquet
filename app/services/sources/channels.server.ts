@@ -6,6 +6,10 @@ import { sourceChannels } from "~/db/schema";
     thousands, and the source screen only needs enough to find one. */
 export const SOURCE_CHANNEL_LIMIT = 500;
 
+/** How many categories a search can land in and still have all of them opened
+    up on screen. Past this the search was too vague for that to help. */
+export const AUTO_OPEN_LIMIT = 8;
+
 export type SourceChannelRow = {
   id: number;
   name: string;

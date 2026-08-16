@@ -59,6 +59,7 @@ import {
 import { startSync } from "~/services/sync/sync.server";
 import { startProbe } from "~/services/probe/probe.server";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
+import type { SourceChannelRow } from "~/services/sources/channels.server";
 import type { loader as channelsLoader } from "./sources.$id.channels";
 import type { Route } from "./+types/sources.$id";
 
@@ -310,9 +311,25 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
   );
 }
 
-// How many search hits still counts as narrow enough to open every matching
-// category on the spot.
-const AUTO_OPEN_LIMIT = 8;
+/** Search results come back as one flat list, so split them by category. */
+function groupByCategory(channels: SourceChannelRow[]) {
+  const out = new Map<string, SourceChannelRow[]>();
+  for (const ch of channels) {
+    if (!ch.categoryName) continue;
+    const list = out.get(ch.categoryName);
+    if (list) list.push(ch);
+    else out.set(ch.categoryName, [ch]);
+  }
+  return out;
+}
+
+type SearchResult = {
+  q: string;
+  counts: Map<string, number>;
+  // The matching channels of each category, when the search was narrow enough
+  // for the server to send them. Null means those categories stay shut.
+  channels: Map<string, SourceChannelRow[]> | null;
+};
 
 function CategoriesPanel({
   sourceId,
@@ -324,6 +341,7 @@ function CategoriesPanel({
   const [q, setQ] = useState("");
   const allFetcher = useFetcher();
   const search = useFetcher<typeof channelsLoader>();
+  const [result, setResult] = useState<SearchResult | null>(null);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const needle = q.trim();
 
@@ -341,28 +359,38 @@ function CategoriesPanel({
     // fresh object every render, so depending on it would loop.
   }, [needle, sourceId]);
 
-  // The endpoint echoes the search term back, so results from a term you've
-  // already typed past are ignored instead of flashing up.
-  const matches = useMemo(() => {
-    if (!needle || search.data?.q !== needle || !search.data.counts) return null;
-    return new Map(search.data.counts.map((c) => [c.name, c.count]));
-  }, [needle, search.data]);
+  // Results are kept in state rather than read off the fetcher so the last
+  // search stays on screen while the next one runs. Reading the fetcher
+  // directly emptied the list on every keystroke and filled it back in.
+  useEffect(() => {
+    const data = search.data;
+    if (!data?.counts) return;
+    setResult({
+      q: data.q,
+      counts: new Map(data.counts.map((c) => [c.name, c.count])),
+      channels: data.channels.length ? groupByCategory(data.channels) : null,
+    });
+  }, [search.data]);
 
-  // Open the categories a channel search landed in, so "which group is this
-  // channel in" is answered without another click. A vague search hits too many
-  // to be worth opening, so those stay closed and just show their counts.
+  // Clearing the box drops back to the plain category list.
   useEffect(() => {
     if (!needle) {
+      setResult(null);
       setOpen(new Set());
-      return;
     }
-    if (!matches) return;
-    setOpen(
-      matches.size > 0 && matches.size <= AUTO_OPEN_LIMIT
-        ? new Set(matches.keys())
-        : new Set(),
-    );
-  }, [needle, matches]);
+  }, [needle]);
+
+  // Open the categories a channel search landed in, so "which group is this
+  // channel in" is answered without another click. The server only sends the
+  // channels when the search was narrow enough for that to be worth doing.
+  useEffect(() => {
+    if (!result) return;
+    setOpen(result.channels ? new Set(result.channels.keys()) : new Set());
+  }, [result]);
+
+  const matches = needle ? result?.counts : undefined;
+  const searchChannels = needle ? result?.channels : undefined;
+  const searching = needle !== "" && result?.q !== needle;
 
   const filtered = useMemo(() => {
     if (!needle) return categories;
@@ -435,14 +463,17 @@ function CategoriesPanel({
         </div>
       </div>
 
-      {needle && search.state === "loading" && !matches ? (
-        <p className="text-xs text-muted-foreground">Searching channels…</p>
-      ) : null}
-
-      <div className="-mx-4 divide-y divide-white/5 border-y border-border bg-card md:mx-0 md:rounded-lg md:border">
+      {/* Fading rather than emptying the list keeps everything where it is
+          while a search runs. */}
+      <div
+        className={cn(
+          "-mx-4 divide-y divide-white/5 border-y border-border bg-card transition-opacity md:mx-0 md:rounded-lg md:border",
+          searching && "opacity-60",
+        )}
+      >
         {filtered.length === 0 ? (
           <p className="px-4 py-8 text-center text-[13px] text-muted-foreground">
-            Nothing matches “{needle}”.
+            {searching ? "Searching channels…" : `Nothing matches “${needle}”.`}
           </p>
         ) : (
           filtered.map((c) => (
@@ -455,6 +486,7 @@ function CategoriesPanel({
               // everything inside it.
               q={matches?.has(c.name) ? needle : ""}
               matchCount={matches?.get(c.name) ?? null}
+              searchChannels={searchChannels?.get(c.name) ?? null}
               open={open.has(c.name)}
               onToggleOpen={() => toggleOpen(c.name)}
             />
@@ -473,6 +505,7 @@ function CategoryRow({
   category,
   q,
   matchCount,
+  searchChannels,
   open,
   onToggleOpen,
 }: {
@@ -480,6 +513,7 @@ function CategoryRow({
   category: { name: string; enabled: boolean; count: number };
   q: string;
   matchCount: number | null;
+  searchChannels: SourceChannelRow[] | null;
   open: boolean;
   onToggleOpen: () => void;
 }) {
@@ -531,14 +565,18 @@ function CategoryRow({
           </span>
         </button>
       </div>
-      {open ? (
+      {!open ? null : searchChannels ? (
+        <ChannelList channels={searchChannels} total={matchCount ?? 0} />
+      ) : (
         <CategoryChannels sourceId={sourceId} category={category.name} q={q} />
-      ) : null}
+      )}
     </div>
   );
 }
 
 // The channels inside one category, loaded the moment the category is opened.
+// A search brings its own matching channels along, so this only runs for a
+// category you opened yourself.
 function CategoryChannels({
   sourceId,
   category,
@@ -557,8 +595,6 @@ function CategoryChannels({
     load(`/sources/${sourceId}/channels?${params}`);
   }, [load, sourceId, category, q]);
 
-  const channels = fetcher.data?.channels ?? [];
-
   if (!fetcher.data) {
     return (
       <p className="border-t border-border/60 bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:px-3">
@@ -567,6 +603,18 @@ function CategoryChannels({
     );
   }
 
+  return (
+    <ChannelList channels={fetcher.data.channels} total={fetcher.data.total} />
+  );
+}
+
+function ChannelList({
+  channels,
+  total,
+}: {
+  channels: SourceChannelRow[];
+  total: number;
+}) {
   if (channels.length === 0) {
     return (
       <p className="border-t border-border/60 bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:px-3">
@@ -607,10 +655,10 @@ function CategoryChannels({
           </span>
         </div>
       ))}
-      {fetcher.data.total > channels.length ? (
+      {total > channels.length ? (
         <p className="px-4 py-2 text-xs text-muted-foreground sm:px-3">
           Showing the first {channels.length.toLocaleString()} of{" "}
-          {fetcher.data.total.toLocaleString()}. Narrow it down with the search.
+          {total.toLocaleString()}. Narrow it down with the search.
         </p>
       ) : null}
     </div>
