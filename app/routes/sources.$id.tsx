@@ -1,5 +1,16 @@
 import { eq } from "drizzle-orm";
-import { Check, Gauge, History, Loader2, Pencil, Power, PowerOff, RefreshCw } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Gauge,
+  History,
+  Loader2,
+  Pencil,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Tv,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,6 +46,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Switch } from "~/components/ui/switch";
+import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { db } from "~/db/index.server";
 import { sources } from "~/db/schema";
@@ -47,6 +59,7 @@ import {
 import { startSync } from "~/services/sync/sync.server";
 import { startProbe } from "~/services/probe/probe.server";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
+import type { loader as channelsLoader } from "./sources.$id.channels";
 import type { Route } from "./+types/sources.$id";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -291,26 +304,83 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
           </div>
         ) : null}
 
-        <CategoriesPanel categories={categories} />
+        <CategoriesPanel sourceId={source.id} categories={categories} />
       </div>
     </div>
   );
 }
 
+// How many search hits still counts as narrow enough to open every matching
+// category on the spot.
+const AUTO_OPEN_LIMIT = 8;
+
 function CategoriesPanel({
+  sourceId,
   categories,
 }: {
+  sourceId: number;
   categories: { name: string; enabled: boolean; count: number }[];
 }) {
   const [q, setQ] = useState("");
   const allFetcher = useFetcher();
+  const search = useFetcher<typeof channelsLoader>();
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const needle = q.trim();
+
+  // Searching channel names is a server round trip, so wait for a pause in
+  // typing before asking.
+  useEffect(() => {
+    if (!needle) return;
+    const timer = setTimeout(() => {
+      search.load(
+        `/sources/${sourceId}/channels?q=${encodeURIComponent(needle)}`,
+      );
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the fetcher is a
+    // fresh object every render, so depending on it would loop.
+  }, [needle, sourceId]);
+
+  // The endpoint echoes the search term back, so results from a term you've
+  // already typed past are ignored instead of flashing up.
+  const matches = useMemo(() => {
+    if (!needle || search.data?.q !== needle || !search.data.counts) return null;
+    return new Map(search.data.counts.map((c) => [c.name, c.count]));
+  }, [needle, search.data]);
+
+  // Open the categories a channel search landed in, so "which group is this
+  // channel in" is answered without another click. A vague search hits too many
+  // to be worth opening, so those stay closed and just show their counts.
+  useEffect(() => {
+    if (!needle) {
+      setOpen(new Set());
+      return;
+    }
+    if (!matches) return;
+    setOpen(
+      matches.size > 0 && matches.size <= AUTO_OPEN_LIMIT
+        ? new Set(matches.keys())
+        : new Set(),
+    );
+  }, [needle, matches]);
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return needle
-      ? categories.filter((c) => c.name.toLowerCase().includes(needle))
-      : categories;
-  }, [categories, q]);
+    if (!needle) return categories;
+    const lower = needle.toLowerCase();
+    return categories.filter(
+      (c) => c.name.toLowerCase().includes(lower) || matches?.has(c.name),
+    );
+  }, [categories, needle, matches]);
+
   const offCount = categories.filter((c) => !c.enabled).length;
+
+  const toggleOpen = (name: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
 
   if (categories.length === 0) {
     return (
@@ -326,8 +396,8 @@ function CategoriesPanel({
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search categories..."
-          className="h-9 w-full sm:h-8 sm:w-64"
+          placeholder="Search categories and channels..."
+          className="h-9 w-full sm:h-8 sm:w-72"
         />
         <div className="flex gap-2">
           <Button
@@ -365,10 +435,31 @@ function CategoriesPanel({
         </div>
       </div>
 
+      {needle && search.state === "loading" && !matches ? (
+        <p className="text-xs text-muted-foreground">Searching channels…</p>
+      ) : null}
+
       <div className="-mx-4 divide-y divide-white/5 border-y border-border bg-card md:mx-0 md:rounded-lg md:border">
-        {filtered.map((c) => (
-          <CategoryRow key={c.name} category={c} />
-        ))}
+        {filtered.length === 0 ? (
+          <p className="px-4 py-8 text-center text-[13px] text-muted-foreground">
+            Nothing matches “{needle}”.
+          </p>
+        ) : (
+          filtered.map((c) => (
+            <CategoryRow
+              key={c.name}
+              sourceId={sourceId}
+              category={c}
+              // Only narrow the channel list when the search actually hit
+              // channels here. A category matched on its own name should show
+              // everything inside it.
+              q={matches?.has(c.name) ? needle : ""}
+              matchCount={matches?.get(c.name) ?? null}
+              open={open.has(c.name)}
+              onToggleOpen={() => toggleOpen(c.name)}
+            />
+          ))
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         Disabled categories are hidden from playlists and dropped from output.
@@ -378,9 +469,19 @@ function CategoriesPanel({
 }
 
 function CategoryRow({
+  sourceId,
   category,
+  q,
+  matchCount,
+  open,
+  onToggleOpen,
 }: {
+  sourceId: number;
   category: { name: string; enabled: boolean; count: number };
+  q: string;
+  matchCount: number | null;
+  open: boolean;
+  onToggleOpen: () => void;
 }) {
   const fetcher = useFetcher();
   const enabled =
@@ -389,30 +490,140 @@ function CategoryRow({
       : category.enabled;
 
   return (
-    <label className="flex cursor-pointer items-center gap-3 px-4 py-3 sm:px-3 sm:py-2.5">
-      <Switch
-        checked={enabled}
-        onCheckedChange={(v) =>
-          fetcher.submit(
-            { intent: "toggleCategory", name: category.name, enabled: String(v) },
-            { method: "post" },
-          )
-        }
-      />
-      <span className={cn("text-sm sm:text-[13px]", !enabled && "text-muted-foreground")}>
-        {category.name}
-      </span>
-      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-        {category.count.toLocaleString()}
-      </span>
-    </label>
+    <div>
+      <div className="flex items-center gap-3 px-4 py-3 sm:px-3 sm:py-2.5">
+        <Switch
+          checked={enabled}
+          onCheckedChange={(v) =>
+            fetcher.submit(
+              { intent: "toggleCategory", name: category.name, enabled: String(v) },
+              { method: "post" },
+            )
+          }
+        />
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+        >
+          <ChevronRight
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-90",
+            )}
+          />
+          <span
+            className={cn(
+              "truncate text-sm sm:text-[13px]",
+              !enabled && "text-muted-foreground",
+            )}
+          >
+            {category.name}
+          </span>
+          {matchCount ? (
+            <Badge variant="secondary" className="shrink-0 font-normal">
+              {matchCount.toLocaleString()} match{matchCount === 1 ? "" : "es"}
+            </Badge>
+          ) : null}
+          <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+            {category.count.toLocaleString()}
+          </span>
+        </button>
+      </div>
+      {open ? (
+        <CategoryChannels sourceId={sourceId} category={category.name} q={q} />
+      ) : null}
+    </div>
   );
 }
 
-// Category toggles save through fetchers, so reflect their state.
+// The channels inside one category, loaded the moment the category is opened.
+function CategoryChannels({
+  sourceId,
+  category,
+  q,
+}: {
+  sourceId: number;
+  category: string;
+  q: string;
+}) {
+  const fetcher = useFetcher<typeof channelsLoader>();
+  const load = fetcher.load;
+
+  useEffect(() => {
+    const params = new URLSearchParams({ category });
+    if (q) params.set("q", q);
+    load(`/sources/${sourceId}/channels?${params}`);
+  }, [load, sourceId, category, q]);
+
+  const channels = fetcher.data?.channels ?? [];
+
+  if (!fetcher.data) {
+    return (
+      <p className="border-t border-border/60 bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:px-3">
+        Loading channels…
+      </p>
+    );
+  }
+
+  if (channels.length === 0) {
+    return (
+      <p className="border-t border-border/60 bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:px-3">
+        No channels here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="border-t border-border/60 bg-muted/20 py-1">
+      {channels.map((ch) => (
+        <div
+          key={ch.id}
+          className="flex items-center gap-2.5 px-4 py-1.5 sm:px-3"
+        >
+          {ch.logo ? (
+            <img
+              src={logoSrc(ch.logo)}
+              alt=""
+              loading="lazy"
+              onError={(e) => {
+                e.currentTarget.style.visibility = "hidden";
+              }}
+              className="size-5 shrink-0 rounded object-contain"
+            />
+          ) : (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
+              <Tv className="size-3" />
+            </div>
+          )}
+          <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+            {ch.name}
+            {!ch.available ? (
+              <span className="ml-1.5 text-[11px] text-warning">
+                · unavailable
+              </span>
+            ) : null}
+          </span>
+        </div>
+      ))}
+      {fetcher.data.total > channels.length ? (
+        <p className="px-4 py-2 text-xs text-muted-foreground sm:px-3">
+          Showing the first {channels.length.toLocaleString()} of{" "}
+          {fetcher.data.total.toLocaleString()}. Narrow it down with the search.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// Category toggles save through fetchers, so reflect their state. Only POSTs
+// count, otherwise loading a category's channels reads as an unsaved edit.
 function SaveStatus() {
   const fetchers = useFetchers();
-  const saving = fetchers.some((f) => f.state !== "idle");
+  const saving = fetchers.some(
+    (f) => f.state !== "idle" && f.formMethod === "POST",
+  );
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
       {saving ? (
