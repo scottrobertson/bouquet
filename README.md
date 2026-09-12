@@ -1,8 +1,8 @@
 # Bouquet
 
-Self-hosted playlist manager for IPTV. Add your providers, pick the channels you
-want, and Bouquet builds an M3U playlist and a matching XMLTV guide for your
-player to load.
+Bouquet is a self-hosted playlist manager for IPTV. Add your providers, pick the
+channels you want, and it builds an M3U playlist and a matching XMLTV guide for
+your player to load.
 
 A provider hands you a few thousand channels in whatever order suits them, and
 people often have more than one provider. Bouquet merges them into a list you
@@ -33,7 +33,7 @@ M3U sources aren't planned, but a PR would be welcome.
 
 - Each source refreshes on its own schedule, or when you hit sync
 - Your playlist edits survive a refresh, even if the provider renames the channel
-- Channels the provider drops stay put, marked as gone, so you can see what broke
+- Channels the provider drops stay put, marked as gone
 - Every sync keeps a list of what was added, removed, renamed or taken offline
 - Shows when the account expires and how many streams it allows at once
 - Turn categories off, and choose whether new ones come in automatically
@@ -53,8 +53,8 @@ can point at different playlists.
   channel and it takes that channel's logo as well
 - Group a channel with its backups as [alternate channels](#alternate-channels)
 - An auto-sync group is a category that mirrors a provider category instead of
-  holding channels you picked. Its contents change when the provider's do,
-  which suits Pay Per View
+  holding channels you picked, so its contents change when theirs do. Suits Pay
+  Per View
 
 <!-- screenshot: bulk edit in the playlist pane -->
 
@@ -70,7 +70,7 @@ the next one yourself.
 
 - Alts sit under their primary and take its name, logo and guide data, so
   renaming the primary renames the group
-- The picker puts likely primaries at the top, so you rarely have to search
+- The picker puts likely primaries at the top
 - Promote an alt to primary at any time
 - [Smart Sort](#smart-sort) ranks a group on [probe](#probing) data and promotes
   the best one
@@ -181,3 +181,7 @@ The SQLite file lands at `./data/bouquet.db`.
 Most of this was written with [Claude](https://claude.com/claude-code), with a
 human reviewing every change before it lands. Treat it like any other code: read
 it, test it, and open an issue if something looks off.
+
+## License
+
+MIT.
