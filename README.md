@@ -124,11 +124,18 @@ a single Node process. Built to run in one Docker container.
 ## Run with Docker
 
 ```sh
-cp .env.example .env   # set APP_PASSWORD and SESSION_SECRET
 docker compose up -d
 ```
 
-Then open http://localhost:3000 and log in with `APP_PASSWORD`.
+Then open http://localhost:3000.
+
+### No login yet
+
+There is no login. Every screen is open to anyone who can reach the server,
+and the app stores your provider passwords. I run Bouquet on a Tailscale
+network so only my own devices can get to it. If you run it anywhere else, put
+it behind something that handles auth for you (Tailscale, a VPN, or a reverse
+proxy with a login). A built in login can come later.
 
 ## Develop
 
@@ -137,8 +144,7 @@ npm install
 npm run dev
 ```
 
-In dev, missing env vars fall back to insecure defaults (password `admin`), and
-the SQLite file is created at `./data/bouquet.db`.
+In dev the SQLite file is created at `./data/bouquet.db`.
 
 ### Useful scripts
 
@@ -153,8 +159,6 @@ the SQLite file is created at `./data/bouquet.db`.
 
 | Env | Default | Purpose |
 |-----|---------|---------|
-| `APP_PASSWORD` | `admin` (dev only) | Single login password |
-| `SESSION_SECRET` | dev default | Signs the session cookie |
 | `CONFIG_PATH` | `./data` | Directory for the database and backups |
 | `SYNC_CRON` | `0 * * * *` | How often the sync check runs (each source syncs on its own interval) |
 | `PROBE_CRON` | `0 * * * *` | How often the stream-probe check runs |

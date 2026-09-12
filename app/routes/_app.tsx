@@ -36,7 +36,6 @@ export function loader({ request }: Route.LoaderArgs) {
 }
 
 // Pathless layout that wraps every in-app screen with the sidebar.
-// Auth guards will live here later; for now everything is open.
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(loaderData.sidebarCollapsed);

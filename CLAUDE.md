@@ -82,9 +82,8 @@ The usual shape of a change, so nothing gets forgotten:
 
 ## Notes
 
-- **Auth is not wired up yet.** Despite the README mentioning an `APP_PASSWORD` login, `app/routes/_app.tsx` notes auth guards are still to come and every in-app screen is currently open. The only token check today is the internal cron endpoints. The output and `/img` routes are public by design.
+- **There is no auth.** Every in-app screen is open to anyone who can reach the server. The README tells people to run it on a private network (Tailscale or similar). The output and `/img` routes are public by design.
 - Tests run in a plain node environment (no React Router plugin, own `vitest.config.ts`). `test/setup-db.ts` points `CONFIG_PATH` at a fresh temp dir before any app module loads, so DB-backed tests never touch `./data/bouquet.db`.
-- In dev, missing `APP_PASSWORD` / `SESSION_SECRET` fall back to insecure defaults; production refuses to start without them (`app/lib/env.server.ts`).
 - Keep `CHANGELOG.md` updated with every feature/fix. Entries go under `## [Unreleased]` in Added/Changed/Fixed sections, written as short user-facing prose that explains what changed and why it matters, not commit-style one-liners. Match the tone of the existing entries. Always add new entries, never go back and edit existing ones unless explicitly fixing a mistake.
 - Use the Safari MCP to load the app and check UI changes actually work, rather than assuming they do from the code alone.
 - SQLite caps bound variables per statement, so anything querying or inserting by a big list of ids must chunk (see `ID_CHUNK`/`INSERT_CHUNK` in the guide and changes services for the pattern).

@@ -69,9 +69,7 @@ jobs:
       - name: Smoke test the image boots
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          docker run -d --name smoke \
-            -e APP_PASSWORD=ci -e SESSION_SECRET=ci-secret \
-            -e CONFIG_PATH=/data "$IMAGE"
+          docker run -d --name smoke -e CONFIG_PATH=/data "$IMAGE"
           ok=
           for i in $(seq 1 30); do
             if docker logs smoke 2>&1 | grep -q "Bouquet listening"; then ok=1; break; fi
