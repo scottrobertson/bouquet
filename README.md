@@ -1,141 +1,163 @@
 # Bouquet
 
-Self-hosted, open-source playlist manager for IPTV. Add your providers, merge
-their channels into curated playlists through a web UI, and get back a clean
-M3U file plus a matching XMLTV EPG to point your player at.
+Self-hosted playlist manager for IPTV. Add your providers, pick the channels you
+want, and Bouquet builds an M3U playlist and a matching XMLTV guide for your
+player to load.
 
-It's a playlist manager, not a proxy. It never touches the video streams. The
-output M3U contains your provider's own direct stream URLs.
+A provider hands you a few thousand channels in whatever order suits them, and
+people often have more than one provider. Bouquet merges them into a list you
+choose, and keeps it current as the providers change theirs.
 
-## Features
+Not a proxy. Video never passes through it, the M3U points at your provider's
+own stream URLs.
 
-**Sources**
+<!-- screenshot: playlist editor, both panes, a few categories open -->
 
-- Add Xtream Codes providers (M3U sources coming later)
-- Set how often each source refreshes, or sync by hand
-- Channels stay in sync with the provider; removed ones are kept and flagged
-- See account expiry and connection limit per source
-- Enable or disable categories, and auto-import new ones
-- Change log of what each sync added or removed
-
-**Playlists**
-
-- Merge channels from multiple sources into curated playlists
-- Two-pane editor with drag-and-drop ordering, categories, and renaming
-- Bulk tools: move, enable/disable, sort, add prefix/suffix, find and replace, reset EPG
-- Per-channel EPG, defaulting to the channel's own source
-- Picking a non-default EPG channel also takes its logo, so you can borrow a nicer logo from another provider
-- Group a channel with backup feeds as [alternates](#alternates-backup-channels)
-- Smart sort an alt group best-first from probe data, with a preview before it applies
-- Auto-sync categories that mirror a provider category and stay current (e.g. Pay Per View)
-
-**Guide and playback**
-
-- TV guide per playlist that you can scroll back and forward through
-- Catchup support so players can replay past programmes
-- Play any channel or past programme straight in VLC, or copy its URL
-
-**Probing**
-
-- Probe streams for resolution, frame rate, codecs, and bitrate
-- Scheduled per source, or probe on demand
-- Probe a whole playlist, just the missing or failed ones, a category, or one group
-- Optional bitrate measuring for a real figure (off by default, it's slower)
-- Black-screen detection marks dead channels failed even when ffprobe sees a valid stream (on by default)
-
-**Output**
-
-- A standard `m3u_plus` playlist and a matching XMLTV guide on public URLs
-- Pick TS or M3U8 HLS output per source
-
-**Operations**
-
-- Backup and restore, on a schedule or by hand
-- UI optimised for both desktop and mobile
-
-## Alternates (backup channels)
-
-The same channel often shows up more than once: backups from a second provider,
-duplicates on the same provider, or different quality feeds (FHD, UHD, and so
-on). You can group a primary channel with one or more alternates so you have a
-fallback when one source dies.
-
-Alternates still come out as their own separate channels in the M3U. Bouquet
-does not merge them or proxy anything. Grouping just keeps them tidy in the
-editor and keeps their names and metadata in step with the primary.
-
-- Alternates nest under their primary in the editor and take its name, logo, and EPG.
-  Rename the primary and every alternate follows, using a per-playlist template
-  (default `{name} (Alt {n})`, editable in Settings).
-- Group channels with "Make alternate of…" in the playlist, or "Add as alternate of…"
-  when pulling them in from the Source Channels pane. Both pickers put the groups
-  that look like the right home at the top, worked out from the EPG id and the
-  name once the provider's country tag and quality suffix are stripped off.
-- Promote an alternate into the primary spot at any time, and it reverts to its own name.
-- "Smart sort" orders a group by stream quality and promotes the best one to primary.
-
-### Smart sort
-
-Once you've probed a group, "Smart sort" in the group menu ranks its streams
-best-first and makes the best one the primary. It tries to be objective about
-"better":
-
-- Resolution first, then frame rate, then bitrate. Bitrate is normalised per
-  codec, so a HEVC stream isn't punished for hitting the same quality with fewer
-  bits. Tiny bitrate differences are treated as a tie.
-- Audio breaks those ties (surround over stereo).
-- Streams that don't work sink to the bottom, in the order unprobed, then failed,
-  then unavailable.
-
-Because it can change which stream is primary, it shows a preview first: the new
-order, each stream's data, how far each moves, and the exact rules it used. The
-channel's name and guide stay the same, only the running order changes. You can
-rank by bitrate first instead, and toggle the audio and working-first rules, in
-playlist Settings.
-
-## Upload destinations
-
-By default a player pulls a playlist's M3U and EPG straight from Bouquet, so it
-only works while Bouquet is reachable. Each playlist can also push those two
-files out to external storage, so a player can point at the copies there instead.
-
-- Add destinations in playlist Settings. Two types for now: **S3** (and anything
-  S3-compatible: Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces, Wasabi,
-  Storj, set the endpoint for these) and a **local folder** on the server (e.g. a
-  mounted volume served by something else).
-- Set a **public URL base** for a destination and Bouquet shows you the resulting
-  M3U/EPG URLs and points the uploaded M3U's guide link (`url-tvg`) at the uploaded
-  EPG, so the uploaded playlist is self-contained. Leave it blank and the uploaded
-  M3U just carries no guide link.
-- Uploads happen when you click **Upload** on a destination, and automatically
-  after a source syncs (not on every edit, which would be too chatty). A sync that
-  refreshes several sources at once still uploads once.
-
-Note: an M3U contains the provider's direct stream URLs, which carry your provider
-login. Treat an uploaded M3U's URL as sensitive, the same as Bouquet's own output
-URLs. Credentials for the destination are stored as-is (like the provider
-passwords), so keep the database private.
-
-## Tech
-
-React Router 7 (framework mode), Tailwind + shadcn/ui, Drizzle + SQLite, run as
-a single Node process. Built to run in one Docker container.
-
-## Run with Docker
+## Quick start
 
 ```sh
 docker compose up -d
 ```
 
-Then open http://localhost:3000.
+Then open http://localhost:3000 and add a source.
 
-### No login yet
+There is no auth yet, so run it on a private network.
 
-There is no login. Every screen is open to anyone who can reach the server,
-and the app stores your provider passwords. I run Bouquet on a Tailscale
-network so only my own devices can get to it. If you run it anywhere else, put
-it behind something that handles auth for you (Tailscale, a VPN, or a reverse
-proxy with a login). A built in login can come later.
+## Features
+
+### Sources
+
+A source is one provider account, over the Xtream Codes API that most providers
+hand out. Bouquet pulls down the channel list, categories and guide data. Plain
+M3U sources aren't planned, but a PR would be welcome.
+
+- Each source refreshes on its own schedule, or when you hit sync
+- Your playlist edits survive a refresh, even if the provider renames the channel
+- Channels the provider drops stay put, marked as gone, so you can see what broke
+- Every sync keeps a list of what was added, removed, renamed or taken offline
+- Shows when the account expires and how many streams it allows at once
+- Turn categories off, and choose whether new ones come in automatically
+
+<!-- screenshot: source detail page with categories and sync info -->
+
+### Playlist editor
+
+A playlist is a channel list you build yourself. You can have as many as you
+want, each with its own categories, order and output URLs, so different devices
+can point at different playlists.
+
+- Each playlist can mix channels from as many providers as you like
+- Your own categories, drag and drop ordering, renaming, custom logos
+- Bulk tools: move, enable/disable, sort, prefix and suffix, find and replace
+- A channel's guide data defaults to its own provider. Point it at another
+  channel and it takes that channel's logo as well
+- Group a channel with its backups as [alternate channels](#alternate-channels)
+- An auto-sync group is a category that mirrors a provider category instead of
+  holding channels you picked. Its contents change when the provider's do,
+  which suits Pay Per View
+
+<!-- screenshot: bulk edit in the playlist pane -->
+
+### Alternate channels
+
+The same channel usually shows up more than once: on a second provider, as
+several feeds within one provider, or in different qualities. An alt is one of
+those extra copies, grouped under a primary channel.
+
+Nothing automatic happens. Each alt is still its own channel in the M3U, named
+after the primary, like "BBC One (Alt 1)". Your player won't fail over, you pick
+the next one yourself.
+
+- Alts sit under their primary and take its name, logo and guide data, so
+  renaming the primary renames the group
+- The picker puts likely primaries at the top, so you rarely have to search
+- Promote an alt to primary at any time
+- [Smart Sort](#smart-sort) ranks a group on [probe](#probing) data and promotes
+  the best one
+
+<!-- screenshot: an alt group expanded under its primary -->
+
+#### Smart Sort
+
+Once you've [probed](#probing) a group, Smart Sort puts the best stream first and
+makes it the primary. It compares resolution, then frame rate, then bitrate,
+using surround sound to break a tie, and drops anything broken to the bottom.
+Bitrate is normalised for the codec first, since a better codec looks the same
+at a lower bitrate.
+
+You get a preview before anything moves. Only the running order changes, the
+name and guide stay put.
+
+<!-- screenshot: the Smart Sort preview -->
+
+### Guide and playback
+
+- A TV guide per playlist, scrollable backwards and forwards
+- Catchup, so you can replay a programme that's already been on, where the
+  provider offers it
+- Open a channel or past programme in VLC, or copy its URL
+
+<!-- screenshot: the guide grid -->
+
+### Probing
+
+Providers label channels FHD, UHD and so on, and the label is often wrong.
+Probing opens the stream with ffprobe and records what the stream actually is.
+
+- Resolution, frame rate, codecs and bitrate, shown next to the channel
+- On a schedule per source, or on demand
+- Probe a whole playlist, only the missing or failed ones, one category, or one
+  alt group
+- Bitrate means downloading a few seconds of the stream, so it's off by default.
+  It's slow
+- Some dead channels serve a perfectly valid black screen. Bouquet decodes a few
+  seconds and marks those failed (on by default)
+
+<!-- screenshot: channel row showing quality badges -->
+
+### Output
+
+Each playlist has two URLs, the M3U channel list and the XMLTV guide. Point your
+player at those.
+
+- Neither needs a login, since players can't sign in
+- TS or HLS streams, picked per source
+- Rebuilt when a source syncs or you edit the playlist
+- Can also be pushed to [external storage](#upload-destinations)
+
+### Upload destinations
+
+Those two URLs only work while Bouquet is reachable. A playlist can also push
+both files somewhere else and have the player point there.
+
+- S3 or anything S3 compatible (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean
+  Spaces, Wasabi, Storj), or a local folder on the server
+- Runs after a source syncs, or on demand
+- Give it the destination's public URL and the uploaded playlist links to the
+  uploaded guide
+
+An M3U carries your provider login in its stream URLs, so treat an uploaded one
+as sensitive.
+
+### Operations
+
+- Backup and restore, on a schedule or by hand
+- Works on desktop and mobile
+
+## Configuration
+
+| Env            | Default     | Purpose                                                               |
+| -------------- | ----------- | --------------------------------------------------------------------- |
+| `CONFIG_PATH`  | `./data`    | Directory for the database and backups                                |
+| `SYNC_CRON`    | `0 * * * *` | How often the sync check runs (each source syncs on its own interval) |
+| `PROBE_CRON`   | `0 * * * *` | How often the stream probe check runs                                 |
+| `BACKUP_CRON`  | `0 3 * * *` | Schedule for backups                                                  |
+| `BACKUP_KEEP`  | `14`        | Scheduled backups to keep                                             |
+| `FFPROBE_PATH` | `ffprobe`   | Path to the ffprobe binary                                            |
+| `FFMPEG_PATH`  | `ffmpeg`    | Path to the ffmpeg binary                                             |
+| `PORT`         | `3000`      | Server port                                                           |
+
+Migrations apply automatically on startup.
 
 ## Develop
 
@@ -144,35 +166,18 @@ npm install
 npm run dev
 ```
 
-In dev the SQLite file is created at `./data/bouquet.db`.
-
-### Useful scripts
+The SQLite file lands at `./data/bouquet.db`.
 
 - `npm run build` — production build
 - `npm run start` — run the production server (`server.js`)
+- `npm test` — run the tests
 - `npm run typecheck` — typegen + tsc
 - `npm run db:generate` — generate a migration after changing the schema
 - `npm run db:migrate` — apply migrations
 - `npm run db:studio` — open Drizzle Studio
 
-## Configuration
-
-| Env | Default | Purpose |
-|-----|---------|---------|
-| `CONFIG_PATH` | `./data` | Directory for the database and backups |
-| `SYNC_CRON` | `0 * * * *` | How often the sync check runs (each source syncs on its own interval) |
-| `PROBE_CRON` | `0 * * * *` | How often the stream-probe check runs |
-| `BACKUP_CRON` | `0 3 * * *` | Schedule for backups |
-| `BACKUP_KEEP` | `14` | Scheduled backups to keep |
-| `FFPROBE_PATH` | `ffprobe` | Path to the ffprobe binary (for stream probing) |
-| `FFMPEG_PATH` | `ffmpeg` | Path to the ffmpeg binary |
-| `PORT` | `3000` | Server port |
-
-Migrations apply automatically on startup.
-
 ## Built with Claude
 
-Most of this was written with [Claude](https://claude.com/claude-code). Every
-change is reviewed by a human before it lands, so nothing goes in unread. Treat
-it like any other code: read it, test it, and open an issue if something looks
-off.
+Most of this was written with [Claude](https://claude.com/claude-code), with a
+human reviewing every change before it lands. Treat it like any other code: read
+it, test it, and open an issue if something looks off.
