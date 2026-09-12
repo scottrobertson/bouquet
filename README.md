@@ -6,12 +6,11 @@ your player to load.
 
 A provider hands you a few thousand channels in whatever order suits them, and
 people often have more than one provider. Bouquet merges them into a list you
-choose, and keeps it current as the providers change theirs.
+choose, and keeps it current as the providers change theirs. It isn't a proxy,
+the video never passes through it, the M3U points at your provider's own stream
+URLs.
 
-Not a proxy. Video never passes through it, the M3U points at your provider's
-own stream URLs.
-
-<!-- screenshot: playlist editor, both panes, a few categories open -->
+![The playlist editor, with the source channel browser on the left and the playlist on the right](docs/screenshots/playlist-editor.png)
 
 ## Quick start
 
@@ -38,7 +37,7 @@ M3U sources aren't planned, but a PR would be welcome.
 - Shows when the account expires and how many streams it allows at once
 - Turn categories off, and choose whether new ones come in automatically
 
-<!-- screenshot: source detail page with categories and sync info -->
+![A source, showing its account details, sync settings and category list](docs/screenshots/source.png)
 
 ### Playlist editor
 
@@ -49,14 +48,12 @@ can point at different playlists.
 - Each playlist can mix channels from as many providers as you like
 - Your own categories, drag and drop ordering, renaming, custom logos
 - Bulk tools: move, enable/disable, sort, prefix and suffix, find and replace
-- A channel's guide data defaults to its own provider. Point it at another
-  channel and it takes that channel's logo as well
+- Point a channel's guide data at another channel and it takes that logo too
 - Group a channel with its backups as [alternate channels](#alternate-channels)
-- An auto-sync group is a category that mirrors a provider category instead of
-  holding channels you picked, so its contents change when theirs do. Suits Pay
-  Per View
+- An auto-sync group is a category that mirrors a provider's own category, so
+  its contents change when theirs do. Suits Pay Per View
 
-<!-- screenshot: bulk edit in the playlist pane -->
+![Several channels selected, with the bulk edit tools open](docs/screenshots/bulk-edit.png)
 
 ### Alternate channels
 
@@ -68,27 +65,24 @@ Nothing automatic happens. Each alt is still its own channel in the M3U, named
 after the primary, like "BBC One (Alt 1)". Your player won't fail over, you pick
 the next one yourself.
 
-- Alts sit under their primary and take its name, logo and guide data, so
-  renaming the primary renames the group
-- The picker puts likely primaries at the top
+- Alts take the primary's name, logo and guide data, so renaming the primary
+  renames the group
 - Promote an alt to primary at any time
 - [Smart Sort](#smart-sort) ranks a group on [probe](#probing) data and promotes
   the best one
 
-<!-- screenshot: an alt group expanded under its primary -->
+![A channel with its three alternates listed underneath it](docs/screenshots/alternates.png)
 
 #### Smart Sort
 
 Once you've [probed](#probing) a group, Smart Sort puts the best stream first and
 makes it the primary. It compares resolution, then frame rate, then bitrate,
 using surround sound to break a tie, and drops anything broken to the bottom.
-Bitrate is normalised for the codec first, since a better codec looks the same
-at a lower bitrate.
+Bitrate is normalised for the codec first, since a better codec looks the same at
+a lower bitrate. You get a preview before anything moves, and only the running
+order changes, the name and guide stay put.
 
-You get a preview before anything moves. Only the running order changes, the
-name and guide stay put.
-
-<!-- screenshot: the Smart Sort preview -->
+![The Smart Sort preview, showing the new order before anything moves](docs/screenshots/smart-sort.png)
 
 ### Guide and playback
 
@@ -97,7 +91,7 @@ name and guide stay put.
   provider offers it
 - Open a channel or past programme in VLC, or copy its URL
 
-<!-- screenshot: the guide grid -->
+![The TV guide, one row per channel with programmes across the day](docs/screenshots/guide.png)
 
 ### Probing
 
@@ -112,8 +106,9 @@ Probing opens the stream with ffprobe and records what the stream actually is.
   It's slow
 - Some dead channels serve a perfectly valid black screen. Bouquet decodes a few
   seconds and marks those failed (on by default)
+- Channels that keep failing get switched off, promoting a working alt first
 
-<!-- screenshot: channel row showing quality badges -->
+![Channel rows showing the resolution, frame rate, codecs and bitrate a probe found](docs/screenshots/quality.png)
 
 ### Output
 
@@ -130,8 +125,8 @@ player at those.
 Those two URLs only work while Bouquet is reachable. A playlist can also push
 both files somewhere else and have the player point there.
 
-- S3 or anything S3 compatible (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean
-  Spaces, Wasabi, Storj), or a local folder on the server
+- S3 or anything S3 compatible (R2, MinIO, B2, Wasabi), or a local folder on the
+  server
 - Runs after a source syncs, or on demand
 - Give it the destination's public URL and the uploaded playlist links to the
   uploaded guide
@@ -175,8 +170,6 @@ The SQLite file lands at `./data/bouquet.db`.
 - `npm run db:generate` — generate a migration after changing the schema
 - `npm run db:migrate` — apply migrations
 - `npm run db:studio` — open Drizzle Studio
-
-## Built with Claude
 
 Most of this was written with [Claude](https://claude.com/claude-code), with a
 human reviewing every change before it lands. Treat it like any other code: read
