@@ -25,10 +25,10 @@ import {
 import { toast } from "sonner";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { PageHeader } from "~/components/page-header";
+import { RelativeTime } from "~/components/relative-time";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
 import {
   expiryLabel,
-  relativeTime,
   syncIntervalLabel,
 } from "~/components/sources/source-shared";
 import {
@@ -265,13 +265,16 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             on={onCount}
             off={offCount}
           />
-          <Meta label="Last synced" value={relativeTime(source.lastSyncedAt)} />
+          <Meta
+            label="Last synced"
+            value={<RelativeTime date={source.lastSyncedAt} />}
+          />
           <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
           <Meta
             label="Last probed"
             value={
               source.probeEnabled || source.lastProbedAt
-                ? relativeTime(source.lastProbedAt)
+                ? <RelativeTime date={source.lastProbedAt} />
                 : "Off"
             }
           />
@@ -731,7 +734,10 @@ function ExpiresMeta({ expiresAt }: { expiresAt: string | null | undefined }) {
   return (
     <Meta
       label="Expires"
-      value={text}
+      // The date is spelled out using the viewer's own locale and clock, which
+      // the server can't know, so React is told to accept whatever the browser
+      // comes up with instead of treating the page as broken.
+      value={<span suppressHydrationWarning>{text}</span>}
       valueClassName={expired ? "text-destructive" : undefined}
     />
   );

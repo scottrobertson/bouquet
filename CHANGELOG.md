@@ -546,6 +546,12 @@ All notable changes to this project are recorded here. Newest first.
   affected, which is why this only showed up once you put it behind Cloudflare, Caddy, nginx or
   similar.
 
+- Pages no longer throw themselves away and redraw the moment they load. Times like "5m ago" and
+  dates like "24 Sep 2026" are worked out once on the server and again in the browser, and the two
+  don't always match, since the browser has its own clock, timezone and spelling of the month. React
+  treated the difference as a broken page and rebuilt the whole thing from scratch, which showed up
+  as a flash on load and an error in the console. It now accepts the browser's version of those bits.
+
 - Pressing Enter in the source search box no longer adds every channel matching what you typed.
   Enter was meant to add the channel you'd walked to with the arrow keys, but with no arrow key
   cursor it fell through to the same thing as the "Add all" button, so finishing a search with Enter

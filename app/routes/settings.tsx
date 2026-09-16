@@ -4,7 +4,7 @@ import { Form, data, useActionData, useNavigation } from "react-router";
 import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
-import { relativeTime } from "~/components/sources/source-shared";
+import { RelativeTime } from "~/components/relative-time";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -185,7 +185,7 @@ function BackupRow({ backup: b }: { backup: BackupInfo }) {
   return (
     <TableRow className="border-white/5">
       <TableCell className="whitespace-nowrap text-muted-foreground">
-        {relativeTime(b.createdAt ?? b.modifiedAt)}
+        <RelativeTime date={b.createdAt ?? b.modifiedAt} />
       </TableCell>
       <TableCell>
         <Badge className="border-transparent bg-secondary text-muted-foreground">

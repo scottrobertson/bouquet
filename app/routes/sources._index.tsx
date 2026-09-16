@@ -7,12 +7,12 @@ import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
+import { RelativeTime } from "~/components/relative-time";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
 import {
   expiryLabel,
   hostFromUrl,
-  relativeTime,
   syncIntervalLabel,
 } from "~/components/sources/source-shared";
 import {
@@ -338,7 +338,7 @@ function SourceRow({ source }: { source: Row }) {
           {/* On mobile the status column is hidden, so show the badge here next
               to the time. */}
           <span className="md:hidden">{statusBadge}</span>
-          {relativeTime(source.lastSyncedAt)}
+          <RelativeTime date={source.lastSyncedAt} />
         </div>
       </TableCell>
       <TableCell className="pr-4 text-right md:pr-2">
@@ -430,10 +430,20 @@ function connectionsLabel(max: number | null | undefined): string {
   return max.toLocaleString();
 }
 
-// Expiry date, tinted red once it's passed.
+// Expiry date, tinted red once it's passed. The date is spelled out using the
+// viewer's own locale and clock, which the server can't know, so React is told
+// to accept whatever the browser comes up with instead of treating the page as
+// broken.
 function ExpiresCell({ expiresAt }: { expiresAt: string | null | undefined }) {
   const { text, expired } = expiryLabel(expiresAt);
-  return <span className={expired ? "text-destructive" : undefined}>{text}</span>;
+  return (
+    <span
+      suppressHydrationWarning
+      className={expired ? "text-destructive" : undefined}
+    >
+      {text}
+    </span>
+  );
 }
 
 // Enabled out of total, e.g. "1,180 / 1,500". Total is muted.

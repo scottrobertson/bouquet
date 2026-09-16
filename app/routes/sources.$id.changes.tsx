@@ -3,7 +3,7 @@ import { ArrowLeft, History } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
-import { relativeTime } from "~/components/sources/source-shared";
+import { RelativeTime } from "~/components/relative-time";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -133,7 +133,7 @@ export default function SourceChanges({ loaderData }: Route.ComponentProps) {
                   )}
                 >
                   <span className="text-[13px] font-medium">
-                    {relativeTime(s.syncedAt)}
+                    <RelativeTime date={s.syncedAt} />
                   </span>
                   <span className="flex items-center gap-1.5 text-xs tabular-nums">
                     {s.added > 0 ? (
@@ -156,17 +156,21 @@ export default function SourceChanges({ loaderData }: Route.ComponentProps) {
               >
                 <SelectTrigger className="w-full">
                   <span className="truncate">
-                    {selectedAt
-                      ? relativeTime(
-                          syncs.find((s) => s.at === selectedAt)?.syncedAt ?? null,
-                        )
-                      : "Pick a sync"}
+                    {selectedAt ? (
+                      <RelativeTime
+                        date={
+                          syncs.find((s) => s.at === selectedAt)?.syncedAt ?? null
+                        }
+                      />
+                    ) : (
+                      "Pick a sync"
+                    )}
                   </span>
                 </SelectTrigger>
                 <SelectContent>
                   {syncs.map((s) => (
                     <SelectItem key={s.at} value={s.at}>
-                      {relativeTime(s.syncedAt)} (+{s.added} −{s.removed})
+                      <RelativeTime date={s.syncedAt} /> (+{s.added} −{s.removed})
                     </SelectItem>
                   ))}
                 </SelectContent>

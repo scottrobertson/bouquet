@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
-import { relativeTime } from "~/components/sources/source-shared";
+import { RelativeTime } from "~/components/relative-time";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -177,7 +177,7 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
         {playlist.channelCount}
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {relativeTime(playlist.createdAt)}
+        <RelativeTime date={playlist.createdAt} />
       </TableCell>
       <TableCell className="pr-4 text-right md:pr-2">
         <DropdownMenu>

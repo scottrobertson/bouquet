@@ -18,7 +18,7 @@ import {
   type DestinationDTO,
 } from "~/components/playlists/destination-dialog";
 import { UploadStatusBadge } from "~/components/playlists/upload-status-badge";
-import { relativeTime } from "~/components/sources/source-shared";
+import { RelativeTime } from "~/components/relative-time";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { externalOrigin } from "~/lib/url.server";
 import {
@@ -667,7 +667,7 @@ function DestinationRow({ destination }: { destination: DestinationRowData }) {
         <p className="text-xs text-destructive">{destination.uploadError}</p>
       ) : destination.lastUploadedAt ? (
         <p className="text-xs text-muted-foreground">
-          Last uploaded {relativeTime(destination.lastUploadedAt)}
+          Last uploaded <RelativeTime date={destination.lastUploadedAt} />
         </p>
       ) : null}
 
