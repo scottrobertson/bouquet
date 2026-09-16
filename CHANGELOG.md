@@ -538,6 +538,14 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Fixed
 
+- Running Bouquet behind a reverse proxy that handles https no longer breaks every button that
+  changes something. Syncing, probing, editing, deleting and saving all came back as "An unexpected
+  error occurred", because the proxy talks to Bouquet over plain http and React Router saw an http
+  request arriving with an https browser, which is what a cross-site attack looks like. Bouquet now
+  trusts what the proxy says about the original request. Anyone reaching Bouquet directly was never
+  affected, which is why this only showed up once you put it behind Cloudflare, Caddy, nginx or
+  similar.
+
 - Pressing Enter in the source search box no longer adds every channel matching what you typed.
   Enter was meant to add the channel you'd walked to with the arrow keys, but with no arrow key
   cursor it fell through to the same thing as the "Add all" button, so finishing a search with Enter
