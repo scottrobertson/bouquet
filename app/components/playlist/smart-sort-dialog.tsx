@@ -62,7 +62,7 @@ function ruleItems(config: SmartSortConfig): { text: string; bitrate?: boolean }
     items.push({ text: "Ties broken by audio (surround over stereo)" });
   if (config.availableFirst)
     items.push({
-      text: "Working streams first, then unprobed, failed, source off, then auto-disabled",
+      text: "Working streams first, then unprobed, failed, auto-disabled, then source off",
     });
   return items;
 }

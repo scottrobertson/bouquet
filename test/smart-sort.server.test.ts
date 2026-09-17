@@ -119,12 +119,12 @@ describe("smartSort scoring", () => {
     expect(smartSort(list, DEFAULT)[0].name).toBe("working");
   });
 
-  it("orders working over unprobed over failed over unavailable over source-off over auto-disabled", () => {
+  it("orders working over unprobed over failed over unavailable over auto-disabled over source-off", () => {
     const list = [
+      stream("sourceOff", 1080, 50, "h264", "aac", 10, { sourceEnabled: false }),
       stream("autoDisabled", 1080, 50, "h264", "aac", 10, {
         autoDisabledAt: new Date(0),
       }),
-      stream("sourceOff", 1080, 50, "h264", "aac", 10, { sourceEnabled: false }),
       stream("unavailable", 1080, 50, "h264", "aac", 10, { available: false }),
       stream("failed", 1080, 50, "h264", "aac", 10, { probeStatus: "timeout" }),
       stream("unprobed", 1080, 50, "h264", "aac", 10, { probeStatus: null }),
@@ -135,9 +135,41 @@ describe("smartSort scoring", () => {
       "unprobed",
       "failed",
       "unavailable",
-      "sourceOff",
       "autoDisabled",
+      "sourceOff",
     ]);
+  });
+
+  it("sinks an auto-disabled stream from a switched-off source below one whose source is on", () => {
+    // Both auto-disabled, but one belongs to a source the user turned off, so
+    // it can't come back on its own the way the other can.
+    const list = [
+      stream("offSource", 1080, 50, "h264", "aac", 10, {
+        sourceEnabled: false,
+        autoDisabledAt: new Date(0),
+      }),
+      stream("onSource", 1080, 50, "h264", "aac", 10, {
+        autoDisabledAt: new Date(0),
+      }),
+    ];
+    expect(smartSort(list, DEFAULT).map((s) => s.name)).toEqual([
+      "onSource",
+      "offSource",
+    ]);
+  });
+
+  it("ignores leftover numbers on a stream whose last probe didn't pass", () => {
+    // A queued channel can still carry a 4K reading from an earlier probe. The
+    // editor shows it as "No probe data", so the sort must not rank it on those.
+    const list = [
+      stream("plain", 1080, 50, "h264", "aac", 6, { probeStatus: null }),
+      stream("stale4k", 2160, 50, "hevc", "eac3", 20, { probeStatus: "queued" }),
+    ];
+    expect(smartSort(list, DEFAULT).map((s) => s.name)).toEqual([
+      "plain",
+      "stale4k",
+    ]);
+    expect(needsSmartSort(list, DEFAULT)).toBe(false);
   });
 
   it("sinks an auto-disabled stream below a plain failed one", () => {
@@ -273,6 +305,21 @@ describe("factorsFor (preview breakdown)", () => {
       factorsFor(stream("f", 1080, 50, "h264", "aac", 8, { sourceEnabled: false }))
         .liveness,
     ).toBe("sourceOff");
+    // Source off wins over auto-disabled, so the badge says why it's at the bottom.
+    expect(
+      factorsFor(
+        stream("g", 1080, 50, "h264", "aac", 8, {
+          sourceEnabled: false,
+          autoDisabledAt: new Date(0),
+        }),
+      ).liveness,
+    ).toBe("sourceOff");
+  });
+
+  it("reports no bitrate for a stream whose last probe didn't pass", () => {
+    const f = factorsFor(stream("x", 1080, 50, "h264", "aac", 8, { probeStatus: "queued" }));
+    expect(f.rawBitrateKbps).toBeNull();
+    expect(f.resolutionRank).toBe(0);
   });
 });
 

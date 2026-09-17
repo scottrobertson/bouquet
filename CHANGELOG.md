@@ -538,6 +538,18 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Fixed
 
+- Smart Sort now puts streams from a source you've switched off right at the bottom, below
+  auto-disabled ones. Before, a channel that was both auto-disabled and on a disabled source only
+  counted as auto-disabled, so it could tie with, or even beat, a channel from a source that's still
+  on. Turning a source off is your call and nothing brings it back automatically, whereas an
+  auto-disabled channel comes back on its own once it passes a probe, so the off-source stream is
+  the worse bet.
+
+- Smart Sort no longer ranks a stream on quality numbers left over from an earlier probe when its
+  latest probe hasn't passed. A channel sat in the probe queue could still carry a 4K reading from
+  months ago and quietly win the group, while the preview showed it as "No probe data". The sort
+  now reads quality exactly where the preview does, so what you see is what decided the order.
+
 - Running Bouquet behind a reverse proxy that handles https no longer breaks every button that
   changes something. Syncing, probing, editing, deleting and saving all came back as "An unexpected
   error occurred", because the proxy talks to Bouquet over plain http and React Router saw an http

@@ -73,15 +73,26 @@ function codecFactor(codec: string | null): number {
   return CODEC_EFFICIENCY[codec.toLowerCase()] ?? 1;
 }
 
+// A channel waiting to be probed can still carry numbers from an earlier run.
+// The editor hides those as "No probe data", so the sort ignores them too.
+function measured(s: SmartSortStream): boolean {
+  return s.probeStatus === "ok";
+}
+
+function rawBitrate(s: SmartSortStream): number | null {
+  if (!measured(s) || !s.probeBitrate || s.probeBitrate <= 0) return null;
+  return s.probeBitrate;
+}
+
 function effectiveBitrate(s: SmartSortStream): number {
-  if (!s.probeBitrate || s.probeBitrate <= 0) return 0;
-  const eq = s.probeBitrate * codecFactor(s.probeVideoCodec);
-  return Math.round(eq / BITRATE_BUCKET_KBPS);
+  const raw = rawBitrate(s);
+  if (raw == null) return 0;
+  return Math.round((raw * codecFactor(s.probeVideoCodec)) / BITRATE_BUCKET_KBPS);
 }
 
 // Coarse resolution rank by height, so 1920x1080 and 1916x1080 tie.
 function resolutionRank(s: SmartSortStream): number {
-  const h = s.probeHeight ?? 0;
+  const h = measured(s) ? (s.probeHeight ?? 0) : 0;
   if (h >= 4320) return 5;
   if (h >= 2160) return 4;
   if (h >= 1080) return 3;
@@ -92,7 +103,7 @@ function resolutionRank(s: SmartSortStream): number {
 
 // High frame rate (50/60) reads as smoother, which matters most for sport.
 function fpsRank(s: SmartSortStream): number {
-  const f = s.probeFps ?? 0;
+  const f = measured(s) ? (s.probeFps ?? 0) : 0;
   if (f >= 48) return 2;
   if (f >= 24) return 1;
   if (f > 0) return 0.5;
@@ -100,36 +111,36 @@ function fpsRank(s: SmartSortStream): number {
 }
 
 function audioRank(s: SmartSortStream): number {
-  if (!s.probeAudioCodec) return 0;
+  if (!measured(s) || !s.probeAudioCodec) return 0;
   return AUDIO_RANK[s.probeAudioCodec.toLowerCase()] ?? 1;
 }
 
 // Working first, then never-probed (unknown, might be fine), then a failed probe
-// (we tried and it broke), then gone from the provider, then a switched-off
-// source, then auto-disabled last since we already gave up on those. A
-// never-probed stream sits above a failed one on purpose: no result yet beats a
-// known failure. Source off sits above auto-disabled because the stream itself
-// may be fine once the source comes back on.
+// (we tried and it broke), then gone from the provider, then auto-disabled, then
+// a switched-off source last. A never-probed stream sits above a failed one on
+// purpose: no result yet beats a known failure. Source off sits below
+// auto-disabled because the user turned that source off themselves, whereas an
+// auto-disabled channel comes back on its own once a probe passes.
 export type Liveness =
   | "working"
   | "unprobed"
   | "failed"
   | "unavailable"
-  | "sourceOff"
-  | "autoDisabled";
+  | "autoDisabled"
+  | "sourceOff";
 
 const LIVENESS_RANK: Record<Liveness, number> = {
   working: 5,
   unprobed: 4,
   failed: 3,
   unavailable: 2,
-  sourceOff: 1,
-  autoDisabled: 0,
+  autoDisabled: 1,
+  sourceOff: 0,
 };
 
 function liveness(s: SmartSortStream): Liveness {
-  if (s.autoDisabledAt != null) return "autoDisabled";
   if (!s.sourceEnabled) return "sourceOff";
+  if (s.autoDisabledAt != null) return "autoDisabled";
   if (!s.available) return "unavailable";
   if (s.probeStatus === "error" || s.probeStatus === "timeout") return "failed";
   if (s.probeStatus === "ok") return "working";
@@ -153,7 +164,7 @@ function sortKeys(s: SmartSortStream, config: SmartSortConfig): number[] {
   if (config.audio) keys.push(audioRank(s));
   // Raw measured bitrate as a final tiebreaker, so streams that bucketed the
   // same still order by their actual numbers.
-  keys.push(s.probeBitrate ?? 0);
+  keys.push(rawBitrate(s) ?? 0);
   return keys;
 }
 
@@ -206,7 +217,7 @@ export type SmartSortFactors = {
 
 export function factorsFor(s: SmartSortStream): SmartSortFactors {
   const factor = codecFactor(s.probeVideoCodec);
-  const raw = s.probeBitrate && s.probeBitrate > 0 ? s.probeBitrate : null;
+  const raw = rawBitrate(s);
   return {
     liveness: liveness(s),
     resolutionRank: resolutionRank(s),
