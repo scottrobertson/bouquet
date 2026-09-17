@@ -17,6 +17,9 @@ import {
   channelsToProbeOnAdd,
   probeAddedChannels,
   probeSingleChannel,
+  startProbeAutoDisabled,
+  startProbeChannels,
+  startProbePlaylist,
 } from "~/services/probe/probe.server";
 
 let sourceId: number;
@@ -163,6 +166,27 @@ describe("channelsToProbeOnAdd", () => {
   it("skips unavailable channels", () => {
     const gone = addSourceChannel("gone", { available: false });
     expect(channelsToProbeOnAdd([gone])).toEqual([]);
+  });
+});
+
+describe("probing from the playlist menu", () => {
+  it("skips a switched-off source, even for its auto-disabled channels", () => {
+    // The user turned this provider off, so none of the probe buttons should
+    // open a stream on it. Skipped channels stay unprobed rather than queued.
+    const a = addSourceChannel("a");
+    addChannels(playlistId, categoryId, [a]);
+    db.update(playlistChannels)
+      .set({ enabled: false, autoDisabledAt: new Date() })
+      .where(eq(playlistChannels.sourceChannelId, a))
+      .run();
+    db.update(sources).set({ enabled: false }).where(eq(sources.id, sourceId)).run();
+
+    expect(startProbeAutoDisabled(playlistId)).toBe(0);
+    expect(startProbePlaylist(playlistId)).toBe(0);
+    expect(startProbeChannels([a])).toBe(0);
+
+    const row = db.select().from(sourceChannels).where(eq(sourceChannels.id, a)).get();
+    expect(row?.probeStatus).toBeNull();
   });
 });
 

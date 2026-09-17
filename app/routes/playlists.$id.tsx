@@ -527,14 +527,17 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
 
   // Counts for the probe submenu, scoped to enabled channels to match what the
   // server actually probes. Missing = never probed, failed = last probe errored.
-  const enabled = channels.filter((c) => c.enabled);
+  // The probe menu never touches a switched-off source, so its counts skip
+  // those channels too, otherwise the numbers wouldn't match what runs.
+  const onSource = channels.filter((c) => c.sourceEnabled);
+  const enabled = onSource.filter((c) => c.enabled);
   const missingCount = enabled.filter((c) => c.probeStatus == null).length;
   const failedCount = enabled.filter(
     (c) => c.probeStatus === "error" || c.probeStatus === "timeout",
   ).length;
   // Auto-disabled channels are off, so they're counted by their marker, not the
   // enabled set above.
-  const autoDisabledCount = channels.filter((c) => c.autoDisabledAt != null).length;
+  const autoDisabledCount = onSource.filter((c) => c.autoDisabledAt != null).length;
 
   // One probe fetcher shared by the desktop button and the mobile menu, so a
   // probe started from either fires a single toast.

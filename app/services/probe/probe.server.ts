@@ -261,13 +261,17 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
     everything the user sees in the editor. Ordered the same way the editor lists
     them so the probe marches down the list instead of jumping around.
     `only` narrows to channels never probed ("missing") or whose last probe
-    failed ("failed"). */
+    failed ("failed"). Channels on a switched-off source are always left out:
+    the user turned that provider off, so we shouldn't be opening streams on it. */
 function playlistProbeTargets(
   playlistId: number,
   opts: { categoryId?: number; only?: "missing" | "failed" | "autoDisabled" } = {},
 ) {
   const { categoryId, only } = opts;
-  const filters = [eq(playlistChannels.playlistId, playlistId)];
+  const filters = [
+    eq(playlistChannels.playlistId, playlistId),
+    eq(sources.enabled, true),
+  ];
   // Auto-disabled channels are turned off, so target them by their marker. Every
   // other probe only looks at enabled channels.
   if (only === "autoDisabled") {
@@ -300,6 +304,7 @@ function playlistProbeTargets(
       playlistCategories,
       eq(playlistChannels.categoryId, playlistCategories.id),
     )
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
     .where(and(...filters))
     .orderBy(
       asc(playlistCategories.position),
@@ -397,7 +402,8 @@ export function startProbeCategory(playlistId: number, categoryId: number): numb
 
 /** Kick a background probe of a specific set of source channels, grouped by
     source so each runs at its own concurrency. Ignores the source's probe
-    setting and the available/category filters. Returns how many were queued. */
+    setting and the available/category filters, but skips channels on a
+    switched-off source. Returns how many were queued. */
 export function startProbeChannels(sourceChannelIds: number[]): number {
   if (sourceChannelIds.length === 0) return 0;
   const rows = db
@@ -408,7 +414,8 @@ export function startProbeChannels(sourceChannelIds: number[]): number {
       sourceId: sourceChannels.sourceId,
     })
     .from(sourceChannels)
-    .where(inArray(sourceChannels.id, sourceChannelIds))
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
+    .where(and(inArray(sourceChannels.id, sourceChannelIds), eq(sources.enabled, true)))
     .all();
 
   // inArray ignores the order of the ids, so put the rows back into the order

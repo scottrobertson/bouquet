@@ -538,6 +538,19 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Fixed
 
+- The probe buttons in the playlist editor no longer touch a source you've switched off. "Probe
+  enabled", "Probe missing", "Probe failed", "Probe auto-disabled", probing a category and probing
+  an alternate group all opened streams on disabled providers, so a provider you'd turned off could
+  still rack up dozens of failed probes on every click. The scheduled probe already skipped them.
+  The counts on those buttons leave out channels from disabled sources too, so the number matches
+  what actually runs.
+
+- A channel whose source is switched off no longer counts as auto-disabled. It doesn't wear the
+  Auto-disabled badge alongside Source off, it isn't in the "Probe auto-disabled" count, and a
+  failed probe on it can't earn it the marker in the first place. The source being off already
+  explains why it's out of the playlist. Channels that were marked before the source went off keep
+  the marker quietly and show it again if you turn the source back on.
+
 - Smart Sort now puts streams from a source you've switched off right at the bottom, below
   auto-disabled ones. Before, a channel that was both auto-disabled and on a disabled source only
   counted as auto-disabled, so it could tie with, or even beat, a channel from a source that's still

@@ -479,7 +479,9 @@ export function ChannelRowBody({
                 Category off
               </Badge>
             ) : null}
-            {channel.autoDisabledAt && !enabled ? (
+            {/* A source that's off already explains why the channel is out, so
+                the auto-disabled marker would just be noise next to it. */}
+            {channel.sourceEnabled && channel.autoDisabledAt && !enabled ? (
               <Badge className="border-transparent bg-warning/10 text-warning">
                 Auto-disabled
               </Badge>

@@ -95,6 +95,20 @@ describe("autoDisableFailedChannels", () => {
     expect(row.autoDisabledAt).toBeInstanceOf(Date);
   });
 
+  it("leaves a channel alone when its whole source is switched off", () => {
+    // The user turned the provider off, so a failing probe there isn't the
+    // stream's fault and shouldn't earn it the auto-disabled marker.
+    const a = addSourceChannel("a", "Channel A", { status: "error", failures: 9 });
+    addChannels(playlistId, categoryId, [a]);
+    db.update(sources).set({ enabled: false }).where(eq(sources.id, sourceId)).run();
+
+    autoDisableFailedChannels([a]);
+
+    const row = pcRow(pcId(a));
+    expect(row.enabled).toBe(true);
+    expect(row.autoDisabledAt).toBeNull();
+  });
+
   it("leaves a channel below the threshold alone", () => {
     const a = addSourceChannel("a", "Channel A", { status: "error", failures: 2 });
     addChannels(playlistId, categoryId, [a]);

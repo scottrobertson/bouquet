@@ -986,7 +986,9 @@ function workingAlternate(primaryChannelId: number): number | null {
 /** Turn off any enabled channel whose stream has failed its probe enough times
     in a row to hit its playlist's threshold. A failing primary first promotes a
     working alternate so the group keeps a live stream. Called after a probe run
-    with the source channels it touched. */
+    with the source channels it touched. Channels on a switched-off source are
+    skipped: the user already turned that provider off, so a failure there says
+    nothing about the stream. */
 export function autoDisableFailedChannels(sourceChannelIds: number[]): void {
   if (sourceChannelIds.length === 0) return;
   const candidates = db
@@ -1001,11 +1003,13 @@ export function autoDisableFailedChannels(sourceChannelIds: number[]): void {
       sourceChannels,
       eq(playlistChannels.sourceChannelId, sourceChannels.id),
     )
+    .innerJoin(sources, eq(sourceChannels.sourceId, sources.id))
     .innerJoin(playlists, eq(playlistChannels.playlistId, playlists.id))
     .where(
       and(
         inArray(playlistChannels.sourceChannelId, sourceChannelIds),
         eq(playlistChannels.enabled, true),
+        eq(sources.enabled, true),
         gt(playlists.autoDisableFailedProbesAfter, 0),
         gte(
           sourceChannels.consecutiveProbeFailures,
