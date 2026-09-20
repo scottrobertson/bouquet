@@ -22,8 +22,15 @@ import {
 } from "~/services/probe/ffprobe.server";
 import { buildStreamUrl, type XtreamCreds } from "~/services/xtream/client.server";
 
-// A channel to probe: just the bits we need to build its URL and store the result.
-type ProbeTarget = { id: number; streamId: string; name: string };
+// A channel to probe: the bits we need to build its URL and store the result,
+// plus the provider's category so a failure log names it. Providers file
+// channels by category, so that's what you quote when reporting a dead stream.
+type ProbeTarget = {
+  id: number;
+  streamId: string;
+  name: string;
+  categoryName: string | null;
+};
 
 /** The source channels worth auto-probing: those used by an enabled playlist
     channel, still available, and not hidden by a disabled source category.
@@ -36,6 +43,7 @@ export function channelsToProbe(sourceId: number): ProbeTarget[] {
       id: sourceChannels.id,
       streamId: sourceChannels.streamId,
       name: sourceChannels.name,
+      categoryName: sourceChannels.categoryName,
     })
     .from(sourceChannels)
     .innerJoin(
@@ -120,7 +128,10 @@ async function probeAndStore(
     }).join(" · ");
     console.log(`[probe] ${source.name}: "${ch.name}" ok: ${quality}`);
   } else {
-    console.warn(`[probe] ${source.name}: "${ch.name}" ${r.status}: ${r.error}`);
+    const category = ch.categoryName ?? "Uncategorised";
+    console.warn(
+      `[probe] ${source.name}: "${ch.name}" in "${category}" ${r.status}: ${r.error}`,
+    );
   }
 
   // Only keep the measurements when the probe passed. A black screen is read by
@@ -243,6 +254,7 @@ export async function probeSingleChannel(sourceChannelId: number): Promise<void>
       id: sourceChannels.id,
       streamId: sourceChannels.streamId,
       name: sourceChannels.name,
+      categoryName: sourceChannels.categoryName,
       sourceId: sourceChannels.sourceId,
     })
     .from(sourceChannels)
@@ -290,6 +302,7 @@ function playlistProbeTargets(
       id: sourceChannels.id,
       streamId: sourceChannels.streamId,
       name: sourceChannels.name,
+      categoryName: sourceChannels.categoryName,
       categoryPosition: playlistCategories.position,
       categoryId: playlistCategories.id,
       channelPosition: playlistChannels.position,
@@ -323,7 +336,7 @@ function startProbeTargets(
   const bySource = new Map<number, ProbeTarget[]>();
   for (const t of targets) {
     const list = bySource.get(t.sourceId) ?? [];
-    list.push({ id: t.id, streamId: t.streamId, name: t.name });
+    list.push({ id: t.id, streamId: t.streamId, name: t.name, categoryName: t.categoryName });
     bySource.set(t.sourceId, list);
   }
 
@@ -411,6 +424,7 @@ export function startProbeChannels(sourceChannelIds: number[]): number {
       id: sourceChannels.id,
       streamId: sourceChannels.streamId,
       name: sourceChannels.name,
+      categoryName: sourceChannels.categoryName,
       sourceId: sourceChannels.sourceId,
     })
     .from(sourceChannels)
@@ -426,7 +440,7 @@ export function startProbeChannels(sourceChannelIds: number[]): number {
   const bySource = new Map<number, ProbeTarget[]>();
   for (const r of rows) {
     const list = bySource.get(r.sourceId) ?? [];
-    list.push({ id: r.id, streamId: r.streamId, name: r.name });
+    list.push({ id: r.id, streamId: r.streamId, name: r.name, categoryName: r.categoryName });
     bySource.set(r.sourceId, list);
   }
 
@@ -472,6 +486,7 @@ export function channelsToProbeOnAdd(
           id: sourceChannels.id,
           streamId: sourceChannels.streamId,
           name: sourceChannels.name,
+          categoryName: sourceChannels.categoryName,
           sourceId: sourceChannels.sourceId,
         })
         .from(sourceChannels)

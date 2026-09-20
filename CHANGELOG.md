@@ -366,6 +366,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- When a probe fails, the server log now names the provider's category alongside the channel, so
+  a line reads like `shammy: "UK: ITV 2 FHD" in "UK| ENTERTAINMENT" error: ...`. Providers file
+  their channels by category, so when you report a batch of dead streams to them, the log already
+  has everything they'll ask for.
+
 - The `APP_PASSWORD` and `SESSION_SECRET` env vars are gone. They were left over from a login
   that was never built, and production refused to start without them even though nothing read
   them. There is no login, so run Bouquet on a private network such as Tailscale. Drop the two
