@@ -78,6 +78,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
       streamId: sourceChannels.streamId,
       channelSourceId: sourceChannels.sourceId,
       tvArchiveDuration: sourceChannels.tvArchiveDuration,
+      providerName: sources.name,
       serverUrl: sources.serverUrl,
       streamBaseUrl: sources.streamBaseUrl,
       username: sources.username,
@@ -222,7 +223,11 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
     // is ignored so they can never drift from the primary's name.
     if (r.primaryChannelId != null) {
       const primaryName = primaryNameById.get(r.primaryChannelId) ?? r.channelName;
-      return altName(playlist.altNameTemplate, primaryName, r.altPosition + 1);
+      return altName(playlist.altNameTemplate, {
+        name: primaryName,
+        n: r.altPosition + 1,
+        provider: r.providerName,
+      });
     }
     if (r.customName) return r.customName;
     return r.channelName;

@@ -392,7 +392,13 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
             <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{name}"}</code>{" "}
             is the channel's name,{" "}
             <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{n}"}</code>{" "}
-            is the alternate number.
+            is the alternate number,{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{provider}"}</code>{" "}
+            is the alternate's provider name and{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+              {"{provider_letter}"}
+            </code>{" "}
+            is its first letter.
           </p>
           <Form method="post" className="flex items-end gap-2">
             <input type="hidden" name="intent" value="setAltTemplate" />

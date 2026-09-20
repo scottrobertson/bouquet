@@ -195,7 +195,8 @@ export const playlists = sqliteTable("playlists", {
   name: text("name").notNull(),
   outputToken: text("output_token").notNull().unique(),
   // Auto-name for a channel's alternates. {name} is the primary's name, {n} the
-  // alternate number.
+  // alternate number, {provider} the alternate's provider name and
+  // {provider_letter} its first letter.
   altNameTemplate: text("alt_name_template")
     .notNull()
     .default("{name} (Alt {n})"),

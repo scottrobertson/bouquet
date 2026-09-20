@@ -244,11 +244,11 @@ export function getPlaylistChannels(playlistId: number) {
       // unchanged.
       autoName:
         r.primaryChannelId != null
-          ? altName(
-              template,
-              nameById.get(r.primaryChannelId) ?? r.sourceName,
-              r.altPosition + 1,
-            )
+          ? altName(template, {
+              name: nameById.get(r.primaryChannelId) ?? r.sourceName,
+              n: r.altPosition + 1,
+              provider: r.sourceProviderName,
+            })
           : r.sourceName,
     }),
   );

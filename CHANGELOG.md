@@ -4,6 +4,11 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- The alternate naming template on a playlist's settings page can now include the provider an
+  alternate comes from. `{provider}` fills in the source's name and `{provider_letter}` just its
+  first letter, so a template like `{name} ({provider_letter}{n})` gives you "BBC One (S1)" and you
+  can tell which provider a backup is on without opening the group.
+
 - The category list on a source now opens up, so you can see the channels inside a category without
   turning it on first. Click a category name and its channels appear underneath, with their logos
   and a note on any that the provider has marked unavailable.
