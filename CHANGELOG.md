@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Every channel in the source browser now has a menu with "Play in VLC" and "Copy stream URL",
+  the same two actions the playlist side already had. You can try a stream before deciding
+  whether it's worth adding to the playlist.
+
 - The alternate naming template on a playlist's settings page can now include the provider an
   alternate comes from. `{provider}` fills in the source's name and `{provider_letter}` just its
   first letter, so a template like `{name} ({provider_letter}{n})` gives you "BBC One (S1)" and you

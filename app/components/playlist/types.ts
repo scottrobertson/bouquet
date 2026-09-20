@@ -91,4 +91,7 @@ export type BrowserChannel = {
   // When off, nothing from this source reaches output. Its group is pushed to
   // the bottom of the browser and starts collapsed.
   sourceEnabled: boolean;
+  // The provider's direct stream URL, so a channel can be tried in VLC before
+  // it's added to the playlist.
+  streamUrl: string;
 };

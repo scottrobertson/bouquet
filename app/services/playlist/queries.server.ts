@@ -450,6 +450,12 @@ export function browserChannels(opts: BrowserFilter) {
       sourceName: sources.name,
       sourceEnabled: sources.enabled,
       epgChannelId: sourceChannels.epgChannelId,
+      streamId: sourceChannels.streamId,
+      serverUrl: sources.serverUrl,
+      streamBaseUrl: sources.streamBaseUrl,
+      username: sources.username,
+      password: sources.password,
+      outputFormat: sources.outputFormat,
     })
     .from(sourceChannels)
     .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
@@ -463,7 +469,25 @@ export function browserChannels(opts: BrowserFilter) {
       asc(sourceChannels.id),
     )
     .limit(BROWSER_LIMIT)
-    .all();
+    .all()
+    .map(
+      ({
+        streamId,
+        serverUrl,
+        streamBaseUrl,
+        username,
+        password,
+        outputFormat,
+        ...r
+      }) => ({
+        ...r,
+        streamUrl: buildStreamUrl(
+          { serverUrl: streamBaseUrl ?? serverUrl, username, password },
+          streamId,
+          outputFormat,
+        ),
+      }),
+    );
 
   return { rows, total: total?.n ?? 0, alreadyAdded };
 }

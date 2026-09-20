@@ -2,8 +2,11 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronDown,
   ChevronRight,
+  Copy,
   CornerDownRight,
   ListFilter,
+  MoreVertical,
+  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -24,6 +27,12 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/command";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
 import {
   Popover,
@@ -851,6 +860,42 @@ function SourceRow({
           <span className="ml-1 text-[11px] text-warning">· unavailable</span>
         ) : null}
       </span>
+      <StreamMenu streamUrl={channel.streamUrl} />
     </div>
+  );
+}
+
+/** Try a stream before adding it. Clicks are stopped here so opening the menu
+    doesn't also select the row. */
+function StreamMenu({ streamUrl }: { streamUrl: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          // Icon stays small but the tap target stretches to ~44px so it's easy to hit on mobile.
+          className="relative size-7 shrink-0 cursor-pointer text-muted-foreground before:absolute before:-inset-2 before:content-[''] hover:text-foreground"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem asChild>
+          <a href={`vlc://${streamUrl}`}>
+            <Play className="size-4" />
+            Play in VLC
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => navigator.clipboard.writeText(streamUrl)}
+        >
+          <Copy className="size-4" />
+          Copy stream URL
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
