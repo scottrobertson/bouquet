@@ -34,6 +34,7 @@ import {
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { AlternateRow, PrimaryRow } from "./channel-row";
+import { useChannelName } from "./channel-name";
 import type { AutoChannelView, EditorCategory, EditorChannel } from "./types";
 
 /** Group actions wired up by the board, applied per primary/alternate here. */
@@ -182,6 +183,7 @@ export const AutoChannelRow = memo(function AutoChannelRow({
 }: {
   channel: AutoChannelView;
 }) {
+  const formatName = useChannelName();
   return (
     <div className="flex items-center gap-2 border-b border-white/5 px-3 py-2">
       {channel.logo ? (
@@ -199,7 +201,9 @@ export const AutoChannelRow = memo(function AutoChannelRow({
           <Tv className="size-3.5" />
         </div>
       )}
-      <span className="min-w-0 flex-1 truncate text-[13px]">{channel.name}</span>
+      <span className="min-w-0 flex-1 truncate text-[13px]">
+        {formatName(channel.name, channel.providerName)}
+      </span>
     </div>
   );
 });

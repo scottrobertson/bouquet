@@ -65,7 +65,8 @@ Nothing automatic happens. Each alt is still its own channel in the M3U, named
 after the primary, like "BBC One (Alt 1)". Your player won't fail over, you pick
 the next one yourself. The naming template lives in the playlist's settings and
 can also include the alt's provider name, or just its first letter, so you can
-tell at a glance which provider a backup comes from.
+tell at a glance which provider a backup comes from. There's a matching template
+for every other channel, so the primary can say which provider it's on too.
 
 - Alts take the primary's name, logo and guide data, so renaming the primary
   renames the group

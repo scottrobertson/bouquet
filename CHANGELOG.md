@@ -4,6 +4,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Playlist settings have a new channel naming template that covers every channel except
+  alternates. It takes the same `{provider}` and `{provider_letter}` placeholders as the alternate
+  template, so `{name} ({provider_letter})` turns a primary into "Sky Sports 1 UHD (B)" and you can
+  see which provider you're watching, not just which provider the backups are on. Alternates are
+  still named from the plain channel name, so they don't end up with the letter twice. The default
+  is `{name}`, which leaves names as they are.
+
 - Every channel in the source browser now has a menu with "Play in VLC" and "Copy stream URL",
   the same two actions the playlist side already had. You can try a stream before deciding
   whether it's worth adding to the playlist.

@@ -162,6 +162,13 @@
       "when": 1784405526100,
       "tag": "0022_gorgeous_leopardon",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790239928647,
+      "tag": "0023_typical_human_robot",
+      "breakpoints": true
     }
   ]
 }

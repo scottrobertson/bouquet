@@ -281,6 +281,47 @@ describe("output", () => {
       "Sky One (Alt 2)",
     ]);
   });
+
+  it("applies the channel template to every channel but alternates", async () => {
+    const { pcA, pcB } = seedThree();
+    renameChannel(playlistId, pcA, "BBC One");
+    makeAlternates(playlistId, pcA, [pcB]);
+    db.update(playlists)
+      .set({
+        channelNameTemplate: "{name} ({provider_letter})",
+        altNameTemplate: "{name} (Alt {n} - {provider_letter})",
+      })
+      .where(eq(playlists.id, playlistId))
+      .run();
+
+    const out = await getPlaylistOutput("tok");
+    // The alternate is named from the plain primary name, not "BBC One (M)".
+    expect(out!.channels.map((c) => c.displayName)).toEqual([
+      "BBC One (M)",
+      "BBC One (Alt 1 - M)",
+      "Channel C (M)",
+    ]);
+  });
+
+  it("applies the channel template to auto-sync group channels", async () => {
+    addSourceChannel("a", "Channel A");
+    db.insert(playlistCategories)
+      .values({
+        playlistId,
+        name: "Auto",
+        position: 1,
+        autoSourceId: sourceId,
+        autoCategoryName: "UK",
+      })
+      .run();
+    db.update(playlists)
+      .set({ channelNameTemplate: "[{provider}] {name}" })
+      .where(eq(playlists.id, playlistId))
+      .run();
+
+    const out = await getPlaylistOutput("tok");
+    expect(out!.channels.map((c) => c.displayName)).toEqual(["[Main] Channel A"]);
+  });
 });
 
 describe("logo", () => {

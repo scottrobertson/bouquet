@@ -39,6 +39,7 @@ import {
 import { logoSrc } from "~/lib/logo";
 import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
+import { useChannelName } from "./channel-name";
 import { EpgPicker } from "./epg-picker";
 import { SmartSortDialog } from "./smart-sort-dialog";
 import type { EditorChannel } from "./types";
@@ -335,6 +336,7 @@ export function ChannelRowBody({
   const displayName = isAlternate
     ? channel.autoName
     : (channel.customName ?? channel.sourceName);
+  const formatName = useChannelName();
 
   // Optimistic enabled state so the toggle never waits on the server.
   const submittedEnabled =
@@ -403,6 +405,7 @@ export function ChannelRowBody({
             channel={channel}
             displayName={displayName}
             baseName={baseName}
+            format={(name) => formatName(name, channel.sourceProviderName)}
             disabled={overlay}
             editable={!group?.isAlternate}
           />
@@ -696,12 +699,16 @@ function NameField({
   channel,
   displayName,
   baseName,
+  format,
   disabled,
   editable = true,
 }: {
   channel: EditorChannel;
   displayName: string;
   baseName: string;
+  // Applies the playlist's channel name template for display. Renaming edits
+  // the plain name underneath it.
+  format: (name: string) => string;
   disabled?: boolean;
   // Alternates are auto-named from their primary, so they can't be renamed.
   editable?: boolean;
@@ -778,7 +785,7 @@ function NameField({
       )}
       title="Click to rename"
     >
-      {shown}
+      {format(shown)}
     </button>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { altName } from "~/services/playlist/alt-name";
+import { altName, channelName } from "~/services/playlist/alt-name";
 
 const strong = { name: "BBC One", n: 1, provider: "Strong8k" };
 
@@ -36,5 +36,30 @@ describe("altName", () => {
       altName("{provider_letter}", { ...strong, provider: "  nova tv" }),
     ).toBe("N");
     expect(altName("{provider_letter}", { ...strong, provider: "" })).toBe("");
+  });
+
+  it("leaves placeholders inside the channel or provider name alone", () => {
+    expect(
+      altName("{name} ({provider})", { name: "Test {n}", n: 2, provider: "{name}" }),
+    ).toBe("Test {n} ({name})");
+  });
+});
+
+describe("channelName", () => {
+  const b1g = { name: "Sky Sports 1 UHD", provider: "b1g" };
+
+  it("leaves the name as it is with the default template", () => {
+    expect(channelName("{name}", b1g)).toBe("Sky Sports 1 UHD");
+  });
+
+  it("fills in the provider name and its first letter", () => {
+    expect(channelName("{name} ({provider_letter})", b1g)).toBe(
+      "Sky Sports 1 UHD (B)",
+    );
+    expect(channelName("[{provider}] {name}", b1g)).toBe("[b1g] Sky Sports 1 UHD");
+  });
+
+  it("keeps {n} as written, since only alternates have a number", () => {
+    expect(channelName("{name} {n}", b1g)).toBe("Sky Sports 1 UHD {n}");
   });
 });

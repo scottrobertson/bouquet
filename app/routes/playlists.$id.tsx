@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { externalOrigin } from "~/lib/url.server";
+import { ChannelNameTemplate } from "~/components/playlist/channel-name";
 import { EditorBoard } from "~/components/playlist/editor-board";
 import { ProbeQueue, probeQueue } from "~/components/playlist/probe-queue";
 import { Button } from "~/components/ui/button";
@@ -139,6 +140,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     playlist: {
       id: playlist.id,
       name: playlist.name,
+      channelNameTemplate: playlist.channelNameTemplate,
       // The editor runs the same sort on the client to flag groups that are out
       // of order, so it needs the settings the real sort would use.
       smartSort: {
@@ -522,7 +524,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
 
   // Channels waiting on or mid-probe right now, for the live header count and
   // the list you get by hovering it.
-  const probeRows = probeQueue(channels);
+  const probeRows = probeQueue(channels, playlist.channelNameTemplate);
   const probingCount = probeRows.length;
 
   // Counts for the probe submenu, scoped to enabled channels to match what the
@@ -622,13 +624,15 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="min-h-0 flex-1">
-        <EditorBoard
-          playlistId={playlist.id}
-          categories={categories}
-          channels={channels}
-          autoChannels={autoChannels}
-          smartSort={playlist.smartSort}
-        />
+        <ChannelNameTemplate.Provider value={playlist.channelNameTemplate}>
+          <EditorBoard
+            playlistId={playlist.id}
+            categories={categories}
+            channels={channels}
+            autoChannels={autoChannels}
+            smartSort={playlist.smartSort}
+          />
+        </ChannelNameTemplate.Provider>
       </div>
     </div>
   );

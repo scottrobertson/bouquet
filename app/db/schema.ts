@@ -200,6 +200,12 @@ export const playlists = sqliteTable("playlists", {
   altNameTemplate: text("alt_name_template")
     .notNull()
     .default("{name} (Alt {n})"),
+  // Output name for every channel that isn't an alternate. {name} is the
+  // channel's own name, {provider} its provider name and {provider_letter} that
+  // name's first letter.
+  channelNameTemplate: text("channel_name_template")
+    .notNull()
+    .default("{name}"),
   // Smart sort orders an alt group best-first from probe data. These pick what
   // "best" means. prefer = the top quality signal, resolution or bitrate; audio
   // = let surround audio break near-ties; availableFirst = sink dead/errored

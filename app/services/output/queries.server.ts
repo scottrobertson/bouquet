@@ -10,7 +10,7 @@ import {
   sources,
 } from "~/db/schema";
 import { buildStreamUrl, buildTimeshiftSource } from "~/services/xtream/client.server";
-import { altName } from "~/services/playlist/alt-name";
+import { altName, channelName } from "~/services/playlist/alt-name";
 import { epgLogoLookup } from "~/services/playlist/epg-logo.server";
 
 export interface ResolvedChannel {
@@ -171,6 +171,8 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
 
   for (const r of allRows) {
     enabledById.set(r.id, r.enabled);
+    // Kept free of the channel name template, so an alternate named after its
+    // primary doesn't also carry the primary's provider tag.
     primaryNameById.set(r.id, r.customName || r.channelName);
     primaryEpgById.set(r.id, {
       tvgId: r.pcEpgChannelId ?? r.channelEpgId ?? "",
@@ -229,8 +231,10 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
         provider: r.providerName,
       });
     }
-    if (r.customName) return r.customName;
-    return r.channelName;
+    return channelName(playlist.channelNameTemplate, {
+      name: r.customName || r.channelName,
+      provider: r.providerName,
+    });
   };
 
   const resolveEpg = (r: (typeof normalRows)[number]) => {
@@ -264,6 +268,7 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
         streamId: sourceChannels.streamId,
         channelSourceId: sourceChannels.sourceId,
         tvArchiveDuration: sourceChannels.tvArchiveDuration,
+        providerName: sources.name,
         serverUrl: sources.serverUrl,
         streamBaseUrl: sources.streamBaseUrl,
         username: sources.username,
@@ -294,7 +299,10 @@ export function resolvePlaylistChannels(playlist: Playlist): ResolvedChannel[] {
           password: r.password,
         };
         channels.push({
-          displayName: r.channelName,
+          displayName: channelName(playlist.channelNameTemplate, {
+            name: r.channelName,
+            provider: r.providerName,
+          }),
           logo: r.channelLogo || "",
           groupTitle: cat.name,
           tvgId: r.channelEpgId ?? "",

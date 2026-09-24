@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { channelName } from "~/services/playlist/alt-name";
 import type { EditorChannel } from "./types";
 
 // Long queues are the normal case, so only the first slice is rendered and the
@@ -14,12 +15,21 @@ type QueuedChannel = {
 
 /** The channels a running probe is working through: the ones on a stream right
     now first, then the ones still waiting. */
-export function probeQueue(channels: EditorChannel[]): QueuedChannel[] {
+export function probeQueue(
+  channels: EditorChannel[],
+  nameTemplate: string,
+): QueuedChannel[] {
   const rows = channels
     .filter((c) => c.probeStatus === "probing" || c.probeStatus === "queued")
     .map((c) => ({
       id: c.id,
-      name: c.customName || c.autoName,
+      name:
+        c.primaryChannelId != null
+          ? c.autoName
+          : channelName(nameTemplate, {
+              name: c.customName || c.sourceName,
+              provider: c.sourceProviderName,
+            }),
       provider: c.sourceProviderName,
       running: c.probeStatus === "probing",
     }));

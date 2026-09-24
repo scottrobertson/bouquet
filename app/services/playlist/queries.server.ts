@@ -89,6 +89,13 @@ export function getCategories(playlistId: number) {
     .all();
 }
 
+type AutoChannel = {
+  sourceChannelId: number;
+  name: string;
+  logo: string | null;
+  providerName: string;
+};
+
 /** Live channels for each auto-sync category: the available channels in the
     mirrored source category, in provider order. Read-only, so just the bits we
     render. Keyed by playlist category id. */
@@ -98,11 +105,8 @@ export function getAutoChannels(
     autoSourceId: number | null;
     autoCategoryName: string | null;
   }[],
-): Record<number, { sourceChannelId: number; name: string; logo: string | null }[]> {
-  const out: Record<
-    number,
-    { sourceChannelId: number; name: string; logo: string | null }[]
-  > = {};
+): Record<number, AutoChannel[]> {
+  const out: Record<number, AutoChannel[]> = {};
   for (const cat of categories) {
     if (cat.autoSourceId == null || cat.autoCategoryName == null) continue;
     out[cat.id] = db
@@ -110,8 +114,10 @@ export function getAutoChannels(
         sourceChannelId: sourceChannels.id,
         name: sourceChannels.name,
         logo: sourceChannels.logo,
+        providerName: sources.name,
       })
       .from(sourceChannels)
+      .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
       .where(
         and(
           eq(sourceChannels.sourceId, cat.autoSourceId),

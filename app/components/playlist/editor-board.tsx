@@ -68,6 +68,7 @@ import {
   SortablePrimaryRow,
   type GroupApi,
 } from "./category-group";
+import { useChannelName } from "./channel-name";
 import { ChannelRowBody } from "./channel-row";
 import { ChannelTools } from "./channel-tools";
 import { PrimaryPicker, suggestedPrimaries } from "./primary-picker";
@@ -113,6 +114,7 @@ export function EditorBoard({
   const addFetcher = useFetcher();
   const createCatFetcher = useFetcher();
   const bulkFetcher = useFetcher();
+  const formatName = useChannelName();
 
   // Row callbacks have to keep the same identity across renders or every row
   // re-renders on each keystroke, so they read their fetchers through refs.
@@ -834,14 +836,15 @@ export function EditorBoard({
       .filter((c) => c.primaryChannelId == null)
       .map((c) => ({
         id: c.id,
-        name: c.customName ?? c.sourceName,
-        // Both names count when suggesting a group, since a channel renamed to
+        name: formatName(c.customName ?? c.sourceName, c.sourceProviderName),
+        // Suggestions match on these plain names, never on the display name
+        // above with its provider tag. Both count, since a channel renamed to
         // something short would otherwise stop matching the provider's name.
         names: c.customName ? [c.customName, c.sourceName] : [c.sourceName],
         epgChannelId: c.epgChannelId ?? c.sourceEpgChannelId,
         hint: catName.get(c.categoryId),
       }));
-  }, [items, cats]);
+  }, [items, cats, formatName]);
 
   // The channels you've selected in each pane, which is what the suggested alt
   // groups are worked out from.

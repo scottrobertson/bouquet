@@ -108,6 +108,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       id: playlist.id,
       name: playlist.name,
       altNameTemplate: playlist.altNameTemplate,
+      channelNameTemplate: playlist.channelNameTemplate,
       smartSortPrefer: playlist.smartSortPrefer,
       smartSortAudio: playlist.smartSortAudio,
       smartSortAvailableFirst: playlist.smartSortAvailableFirst,
@@ -174,6 +175,12 @@ const templateSchema = z
   .refine((s) => s.includes("{name}"), "Must include {name}")
   .refine((s) => s.includes("{n}"), "Must include {n}");
 
+const channelTemplateSchema = z
+  .string()
+  .trim()
+  .min(1, "Template is required")
+  .refine((s) => s.includes("{name}"), "Must include {name}");
+
 export async function action({ request, params }: Route.ActionArgs) {
   const id = Number(params.id);
   const playlist = getPlaylist(id);
@@ -188,6 +195,19 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
     }
     db.update(playlists).set({ name: parsed.data }).where(eq(playlists.id, id)).run();
+    return data({ ok: true, intent });
+  }
+
+  if (intent === "setChannelTemplate") {
+    const parsed = channelTemplateSchema.safeParse(form.get("channelNameTemplate"));
+    if (!parsed.success) {
+      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    db.update(playlists)
+      .set({ channelNameTemplate: parsed.data })
+      .where(eq(playlists.id, id))
+      .run();
+    invalidate(playlist.outputToken);
     return data({ ok: true, intent });
   }
 
@@ -346,6 +366,7 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
     if (actionData && "intent" in actionData && actionData.ok) {
       const messages: Record<string, string> = {
         setAltTemplate: "Naming saved",
+        setChannelTemplate: "Naming saved",
         setSmartSort: "Smart sort saved",
         setAutoDisable: "Auto-disable saved",
         renamePlaylist: "Playlist renamed",
@@ -378,6 +399,39 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
                 Name
               </Label>
               <Input id="playlist-name" name="name" defaultValue={playlist.name} />
+            </div>
+            <Button type="submit" size="sm">
+              Save
+            </Button>
+          </Form>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-[13px] font-medium">Channel naming</h2>
+          <p className="text-[13px] text-muted-foreground">
+            How every channel that isn't an alternate is named.{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{name}"}</code>{" "}
+            is the channel's name,{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{provider}"}</code>{" "}
+            is its provider name and{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+              {"{provider_letter}"}
+            </code>{" "}
+            is that name's first letter. Alternates are named from the plain
+            channel name, so the provider isn't repeated.
+          </p>
+          <Form method="post" className="flex items-end gap-2">
+            <input type="hidden" name="intent" value="setChannelTemplate" />
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="channel-template" className="sr-only">
+                Channel naming template
+              </Label>
+              <Input
+                id="channel-template"
+                name="channelNameTemplate"
+                defaultValue={playlist.channelNameTemplate}
+                placeholder="{name}"
+              />
             </div>
             <Button type="submit" size="sm">
               Save
