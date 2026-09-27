@@ -94,6 +94,7 @@ type AutoChannel = {
   name: string;
   logo: string | null;
   providerName: string;
+  streamUrl: string;
 };
 
 /** Live channels for each auto-sync category: the available channels in the
@@ -115,6 +116,12 @@ export function getAutoChannels(
         name: sourceChannels.name,
         logo: sourceChannels.logo,
         providerName: sources.name,
+        streamId: sourceChannels.streamId,
+        serverUrl: sources.serverUrl,
+        streamBaseUrl: sources.streamBaseUrl,
+        username: sources.username,
+        password: sources.password,
+        outputFormat: sources.outputFormat,
       })
       .from(sourceChannels)
       .innerJoin(sources, eq(sources.id, sourceChannels.sourceId))
@@ -126,7 +133,25 @@ export function getAutoChannels(
         ),
       )
       .orderBy(asc(sourceChannels.position), asc(sourceChannels.id))
-      .all();
+      .all()
+      .map(
+        ({
+          streamId,
+          serverUrl,
+          streamBaseUrl,
+          username,
+          password,
+          outputFormat,
+          ...r
+        }) => ({
+          ...r,
+          streamUrl: buildStreamUrl(
+            { serverUrl: streamBaseUrl ?? serverUrl, username, password },
+            streamId,
+            outputFormat,
+          ),
+        }),
+      );
   }
   return out;
 }

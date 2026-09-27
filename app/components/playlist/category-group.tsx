@@ -35,6 +35,7 @@ import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { AlternateRow, PrimaryRow } from "./channel-row";
 import { useChannelName } from "./channel-name";
+import { StreamMenu } from "./stream-menu";
 import type { AutoChannelView, EditorCategory, EditorChannel } from "./types";
 
 /** Group actions wired up by the board, applied per primary/alternate here. */
@@ -177,7 +178,8 @@ export const EmptyCategoryRow = memo(function EmptyCategoryRow({
   );
 });
 
-/** A channel inside an auto-sync category. Read-only, so no controls. */
+/** A channel inside an auto-sync category. The channel list follows the
+    provider, so the only controls are for trying the stream. */
 export const AutoChannelRow = memo(function AutoChannelRow({
   channel,
 }: {
@@ -204,6 +206,7 @@ export const AutoChannelRow = memo(function AutoChannelRow({
       <span className="min-w-0 flex-1 truncate text-[13px]">
         {formatName(channel.name, channel.providerName)}
       </span>
+      <StreamMenu streamUrl={channel.streamUrl} />
     </div>
   );
 });

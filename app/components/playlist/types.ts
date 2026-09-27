@@ -64,6 +64,7 @@ export type AutoChannelView = {
   name: string;
   logo: string | null;
   providerName: string;
+  streamUrl: string;
 };
 
 export type EpgChannel = {

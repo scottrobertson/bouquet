@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Channels inside an auto-sync group now have a menu with "Play in VLC" and "Copy stream URL", like
+  every other channel in the editor. You no longer have to find the channel in the source browser
+  to try its stream.
+
 - Playlist settings have a new channel naming template that covers every channel except
   alternates. It takes the same `{provider}` and `{provider_letter}` placeholders as the alternate
   template, so `{name} ({provider_letter})` turns a primary into "Sky Sports 1 UHD (B)" and you can
