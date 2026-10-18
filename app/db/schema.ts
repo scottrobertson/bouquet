@@ -88,6 +88,9 @@ export const sources = sqliteTable("sources", {
   // Live progress counters for the current/last run, so the UI can show "42/300".
   probeTotal: integer("probe_total").notNull().default(0),
   probeDone: integer("probe_done").notNull().default(0),
+  // The user's own notes about the provider, like renewal dates or support
+  // contacts. Only shown on the source page.
+  notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

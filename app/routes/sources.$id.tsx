@@ -45,7 +45,9 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { Switch } from "~/components/ui/switch";
+import { Textarea } from "~/components/ui/textarea";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
 import { db } from "~/db/index.server";
@@ -97,6 +99,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       probeTotal: source.probeTotal,
       probeDone: source.probeDone,
       probeError: source.probeError,
+      notes: source.notes,
     },
     categories: listSourceCategories(id),
   };
@@ -122,6 +125,12 @@ export async function action({ request, params }: Route.ActionArgs) {
     db.update(sources).set({ enabled }).where(eq(sources.id, id)).run();
     invalidateAll();
     return data({ intent: "setEnabled" as const, enabled });
+  }
+
+  if (intent === "setNotes") {
+    const notes = String(form.get("notes") ?? "").trim() || null;
+    db.update(sources).set({ notes }).where(eq(sources.id, id)).run();
+    return data({ intent: "setNotes" as const, ok: true });
   }
 
   if (intent === "delete") {
@@ -308,8 +317,44 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
           </div>
         ) : null}
 
+        <NotesPanel key={source.id} notes={source.notes} />
+
         <CategoriesPanel sourceId={source.id} categories={categories} />
       </div>
+    </div>
+  );
+}
+
+const NOTES_FETCHER = "source-notes";
+
+function NotesPanel({ notes }: { notes: string | null }) {
+  const fetcher = useFetcher({ key: NOTES_FETCHER });
+  const saving = fetcher.state !== "idle";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="notes" className="text-[13px]">
+          Notes
+        </Label>
+        {saving ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Saving…
+          </span>
+        ) : null}
+      </div>
+      <Textarea
+        id="notes"
+        defaultValue={notes ?? ""}
+        placeholder="Renewal dates, support contacts, anything worth remembering about this provider."
+        className="text-[13px] md:text-[13px]"
+        onBlur={(e) => {
+          const value = e.currentTarget.value.trim();
+          if (value === (notes ?? "")) return;
+          fetcher.submit({ intent: "setNotes", notes: value }, { method: "post" });
+        }}
+      />
     </div>
   );
 }
@@ -670,10 +715,12 @@ function ChannelList({
 
 // Category toggles save through fetchers, so reflect their state. Only POSTs
 // count, otherwise loading a category's channels reads as an unsaved edit.
+// Notes show their own saving state above the notes box.
 function SaveStatus() {
   const fetchers = useFetchers();
   const saving = fetchers.some(
-    (f) => f.state !== "idle" && f.formMethod === "POST",
+    (f) =>
+      f.state !== "idle" && f.formMethod === "POST" && f.key !== NOTES_FETCHER,
   );
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">

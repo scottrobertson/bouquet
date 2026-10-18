@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Sources have a notes box on their page, for anything you want to remember about a provider like
+  when it renews or who to contact for support. It saves when you click away from it.
+
 - Channels inside an auto-sync group now have a menu with "Play in VLC" and "Copy stream URL", like
   every other channel in the editor. You no longer have to find the channel in the source browser
   to try its stream.
