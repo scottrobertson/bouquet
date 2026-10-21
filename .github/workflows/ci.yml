@@ -5,12 +5,10 @@ name: CI
 on:
   push:
 
-# The image name on GitHub Container Registry. Images are pushed from main as
-# latest, and from the rust-backend branch as rust so it can be tried out
-# before it merges.
+# The image name on GitHub Container Registry. Images are only pushed from main.
 env:
   IMAGE_NAME: ghcr.io/scottrobertson/bouquet
-  PUSH: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-backend' }}
+  PUSH: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
   web:
@@ -65,8 +63,7 @@ jobs:
           git status --porcelain ../app/api/types
           test -z "$(git status --porcelain ../app/api/types)"
 
-  # Builds the Docker image to make sure it still works. Only pushes from the
-  # branches in PUSH.
+  # Builds the Docker image to make sure it still works. Only pushes on main.
   docker:
     name: Docker image
     needs: [web, server]
@@ -87,15 +84,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # latest on main, rust on the rust-backend branch, plus the git sha on
-      # every build.
+      # latest only on main, plus the git sha on every build.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=rust,enable=${{ github.ref == 'refs/heads/rust-backend' }}
             type=sha,format=long
 
       # Build and load into the local docker so we can boot it before pushing.
