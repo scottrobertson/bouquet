@@ -27,11 +27,10 @@ export function shouldRevalidate({
   return filtersOnly ? false : defaultShouldRevalidate;
 }
 
-// Read the collapsed choice on the server so the sidebar renders at the right
-// width before hydration, no flash.
-export function loader({ request }: Route.LoaderArgs) {
-  const cookie = request.headers.get("Cookie") ?? "";
-  const collapsed = /(?:^|;\s*)sidebar_collapsed=1(?:;|$)/.test(cookie);
+// Read the collapsed choice before the first render, so the sidebar opens at
+// the width it was left at.
+export function clientLoader() {
+  const collapsed = /(?:^|;\s*)sidebar_collapsed=1(?:;|$)/.test(document.cookie);
   return { sidebarCollapsed: collapsed };
 }
 

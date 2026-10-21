@@ -155,24 +155,34 @@ as sensitive.
 | `FFMPEG_PATH`  | `ffmpeg`    | Path to the ffmpeg binary                                             |
 | `PORT`         | `3000`      | Server port                                                           |
 
-Migrations apply automatically on startup.
+Database upgrades apply automatically on startup.
 
 ## Develop
+
+The server is Rust, in `server/`. The web app is React, built to static files
+that the server serves. In development they run side by side:
 
 ```sh
 npm install
 npm run dev
 ```
 
-The SQLite file lands at `./data/bouquet.db`.
+That starts both, the web app on :5173 and the server on :3000, with their
+output side by side. The server rebuilds and restarts when its code changes,
+which needs [watchexec](https://github.com/watchexec/watchexec)
+(`brew install watchexec`). `npm run dev:web` and `npm run dev:server` run
+either one on its own.
 
-- `npm run build` — production build
-- `npm run start` — run the production server (`server.js`)
-- `npm test` — run the tests
-- `npm run typecheck` — typegen + tsc
-- `npm run db:generate` — generate a migration after changing the schema
-- `npm run db:migrate` — apply migrations
-- `npm run db:studio` — open Drizzle Studio
+Vite passes everything that isn't a page through to the server. The SQLite file
+lands at `./data/bouquet.db`. Scheduled syncs, probes and backups only run in
+release builds.
+
+- `npm run build` then `cd server && cargo build --release` gives a single
+  binary with the web app inside it
+- `cd server && cargo test` runs the server tests, and writes the TypeScript
+  versions of the API types to `app/api/types`
+- `npm test` runs the web app's tests
+- `npm run typecheck` checks the web app against those types
 
 Most of this was written with [Claude](https://claude.com/claude-code), with a
 human reviewing every change before it lands. Treat it like any other code: read

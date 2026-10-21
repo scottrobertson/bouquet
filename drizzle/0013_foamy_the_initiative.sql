@@ -1,1 +1,0 @@
-ALTER TABLE `epg_programmes` DROP COLUMN `raw`;

@@ -389,6 +389,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- Bouquet's server is now written in Rust and ships as a single binary with the web app built in,
+  so the Docker image no longer needs Node. Nothing changes for your player: the M3U and EPG URLs,
+  their contents and your existing database all carry over as they are, and the database is
+  picked up on first start. Backups made by the last TypeScript version still restore. Older
+  backups (from before the last few releases) can't be upgraded by the new version; restore one of
+  those with the previous release first, then take a fresh backup.
+
 - When a probe fails, the server log now names the provider's category alongside the channel, so
   a line reads like `shammy: "UK: ITV 2 FHD" in "UK| ENTERTAINMENT" error: ...`. Providers file
   their channels by category, so when you report a batch of dead streams to them, the log already
@@ -565,6 +572,18 @@ All notable changes to this project are recorded here. Newest first.
   endpoints, so a playlist edit revalidates a small payload and feels instant.
 
 ## Fixed
+
+- When a provider turns a request away because it's busy (a 503 or 429), Bouquet now waits and
+  tries again, a few times with a growing pause, instead of giving up on it. Before, any guide
+  request the provider refused was quietly skipped, and the sync still looked complete while those
+  channels kept an old guide. If some channels still fail after retrying, the source now says how
+  many, so you know to sync again. Requests to the provider also ask for gzip, which cuts the data
+  a guide sync downloads by around 90%.
+
+- A source now shows as syncing until its guide has finished downloading too, not just its
+  channel list. It used to flip to OK partway through, so the page stopped watching for the rest
+  and the "Categories changed since the last sync" note stayed up after the sync had really
+  finished, until you reloaded.
 
 - The probe buttons in the playlist editor no longer touch a source you've switched off. "Probe
   enabled", "Probe missing", "Probe failed", "Probe auto-disabled", probing a category and probing

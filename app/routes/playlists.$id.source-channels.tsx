@@ -1,8 +1,5 @@
-import {
-  BROWSER_LIMIT,
-  browserCategories,
-  browserChannels,
-} from "~/services/playlist/queries.server";
+import type { SourceBrowserData } from "~/api/types/SourceBrowserData";
+import { apiLoad } from "~/lib/api";
 import type { Route } from "./+types/playlists.$id.source-channels";
 
 // Playlist edits would otherwise revalidate this big list on every mutation,
@@ -12,29 +9,8 @@ export function shouldRevalidate() {
   return false;
 }
 
-// Lazy endpoint for the source browser. Returns channels across every source
-// (each row carries its source), kept out of the editor loader so playlist edits
-// never reload this (potentially huge) list.
-export async function loader({ params, request }: Route.LoaderArgs) {
-  const playlistId = Number(params.id);
-  const url = new URL(request.url);
-
-  const categories = (url.searchParams.get("categories") ?? "")
-    .split(",")
-    .filter(Boolean);
-  const q = (url.searchParams.get("q") ?? "").trim();
-
-  const { rows, total, alreadyAdded } = browserChannels({
-    categories: categories.length ? categories : undefined,
-    q: q || undefined,
-    excludePlaylistId: playlistId,
-  });
-
-  return {
-    channels: rows,
-    categories: browserCategories(),
-    total,
-    alreadyAdded,
-    limit: BROWSER_LIMIT,
-  };
+// The source browser's channels across every source, kept out of the editor's
+// own data so playlist edits never reload this potentially huge list.
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<SourceBrowserData>(request);
 }

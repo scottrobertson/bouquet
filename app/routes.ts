@@ -27,16 +27,7 @@ export default [
     route("playlists/:id/settings", "routes/playlists.$id.settings.tsx"),
 
     route("settings", "routes/settings.tsx"),
-    route("settings/backup/:file", "routes/settings.backup.$file.tsx"),
   ]),
-
-  // Proxies remote channel logos through our origin (see routes/img.tsx).
-  route("img", "routes/img.tsx"),
-
-  // SSE stream the editor/source pages listen to for live sync/probe updates.
-  route("events", "routes/events.ts"),
-
-  // Public, no layout. Hit by IPTV players.
-  route("output/m3u/:token", "routes/output.m3u.$token.tsx"),
-  route("output/epg/:token", "routes/output.epg.$token.tsx"),
+  // The Rust server answers everything that isn't a page: /api, the public
+  // M3U and EPG output, the logo proxy, live updates and backup downloads.
 ] satisfies RouteConfig;

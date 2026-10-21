@@ -1,16 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
 import { ArrowLeft, Pencil, Trash2, Upload } from "lucide-react";
 import { useEffect } from "react";
-import {
-  Form,
-  Link,
-  data,
-  redirect,
-  useActionData,
-  useFetcher,
-} from "react-router";
+import { Form, Link, useActionData, useFetcher } from "react-router";
 import { toast } from "sonner";
-import { z } from "zod";
+import type { PlaylistSettingsData } from "~/api/types/PlaylistSettingsData";
+import { apiAction, apiLoad } from "~/lib/api";
 import { CopyField } from "~/components/copy-field";
 import { PageHeader } from "~/components/page-header";
 import {
@@ -20,7 +13,6 @@ import {
 import { UploadStatusBadge } from "~/components/playlists/upload-status-badge";
 import { RelativeTime } from "~/components/relative-time";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
-import { externalOrigin } from "~/lib/url.server";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,321 +35,26 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
-import { db } from "~/db/index.server";
-import type { S3Config } from "~/db/schema";
-import { playlists, uploadDestinations } from "~/db/schema";
-import { getPlaylist } from "~/services/playlist/queries.server";
-import { invalidate } from "~/services/output/cache.server";
-import { startUpload } from "~/services/upload/upload.server";
 import type { Route } from "./+types/playlists.$id.settings";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Settings · ${loaderData?.playlist.name ?? "Playlist"} · Bouquet` }];
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
-  const id = Number(params.id);
-  const playlist = getPlaylist(id);
-  if (!playlist) throw new Response("Not found", { status: 404 });
-
-  const origin = externalOrigin(request);
-
-  const destinations = db
-    .select()
-    .from(uploadDestinations)
-    .where(eq(uploadDestinations.playlistId, id))
-    .orderBy(asc(uploadDestinations.id))
-    .all()
-    .map((d) => {
-      // Redact the secret key: it never goes to the browser. Editing leaves the
-      // field blank, which means "keep the stored one".
-      const raw = d.config as Record<string, unknown>;
-      const config: DestinationDTO["config"] = {
-        endpoint: raw.endpoint as string | undefined,
-        region: raw.region as string | undefined,
-        bucket: raw.bucket as string | undefined,
-        accessKeyId: raw.accessKeyId as string | undefined,
-        forcePathStyle: raw.forcePathStyle as boolean | undefined,
-        prefix: raw.prefix as string | undefined,
-        path: raw.path as string | undefined,
-      };
-      const publicBase = d.publicUrlBase?.replace(/\/+$/, "");
-      return {
-        id: d.id,
-        name: d.name,
-        type: d.type,
-        enabled: d.enabled,
-        m3uPath: d.m3uPath,
-        epgPath: d.epgPath,
-        publicUrlBase: d.publicUrlBase,
-        uploadStatus: d.uploadStatus,
-        lastUploadedAt: d.lastUploadedAt ? d.lastUploadedAt.toISOString() : null,
-        uploadError: d.uploadError,
-        config,
-        publicM3uUrl: publicBase
-          ? `${publicBase}/${d.m3uPath.replace(/^\/+/, "")}`
-          : null,
-        publicEpgUrl: publicBase
-          ? `${publicBase}/${d.epgPath.replace(/^\/+/, "")}`
-          : null,
-      };
-    });
-
-  return {
-    playlist: {
-      id: playlist.id,
-      name: playlist.name,
-      altNameTemplate: playlist.altNameTemplate,
-      channelNameTemplate: playlist.channelNameTemplate,
-      smartSortPrefer: playlist.smartSortPrefer,
-      smartSortAudio: playlist.smartSortAudio,
-      smartSortAvailableFirst: playlist.smartSortAvailableFirst,
-      autoDisableFailedProbesAfter: playlist.autoDisableFailedProbesAfter,
-    },
-    m3uUrl: `${origin}/output/m3u/${playlist.outputToken}`,
-    epgUrl: `${origin}/output/epg/${playlist.outputToken}`,
-    destinations,
-  };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<PlaylistSettingsData>(request);
 }
 
-const nameSchema = z.string().trim().min(1, "Name is required");
+type ActionResult =
+  | { ok: true; intent: string }
+  | { ok: false; error: string; intent?: string };
 
-const destinationFields = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  type: z.enum(["s3", "local"]),
-  m3uPath: z.string().trim().min(1).catch("playlist.m3u"),
-  epgPath: z.string().trim().min(1).catch("playlist.xml"),
-  publicUrlBase: z.string().trim(),
-});
-
-/** Build a destination's config from the form, validating per type. For an S3
-    edit, a blank secret means keep the existing one. */
-function parseConfig(
-  form: FormData,
-  type: "s3" | "local",
-  existing?: S3Config,
-): { config: Record<string, unknown> } | { error: string } {
-  if (type === "s3") {
-    const region = String(form.get("region") ?? "").trim();
-    const bucket = String(form.get("bucket") ?? "").trim();
-    const accessKeyId = String(form.get("accessKeyId") ?? "").trim();
-    const secret = String(form.get("secretAccessKey") ?? "");
-    const secretAccessKey = secret || existing?.secretAccessKey || "";
-    if (!region) return { error: "Region is required" };
-    if (!bucket) return { error: "Bucket is required" };
-    if (!accessKeyId) return { error: "Access key ID is required" };
-    if (!secretAccessKey) return { error: "Secret access key is required" };
-    const endpoint = String(form.get("endpoint") ?? "").trim();
-    const prefix = String(form.get("prefix") ?? "").trim();
-    return {
-      config: {
-        region,
-        bucket,
-        accessKeyId,
-        secretAccessKey,
-        endpoint: endpoint || undefined,
-        prefix: prefix || undefined,
-        forcePathStyle: form.get("forcePathStyle") != null,
-      },
-    };
-  }
-  const path = String(form.get("path") ?? "").trim();
-  if (!path) return { error: "Folder path is required" };
-  return { config: { path } };
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<ActionResult>(request);
 }
-
-// The template must keep {name} so the primary's name shows, and {n} so each
-// alternate gets a different number.
-const templateSchema = z
-  .string()
-  .trim()
-  .min(1, "Template is required")
-  .refine((s) => s.includes("{name}"), "Must include {name}")
-  .refine((s) => s.includes("{n}"), "Must include {n}");
-
-const channelTemplateSchema = z
-  .string()
-  .trim()
-  .min(1, "Template is required")
-  .refine((s) => s.includes("{name}"), "Must include {name}");
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const id = Number(params.id);
-  const playlist = getPlaylist(id);
-  if (!playlist) throw new Response("Not found", { status: 404 });
-
-  const form = await request.formData();
-  const intent = form.get("intent");
-
-  if (intent === "renamePlaylist") {
-    const parsed = nameSchema.safeParse(form.get("name"));
-    if (!parsed.success) {
-      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
-    }
-    db.update(playlists).set({ name: parsed.data }).where(eq(playlists.id, id)).run();
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "setChannelTemplate") {
-    const parsed = channelTemplateSchema.safeParse(form.get("channelNameTemplate"));
-    if (!parsed.success) {
-      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
-    }
-    db.update(playlists)
-      .set({ channelNameTemplate: parsed.data })
-      .where(eq(playlists.id, id))
-      .run();
-    invalidate(playlist.outputToken);
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "setAltTemplate") {
-    const parsed = templateSchema.safeParse(form.get("altNameTemplate"));
-    if (!parsed.success) {
-      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
-    }
-    db.update(playlists)
-      .set({ altNameTemplate: parsed.data })
-      .where(eq(playlists.id, id))
-      .run();
-    // Names in the M3U change, so drop the cached output.
-    invalidate(playlist.outputToken);
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "setSmartSort") {
-    const prefer = form.get("smartSortPrefer") === "bitrate" ? "bitrate" : "resolution";
-    db.update(playlists)
-      .set({
-        smartSortPrefer: prefer,
-        // Switches only submit a value when on, so a missing field means off.
-        smartSortAudio: form.get("smartSortAudio") != null,
-        smartSortAvailableFirst: form.get("smartSortAvailableFirst") != null,
-      })
-      .where(eq(playlists.id, id))
-      .run();
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "setAutoDisable") {
-    const after = z.coerce
-      .number()
-      .int()
-      .min(0)
-      .max(20)
-      .catch(3)
-      .parse(form.get("autoDisableFailedProbesAfter"));
-    db.update(playlists)
-      .set({ autoDisableFailedProbesAfter: after })
-      .where(eq(playlists.id, id))
-      .run();
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "deletePlaylist") {
-    db.delete(playlists).where(eq(playlists.id, id)).run();
-    return redirect("/playlists");
-  }
-
-  if (intent === "addDestination" || intent === "updateDestination") {
-    const fields = destinationFields.safeParse({
-      name: form.get("name"),
-      type: form.get("type"),
-      m3uPath: form.get("m3uPath"),
-      epgPath: form.get("epgPath"),
-      publicUrlBase: form.get("publicUrlBase") ?? "",
-    });
-    if (!fields.success) {
-      return data(
-        { ok: false, error: fields.error.issues[0].message, intent },
-        { status: 400 },
-      );
-    }
-
-    // Keep the stored secret when an S3 edit leaves the field blank.
-    let existing: S3Config | undefined;
-    let destId: number | undefined;
-    if (intent === "updateDestination") {
-      destId = Number(form.get("id"));
-      const row = db
-        .select()
-        .from(uploadDestinations)
-        .where(
-          and(
-            eq(uploadDestinations.id, destId),
-            eq(uploadDestinations.playlistId, id),
-          ),
-        )
-        .get();
-      if (!row) {
-        return data({ ok: false, error: "Destination not found", intent }, { status: 404 });
-      }
-      if (row.type === "s3") existing = row.config as S3Config;
-    }
-
-    const parsed = parseConfig(form, fields.data.type, existing);
-    if ("error" in parsed) {
-      return data({ ok: false, error: parsed.error, intent }, { status: 400 });
-    }
-
-    const values = {
-      name: fields.data.name,
-      type: fields.data.type,
-      config: parsed.config as never,
-      m3uPath: fields.data.m3uPath,
-      epgPath: fields.data.epgPath,
-      publicUrlBase: fields.data.publicUrlBase || null,
-    };
-
-    if (intent === "addDestination") {
-      db.insert(uploadDestinations).values({ playlistId: id, ...values }).run();
-    } else {
-      db.update(uploadDestinations)
-        .set(values)
-        .where(eq(uploadDestinations.id, destId!))
-        .run();
-    }
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "uploadDestination") {
-    const destId = Number(form.get("id"));
-    const row = db
-      .select({ id: uploadDestinations.id })
-      .from(uploadDestinations)
-      .where(
-        and(
-          eq(uploadDestinations.id, destId),
-          eq(uploadDestinations.playlistId, id),
-        ),
-      )
-      .get();
-    if (!row) {
-      return data({ ok: false, error: "Destination not found", intent }, { status: 404 });
-    }
-    startUpload(destId);
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "deleteDestination") {
-    const destId = Number(form.get("id"));
-    db.delete(uploadDestinations)
-      .where(
-        and(
-          eq(uploadDestinations.id, destId),
-          eq(uploadDestinations.playlistId, id),
-        ),
-      )
-      .run();
-    return data({ ok: true, intent });
-  }
-
-  return data({ ok: false, error: "Unknown action" }, { status: 400 });
-}
-
 export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
   const { playlist, m3uUrl, epgUrl, destinations } = loaderData;
-  const actionData = useActionData<typeof action>();
+  const actionData = useActionData<typeof clientAction>();
 
   // Keep status badges live while an upload is running in the background.
   useLiveRevalidate(destinations.some((d) => d.uploadStatus === "uploading"));

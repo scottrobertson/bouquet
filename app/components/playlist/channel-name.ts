@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext } from "react";
-import { channelName } from "~/services/playlist/alt-name";
+import { channelName } from "~/lib/alt-name";
 
 /** The playlist's channel name template, so editor rows show the same name the
     player gets. */

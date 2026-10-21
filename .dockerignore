@@ -1,4 +1,6 @@
 .react-router
 build
 node_modules
+server/target
+data
 README.md

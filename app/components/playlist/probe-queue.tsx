@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { channelName } from "~/services/playlist/alt-name";
+import { channelName } from "~/lib/alt-name";
 import type { EditorChannel } from "./types";
 
 // Long queues are the normal case, so only the first slice is rendered and the

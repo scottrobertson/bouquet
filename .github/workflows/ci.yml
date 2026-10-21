@@ -23,9 +23,36 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+      # The tests write the TypeScript versions of the API types. If a Rust
+      # change altered them and they weren't committed, the browser app was
+      # checked against the old ones.
+      - name: Check the generated API types are committed
+        run: |
+          git status --porcelain ../app/api/types
+          test -z "$(git status --porcelain ../app/api/types)"
+
   # Builds the Docker image to make sure it still works. Only pushes on main.
   build:
-    needs: test
+    needs: [test, server]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -62,10 +89,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Boot the built image the same way it's run for real (NODE_ENV is baked
-      # into the image, not passed in). The image build runs `npm ci --omit=dev`,
-      # so this catches anything only broken at runtime with prod-only deps, like
-      # a package server.js imports being in the wrong dependency group.
+      # Boot the built image the same way it's run for real, to catch anything
+      # that only breaks at runtime, like a missing system library.
       - name: Smoke test the image boots
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)

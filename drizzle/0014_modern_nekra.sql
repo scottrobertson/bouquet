@@ -1,1 +1,0 @@
-ALTER TABLE `sources` ADD `sync_interval_minutes` integer DEFAULT 1440 NOT NULL;

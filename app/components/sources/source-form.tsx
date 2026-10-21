@@ -59,6 +59,12 @@ type TestFetcherData = {
   fieldErrors?: Partial<Record<keyof SourceFormValues, string>>;
 };
 
+/** What the add and edit actions send back when they don't navigate away. */
+export type SourceFormResult =
+  | { testResult: TestResult }
+  | { fieldErrors: Partial<Record<keyof SourceFormValues, string>> }
+  | { error: string };
+
 export function SourceForm({
   defaults,
   maxConnections,

@@ -1,7 +1,7 @@
 import type { Config } from "@react-router/dev/config";
 
 export default {
-  // Config options...
-  // Server-side render by default, to enable SPA mode set this to `false`
-  ssr: true,
+  // A browser-only app. The Rust server in server/ serves the built files and
+  // answers every data request.
+  ssr: false,
 } satisfies Config;

@@ -21,7 +21,7 @@ import {
   CODEC_EFFICIENCY_TABLE,
   type SmartSortConfig,
   type SmartSortFactors,
-} from "~/services/playlist/smart-sort";
+} from "~/lib/smart-sort";
 
 type PreviewStream = {
   id: number;

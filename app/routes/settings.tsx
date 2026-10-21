@@ -1,7 +1,9 @@
 import { AlertTriangle, Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect } from "react";
-import { Form, data, useActionData, useNavigation } from "react-router";
+import { Form, useActionData, useNavigation } from "react-router";
 import { toast } from "sonner";
+import type { BackupInfo } from "~/api/types/BackupInfo";
+import type { SettingsData } from "~/api/types/SettingsData";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { RelativeTime } from "~/components/relative-time";
@@ -26,72 +28,23 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { env } from "~/lib/env.server";
-import {
-  createBackup,
-  deleteBackup,
-  listBackups,
-  restoreBackup,
-  type BackupInfo,
-} from "~/services/backup/backup.server";
+import { apiAction, apiLoad } from "~/lib/api";
 import type { Route } from "./+types/settings";
 
 export function meta() {
   return [{ title: "Settings · Bouquet" }];
 }
 
-export function loader() {
-  return {
-    backups: listBackups(),
-    backupsPath: env.backupsPath,
-    backupCron: env.backupCron,
-    backupKeep: env.backupKeep,
-  };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<SettingsData>(request);
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const form = await request.formData();
-  const intent = form.get("intent");
-
-  if (intent === "backupNow") {
-    const { file } = createBackup("manual");
-    return data({ ok: true, intent, message: `Backup created: ${file}` });
-  }
-
-  if (intent === "deleteBackup") {
-    try {
-      deleteBackup(String(form.get("file") ?? ""));
-      return data({ ok: true, intent, message: "Backup deleted" });
-    } catch (err) {
-      return data(
-        { ok: false, intent, message: err instanceof Error ? err.message : "Delete failed" },
-        { status: 400 },
-      );
-    }
-  }
-
-  if (intent === "restore") {
-    try {
-      restoreBackup(String(form.get("file") ?? ""));
-      return data({
-        ok: true,
-        intent,
-        message: "Restored from backup.",
-      });
-    } catch (err) {
-      return data(
-        { ok: false, intent, message: err instanceof Error ? err.message : "Restore failed" },
-        { status: 400 },
-      );
-    }
-  }
-
-  return data({ ok: false, message: "Unknown action" }, { status: 400 });
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<{ ok: boolean; intent?: string; message: string }>(request);
 }
-
 export default function SettingsPage({ loaderData }: Route.ComponentProps) {
   const { backups, backupsPath, backupCron, backupKeep } = loaderData;
-  const actionData = useActionData<typeof action>();
+  const actionData = useActionData<typeof clientAction>();
   const nav = useNavigation();
   const backingUp =
     nav.state !== "idle" && nav.formData?.get("intent") === "backupNow";

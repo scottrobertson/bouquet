@@ -1,7 +1,7 @@
 import { Badge } from "~/components/ui/badge";
-import type { Source } from "~/db/schema";
+import type { SourceProbeStatus } from "~/api/types/SourceProbeStatus";
 
-const STYLES: Record<Source["probeStatus"], { label: string; className: string }> = {
+const STYLES: Record<SourceProbeStatus, { label: string; className: string }> = {
   ok: { label: "Probed", className: "bg-success/10 text-success border-transparent" },
   error: { label: "Probe error", className: "bg-destructive/10 text-destructive border-transparent" },
   probing: { label: "Probing", className: "bg-warning/10 text-warning border-transparent" },
@@ -14,7 +14,7 @@ export function ProbeStatusBadge({
   done,
   total,
 }: {
-  status: Source["probeStatus"];
+  status: SourceProbeStatus;
   done?: number;
   total?: number;
 }) {

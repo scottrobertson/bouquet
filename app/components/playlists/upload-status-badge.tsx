@@ -1,10 +1,7 @@
 import { Badge } from "~/components/ui/badge";
-import type { UploadDestination } from "~/db/schema";
+import type { UploadStatus } from "~/api/types/UploadStatus";
 
-const STYLES: Record<
-  UploadDestination["uploadStatus"],
-  { label: string; className: string }
-> = {
+const STYLES: Record<UploadStatus, { label: string; className: string }> = {
   ok: { label: "Uploaded", className: "bg-success/10 text-success border-transparent" },
   error: { label: "Error", className: "bg-destructive/10 text-destructive border-transparent" },
   uploading: { label: "Uploading", className: "bg-warning/10 text-warning border-transparent" },
@@ -14,7 +11,7 @@ const STYLES: Record<
 export function UploadStatusBadge({
   status,
 }: {
-  status: UploadDestination["uploadStatus"];
+  status: UploadStatus;
 }) {
   const s = STYLES[status];
   return <Badge className={s.className}>{s.label}</Badge>;

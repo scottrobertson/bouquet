@@ -58,7 +58,7 @@ import { cn } from "~/lib/utils";
 import {
   needsSmartSort,
   type SmartSortConfig,
-} from "~/services/playlist/smart-sort";
+} from "~/lib/smart-sort";
 import { buildBoardRows, estimateRowHeight } from "./board-rows";
 import {
   AutoChannelRow,
@@ -1036,9 +1036,6 @@ export function EditorBoard({
 
   return (
     <DndContext
-      // dnd-kit ids off a module counter that differs between server and client,
-      // so without a fixed id the aria-describedby mismatches on hydration.
-      id="playlist-editor"
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}

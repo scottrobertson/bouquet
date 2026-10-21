@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import {
   Check,
   ChevronRight,
@@ -16,12 +15,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
   Link,
-  data,
-  redirect,
   useFetcher,
   useFetchers,
   useNavigation,
 } from "react-router";
+import type { SourceChannelRow } from "~/api/types/SourceChannelRow";
+import type { SourceDetailData } from "~/api/types/SourceDetailData";
+import { apiAction, apiLoad } from "~/lib/api";
 import { toast } from "sonner";
 import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { PageHeader } from "~/components/page-header";
@@ -50,113 +50,27 @@ import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
 import { logoSrc } from "~/lib/logo";
 import { cn } from "~/lib/utils";
-import { db } from "~/db/index.server";
-import { sources } from "~/db/schema";
-import { invalidateAll } from "~/services/output/cache.server";
-import {
-  listSourceCategories,
-  setAllSourceCategories,
-  setSourceCategoryEnabled,
-} from "~/services/sources/categories.server";
-import { startSync } from "~/services/sync/sync.server";
-import { startProbe } from "~/services/probe/probe.server";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
-import type { SourceChannelRow } from "~/services/sources/channels.server";
-import type { loader as channelsLoader } from "./sources.$id.channels";
+import type { clientLoader as channelsLoader } from "./sources.$id.channels";
 import type { Route } from "./+types/sources.$id";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `${loaderData?.source.name ?? "Source"} · Bouquet` }];
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
-  const id = Number(params.id);
-  const source = db.select().from(sources).where(eq(sources.id, id)).get();
-  if (!source) throw new Response("Not found", { status: 404 });
-
-  return {
-    source: {
-      id: source.id,
-      name: source.name,
-      enabled: source.enabled,
-      syncStatus: source.syncStatus,
-      lastSyncedAt: source.lastSyncedAt ? source.lastSyncedAt.toISOString() : null,
-      channelCount: source.channelCount,
-      lastError: source.lastError,
-      epgStale: source.epgStale,
-      syncIntervalMinutes: source.syncIntervalMinutes,
-      // Undefined before the first sync reads these, so the UI can say
-      // "Unknown" rather than "Never"/"—".
-      expiresAt: source.lastSyncedAt
-        ? (source.expiresAt ? source.expiresAt.toISOString() : null)
-        : undefined,
-      maxConnections: source.lastSyncedAt ? source.maxConnections : undefined,
-      accountStatus: source.accountStatus,
-      probeEnabled: source.probeEnabled,
-      probeStatus: source.probeStatus,
-      probeIntervalMinutes: source.probeIntervalMinutes,
-      lastProbedAt: source.lastProbedAt ? source.lastProbedAt.toISOString() : null,
-      probeTotal: source.probeTotal,
-      probeDone: source.probeDone,
-      probeError: source.probeError,
-      notes: source.notes,
-    },
-    categories: listSourceCategories(id),
-  };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<SourceDetailData>(request);
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
-  const id = Number(params.id);
-  const form = await request.formData();
-  const intent = form.get("intent");
+type ActionResult =
+  | { intent: "sync" | "probe"; started: true }
+  | { intent: "setEnabled"; enabled: boolean }
+  | { intent: "setNotes" | "toggleCategory" | "setAllCategories"; ok: true }
+  | { ok: false; error: string };
 
-  if (intent === "sync") {
-    startSync(id);
-    return data({ intent: "sync" as const, started: true });
-  }
-
-  if (intent === "probe") {
-    startProbe(id);
-    return data({ intent: "probe" as const, started: true });
-  }
-
-  if (intent === "setEnabled") {
-    const enabled = form.get("enabled") === "true";
-    db.update(sources).set({ enabled }).where(eq(sources.id, id)).run();
-    invalidateAll();
-    return data({ intent: "setEnabled" as const, enabled });
-  }
-
-  if (intent === "setNotes") {
-    const notes = String(form.get("notes") ?? "").trim() || null;
-    db.update(sources).set({ notes }).where(eq(sources.id, id)).run();
-    return data({ intent: "setNotes" as const, ok: true });
-  }
-
-  if (intent === "delete") {
-    db.delete(sources).where(eq(sources.id, id)).run();
-    return redirect("/sources");
-  }
-
-  if (intent === "toggleCategory") {
-    setSourceCategoryEnabled(
-      id,
-      String(form.get("name") ?? ""),
-      form.get("enabled") === "true",
-    );
-    invalidateAll();
-    return data({ intent: "toggleCategory" as const, ok: true });
-  }
-
-  if (intent === "setAllCategories") {
-    setAllSourceCategories(id, form.get("enabled") === "true");
-    invalidateAll();
-    return data({ intent: "setAllCategories" as const, ok: true });
-  }
-
-  return data({ ok: false, error: "Unknown action" }, { status: 400 });
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<ActionResult>(request);
 }
-
 export default function SourceDetail({ loaderData, actionData }: Route.ComponentProps) {
   const { source, categories } = loaderData;
   const onCount = categories.filter((c) => c.enabled).length;
@@ -781,10 +695,7 @@ function ExpiresMeta({ expiresAt }: { expiresAt: string | null | undefined }) {
   return (
     <Meta
       label="Expires"
-      // The date is spelled out using the viewer's own locale and clock, which
-      // the server can't know, so React is told to accept whatever the browser
-      // comes up with instead of treating the page as broken.
-      value={<span suppressHydrationWarning>{text}</span>}
+      value={text}
       valueClassName={expired ? "text-destructive" : undefined}
     />
   );

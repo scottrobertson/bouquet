@@ -1,1 +1,0 @@
-ALTER TABLE `sources` ADD `probe_measure_bitrate` integer DEFAULT false NOT NULL;

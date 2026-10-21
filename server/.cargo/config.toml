@@ -1,0 +1,9 @@
+[env]
+# ts-rs writes the TypeScript versions of the API types here when tests run.
+TS_RS_EXPORT_DIR = { value = "../app/api/types", relative = true }
+# Ids, counts and timestamps all fit in a JavaScript number, which is what the
+# app already uses for them.
+TS_RS_LARGE_INT = "number"
+# `cargo run` uses the repo's data folder, the same database the app has always
+# used in development. An exported CONFIG_PATH still wins.
+CONFIG_PATH = { value = "../data", relative = true, force = false }

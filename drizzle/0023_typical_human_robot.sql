@@ -1,1 +1,0 @@
-ALTER TABLE `playlists` ADD `channel_name_template` text DEFAULT '{name}' NOT NULL;

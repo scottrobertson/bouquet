@@ -10,7 +10,7 @@ export type EditorChannel = {
   enabled: boolean;
   // Set when auto-disabled after repeated probe failures, so the row can show
   // it differently from a manual disable. Null otherwise.
-  autoDisabledAt: Date | null;
+  autoDisabledAt: string | null;
   epgSourceId: number | null;
   epgChannelId: string | null;
   sourceName: string;
