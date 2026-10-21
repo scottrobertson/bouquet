@@ -1,8 +1,9 @@
 name: CI
 
+# Push only. A pull_request trigger as well would run every job twice for a
+# branch with an open PR, and push checks show on the PR anyway.
 on:
   push:
-  pull_request:
 
 # The image name on GitHub Container Registry. Images are pushed from main as
 # latest, and from the rust-backend branch as rust so it can be tried out
