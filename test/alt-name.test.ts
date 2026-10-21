@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { altName, channelName } from "~/services/playlist/alt-name";
+import { altName, channelName } from "~/lib/alt-name";
 
 const strong = { name: "BBC One", n: 1, provider: "Strong8k" };
 

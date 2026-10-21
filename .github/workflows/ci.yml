@@ -1,15 +1,18 @@
 name: CI
 
+# Push only. A pull_request trigger as well would run every job twice for a
+# branch with an open PR, and push checks show on the PR anyway.
 on:
   push:
-  pull_request:
 
-# The image name on GitHub Container Registry.
+# The image name on GitHub Container Registry. Images are only pushed from main.
 env:
   IMAGE_NAME: ghcr.io/scottrobertson/bouquet
+  PUSH: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
-  test:
+  web:
+    name: Web app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,9 +26,47 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Rust as .tool-versions, so clippy here flags exactly what it
+      # flags locally.
+      - id: rust
+        run: echo "version=$(awk '$1 == "rust" { print $2 }' ../.tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+          components: clippy
+
+      # Saved even when clippy or a test fails, so the next run doesn't have
+      # to build every dependency from scratch again.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          cache-on-failure: true
+
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+      # The tests write the TypeScript versions of the API types. If a Rust
+      # change altered them and they weren't committed, the browser app was
+      # checked against the old ones.
+      - name: Check the generated API types are committed
+        run: |
+          git status --porcelain ../app/api/types
+          test -z "$(git status --porcelain ../app/api/types)"
+
   # Builds the Docker image to make sure it still works. Only pushes on main.
-  build:
-    needs: test
+  docker:
+    name: Docker image
+    needs: [web, server]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,7 +77,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       # Only need to log in when we're going to push.
-      - if: github.ref == 'refs/heads/main'
+      - if: env.PUSH == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -62,10 +103,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Boot the built image the same way it's run for real (NODE_ENV is baked
-      # into the image, not passed in). The image build runs `npm ci --omit=dev`,
-      # so this catches anything only broken at runtime with prod-only deps, like
-      # a package server.js imports being in the wrong dependency group.
+      # Boot the built image the same way it's run for real, to catch anything
+      # that only breaks at runtime, like a missing system library.
       - name: Smoke test the image boots
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
@@ -81,5 +120,5 @@ jobs:
           docker rm -f smoke >/dev/null 2>&1 || true
           [ "$ok" = 1 ] || { echo "image did not boot"; exit 1; }
 
-      - if: github.ref == 'refs/heads/main'
+      - if: env.PUSH == 'true'
         run: echo "${{ steps.meta.outputs.tags }}" | xargs -n1 docker push

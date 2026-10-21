@@ -4,7 +4,7 @@ import {
   nameSimilarity,
   normaliseChannelName,
   suggestPrimaries,
-} from "~/services/playlist/channel-match";
+} from "~/lib/channel-match";
 
 // Every name in this file is a real one from a 39,000 channel catalogue across
 // two providers.

@@ -1,5 +1,6 @@
-import { eq } from "drizzle-orm";
 import { ArrowLeft, History } from "lucide-react";
+import type { SourceChangesData } from "~/api/types/SourceChangesData";
+import { apiLoad } from "~/lib/api";
 import { Link, useNavigate } from "react-router";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -21,53 +22,21 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { cn } from "~/lib/utils";
-import { db } from "~/db/index.server";
-import { sources } from "~/db/schema";
-import { changesForSync, listSyncs } from "~/services/sources/changes.server";
 import type { Route } from "./+types/sources.$id.changes";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Changes · ${loaderData?.source.name ?? "Source"} · Bouquet` }];
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
-  const id = Number(params.id);
-  const source = db
-    .select({ id: sources.id, name: sources.name })
-    .from(sources)
-    .where(eq(sources.id, id))
-    .get();
-  if (!source) throw new Response("Not found", { status: 404 });
-
-  const syncs = listSyncs(id).map((s) => ({
-    at: String(s.syncedAt.getTime()),
-    syncedAt: s.syncedAt.toISOString(),
-    added: Number(s.added),
-    removed: Number(s.removed),
-  }));
-
-  // Selected sync comes from ?at (epoch ms); default to the most recent.
-  const atParam = new URL(request.url).searchParams.get("at");
-  const selectedAt =
-    (atParam && syncs.some((s) => s.at === atParam) ? atParam : null) ??
-    syncs[0]?.at ??
-    null;
-
-  const changes = selectedAt
-    ? changesForSync(id, new Date(Number(selectedAt))).map((c) => ({
-        id: c.id,
-        kind: c.kind,
-        name: c.name,
-        categoryName: c.categoryName,
-        playlists: c.playlists ?? [],
-      }))
-    : [];
-
-  return { source, syncs, selectedAt, changes };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<SourceChangesData>(request);
 }
-
-type Change = Route.ComponentProps["loaderData"]["changes"][number];
-type Kind = Change["kind"];
+type Kind =
+  | "channel_added"
+  | "channel_returned"
+  | "channel_removed"
+  | "category_added"
+  | "category_removed";
 
 const isAdd = (k: Kind) =>
   k === "channel_added" || k === "category_added" || k === "channel_returned";

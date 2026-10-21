@@ -1,9 +1,8 @@
-import { eq } from "drizzle-orm";
 import { ListVideo, MoreHorizontal, Plus, Settings } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Form, Link, data, redirect, useFetcher, useNavigation } from "react-router";
-import { nanoid } from "nanoid";
-import { z } from "zod";
+import { useState, type ReactNode } from "react";
+import { Form, Link, useFetcher, useNavigation } from "react-router";
+import type { PlaylistsData } from "~/api/types/PlaylistsData";
+import { apiAction, apiLoad } from "~/lib/api";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { RelativeTime } from "~/components/relative-time";
@@ -45,58 +44,22 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { cn } from "~/lib/utils";
-import { db } from "~/db/index.server";
-import { playlists } from "~/db/schema";
-import { listPlaylists } from "~/services/playlist/queries.server";
 import type { Route } from "./+types/playlists._index";
 
 export function meta() {
   return [{ title: "Playlists · Bouquet" }];
 }
 
-export async function loader() {
-  return { playlists: listPlaylists() };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<PlaylistsData>(request);
 }
 
-const nameSchema = z.string().trim().min(1, "Name is required");
+type ActionResult =
+  | { ok: true; intent: "delete" }
+  | { ok: false; error: string };
 
-export async function action({ request }: Route.ActionArgs) {
-  const form = await request.formData();
-  const intent = form.get("intent");
-
-  if (intent === "create") {
-    const parsed = nameSchema.safeParse(form.get("name"));
-    if (!parsed.success) {
-      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
-    }
-    const created = db
-      .insert(playlists)
-      .values({ name: parsed.data, outputToken: nanoid() })
-      .returning()
-      .get();
-    return redirect(`/playlists/${created.id}`);
-  }
-
-  const id = Number(form.get("id"));
-  if (!Number.isFinite(id)) {
-    return data({ ok: false, error: "Missing playlist" }, { status: 400 });
-  }
-
-  if (intent === "rename") {
-    const parsed = nameSchema.safeParse(form.get("name"));
-    if (!parsed.success) {
-      return data({ ok: false, error: parsed.error.issues[0].message }, { status: 400 });
-    }
-    db.update(playlists).set({ name: parsed.data }).where(eq(playlists.id, id)).run();
-    return data({ ok: true, intent });
-  }
-
-  if (intent === "delete") {
-    db.delete(playlists).where(eq(playlists.id, id)).run();
-    return data({ ok: true, intent });
-  }
-
-  return data({ ok: false, error: "Unknown action" }, { status: 400 });
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<ActionResult>(request);
 }
 
 export default function PlaylistsIndex({ loaderData }: Route.ComponentProps) {
@@ -159,9 +122,8 @@ function Th({ className, children }: { className?: string; children?: ReactNode 
 }
 
 function PlaylistRow({ playlist }: { playlist: Row }) {
-  const fetcher = useFetcher<typeof action>();
+  const fetcher = useFetcher<typeof clientAction>();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
 
   return (
     <TableRow className="border-white/5 hover:bg-white/[0.02]">
@@ -187,9 +149,6 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
-              Rename
-            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to={`/playlists/${playlist.id}/settings`}>
                 <Settings className="size-4" />
@@ -208,13 +167,6 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <RenameDialog
-          open={renameOpen}
-          onOpenChange={setRenameOpen}
-          playlist={playlist}
-          fetcher={fetcher}
-        />
 
         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <AlertDialogContent>
@@ -243,56 +195,6 @@ function PlaylistRow({ playlist }: { playlist: Row }) {
         </AlertDialog>
       </TableCell>
     </TableRow>
-  );
-}
-
-function RenameDialog({
-  open,
-  onOpenChange,
-  playlist,
-  fetcher,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  playlist: Row;
-  fetcher: ReturnType<typeof useFetcher<typeof action>>;
-}) {
-  // Close once the rename request settles.
-  const wasSubmitting = useRef(false);
-  useEffect(() => {
-    if (fetcher.state === "submitting") wasSubmitting.current = true;
-    else if (fetcher.state === "idle" && wasSubmitting.current) {
-      wasSubmitting.current = false;
-      if (fetcher.data && "ok" in fetcher.data && fetcher.data.ok) onOpenChange(false);
-    }
-  }, [fetcher.state, fetcher.data, onOpenChange]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename playlist</DialogTitle>
-        </DialogHeader>
-        <fetcher.Form method="post" className="space-y-4">
-          <input type="hidden" name="intent" value="rename" />
-          <input type="hidden" name="id" value={playlist.id} />
-          <div className="space-y-2">
-            <Label htmlFor={`rename-${playlist.id}`}>Name</Label>
-            <Input
-              id={`rename-${playlist.id}`}
-              name="name"
-              defaultValue={playlist.name}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" size="sm">
-              Save
-            </Button>
-          </DialogFooter>
-        </fetcher.Form>
-      </DialogContent>
-    </Dialog>
   );
 }
 

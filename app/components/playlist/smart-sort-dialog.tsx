@@ -17,11 +17,12 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import { qualityMeta } from "~/lib/quality";
+import { cn } from "~/lib/utils";
 import {
   CODEC_EFFICIENCY_TABLE,
   type SmartSortConfig,
   type SmartSortFactors,
-} from "~/services/playlist/smart-sort";
+} from "~/lib/smart-sort";
 
 type PreviewStream = {
   id: number;
@@ -60,10 +61,14 @@ function ruleItems(config: SmartSortConfig): { text: string; bitrate?: boolean }
   ];
   if (config.audio)
     items.push({ text: "Ties broken by audio (surround over stereo)" });
-  if (config.availableFirst)
+  if (config.availableFirst) {
     items.push({
       text: "Working streams first, then unprobed, failed, auto-disabled, then source off",
     });
+    items.push({
+      text: "Streams that failed more than 1 in 5 recent probes drop below steady ones",
+    });
+  }
   return items;
 }
 
@@ -124,7 +129,9 @@ const STATUS_LABEL: Record<SmartSortFactors["liveness"], string | null> = {
 };
 
 function StatusBadge({ factors }: { factors: SmartSortFactors }) {
-  const label = STATUS_LABEL[factors.liveness];
+  const label = factors.blip
+    ? "Last probe failed"
+    : STATUS_LABEL[factors.liveness];
   if (!label) return null;
   return (
     <Badge
@@ -143,10 +150,11 @@ function StatusBadge({ factors }: { factors: SmartSortFactors }) {
 /** One row of the proposed order: its new rank, the stream, the data behind it,
     and how far it moved. */
 function PreviewRow({ stream, index }: { stream: PreviewStream; index: number }) {
-  const meta = qualityMeta(stream);
+  const f = stream.factors;
+  // A one off failure is still ranked on its typical numbers, so show them.
+  const meta = qualityMeta(f.blip ? { ...stream, probeStatus: "ok" } : stream);
   const moved = index - stream.currentPosition;
   const wasPrimary = stream.currentlyPrimary && index !== 0;
-  const f = stream.factors;
   const bitrate = mbps(f.rawBitrateKbps);
 
   return (
@@ -203,6 +211,17 @@ function PreviewRow({ stream, index }: { stream: PreviewStream; index: number })
             <span className="text-muted-foreground/60">No probe data</span>
           )}
         </div>
+        {f.probeAttempts > 0 && f.probePasses < f.probeAttempts ? (
+          <div
+            className={cn(
+              "text-[11px]",
+              f.steady ? "text-muted-foreground" : "text-warning",
+            )}
+          >
+            {f.probePasses} of {f.probeAttempts} recent probes passed
+            {f.steady ? "" : ", ranked below steady streams"}
+          </div>
+        ) : null}
       </div>
       <div className="shrink-0 pt-0.5">
         {moved === 0 ? (

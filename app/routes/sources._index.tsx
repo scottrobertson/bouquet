@@ -1,9 +1,10 @@
-import { eq } from "drizzle-orm";
 import { Gauge, MoreHorizontal, Pencil, Plus, Power, PowerOff, Radio, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Link, data, useFetcher } from "react-router";
-import { useLiveRevalidate } from "~/lib/use-live-revalidate";
+import { Link, useFetcher } from "react-router";
+import type { SourcesData } from "~/api/types/SourcesData";
+import { apiAction, apiLoad } from "~/lib/api";
+import { useLiveSourceStatus } from "~/lib/jobs";
 import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -12,7 +13,6 @@ import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
 import { ProbeStatusBadge } from "~/components/sources/probe-status-badge";
 import {
   expiryLabel,
-  hostFromUrl,
   syncIntervalLabel,
 } from "~/components/sources/source-shared";
 import {
@@ -42,111 +42,35 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { Badge } from "~/components/ui/badge";
-import { db } from "~/db/index.server";
-import { sources } from "~/db/schema";
-import { invalidateAll } from "~/services/output/cache.server";
-import { sourceCategorySummaries } from "~/services/sources/categories.server";
-import { startSync } from "~/services/sync/sync.server";
-import { startProbe } from "~/services/probe/probe.server";
 import type { Route } from "./+types/sources._index";
 
 export function meta() {
   return [{ title: "Sources · Bouquet" }];
 }
 
-export async function loader() {
-  const rows = db.select().from(sources).all();
-  // Enabled/total channel and category counts for all sources in two queries,
-  // rather than a pair per source.
-  const summaries = sourceCategorySummaries();
-  return {
-    sources: rows.map((s) => {
-      const summary = summaries.get(s.id);
-      const offChannels = summary?.offChannels ?? 0;
-      return {
-        id: s.id,
-        name: s.name,
-        enabled: s.enabled,
-        host: hostFromUrl(s.serverUrl),
-        username: s.username,
-        outputFormat: s.outputFormat,
-        syncIntervalMinutes: s.syncIntervalMinutes,
-        syncStatus: s.syncStatus,
-        probeStatus: s.probeStatus,
-        probeDone: s.probeDone,
-        probeTotal: s.probeTotal,
-        channelCount: s.channelCount,
-        channelsOn: Math.max(0, s.channelCount - offChannels),
-        categoriesTotal: summary?.categoriesTotal ?? 0,
-        categoriesOn: summary?.categoriesOn ?? 0,
-        lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.toISOString() : null,
-        // Undefined before the first sync reads these, so the UI can say
-        // "Unknown" rather than "Never"/"—".
-        expiresAt: s.lastSyncedAt
-          ? (s.expiresAt ? s.expiresAt.toISOString() : null)
-          : undefined,
-        maxConnections: s.lastSyncedAt ? s.maxConnections : undefined,
-      };
-    }),
-  };
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return apiLoad<SourcesData>(request);
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const form = await request.formData();
-  const intent = form.get("intent");
+type ActionResult =
+  | { intent: "syncAll"; started: number }
+  | { intent: "sync" | "probe"; started: true }
+  | { intent: "setEnabled"; enabled: boolean }
+  | { intent: "delete"; ok: true }
+  | { ok: false; error: string };
 
-  if (intent === "syncAll") {
-    const ids = db
-      .select({ id: sources.id })
-      .from(sources)
-      .where(eq(sources.enabled, true))
-      .all()
-      .map((r) => r.id);
-    for (const sourceId of ids) startSync(sourceId);
-    return data({ intent: "syncAll" as const, started: ids.length });
-  }
-
-  const id = Number(form.get("id"));
-  if (!Number.isFinite(id)) {
-    return data({ ok: false, error: "Missing source" }, { status: 400 });
-  }
-
-  if (intent === "sync") {
-    startSync(id);
-    return data({ intent: "sync" as const, started: true });
-  }
-
-  if (intent === "probe") {
-    startProbe(id);
-    return data({ intent: "probe" as const, started: true });
-  }
-
-  if (intent === "setEnabled") {
-    const enabled = form.get("enabled") === "true";
-    db.update(sources).set({ enabled }).where(eq(sources.id, id)).run();
-    invalidateAll();
-    return data({ intent: "setEnabled" as const, enabled });
-  }
-
-  if (intent === "delete") {
-    db.delete(sources).where(eq(sources.id, id)).run();
-    return data({ intent: "delete" as const, ok: true });
-  }
-
-  return data({ ok: false, error: "Unknown action" }, { status: 400 });
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<ActionResult>(request);
 }
-
 export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
   const { sources: rows } = loaderData;
 
-  // Syncs and probes run in the background, so listen for live updates while
-  // either is going.
-  const anySyncing = rows.some((s) => s.syncStatus === "syncing");
-  const anyProbing = rows.some((s) => s.probeStatus === "probing");
-  useLiveRevalidate(anySyncing || anyProbing);
+  const anySyncing = rows.some(
+    (s) => s.syncStatus === "syncing" || s.syncStatus === "queued",
+  );
 
   // Sync every source at once.
-  const syncAllFetcher = useFetcher<typeof action>();
+  const syncAllFetcher = useFetcher<typeof clientAction>();
   const startingAll = syncAllFetcher.state !== "idle";
   const handledAll = useRef<typeof syncAllFetcher.data>(undefined);
   useEffect(() => {
@@ -246,14 +170,16 @@ export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
 type Row = Route.ComponentProps["loaderData"]["sources"][number];
 
 function SourceRow({ source }: { source: Row }) {
-  const fetcher = useFetcher<typeof action>();
+  const fetcher = useFetcher<typeof clientAction>();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const submitting =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sync";
-  const syncing = submitting || source.syncStatus === "syncing";
+  const { sync, probe } = useLiveSourceStatus(source);
+  const syncing = submitting || sync.status === "syncing" || sync.status === "queued";
   const probing =
     (fetcher.state !== "idle" && fetcher.formData?.get("intent") === "probe") ||
-    source.probeStatus === "probing";
+    probe.status === "probing" ||
+    probe.status === "queued";
 
   // Report sync results once the fetcher settles.
   const handled = useRef<typeof fetcher.data>(undefined);
@@ -280,13 +206,9 @@ function SourceRow({ source }: { source: Row }) {
 
   const statusBadge = (
     <div className="flex flex-wrap items-center gap-1.5">
-      <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
-      {source.probeStatus === "probing" ? (
-        <ProbeStatusBadge
-          status="probing"
-          done={source.probeDone}
-          total={source.probeTotal}
-        />
+      <SyncStatusBadge status={submitting ? "syncing" : sync.status} />
+      {probe.status === "probing" || probe.status === "queued" ? (
+        <ProbeStatusBadge status={probe.status} done={probe.done} total={probe.total} />
       ) : null}
     </div>
   );
@@ -430,20 +352,10 @@ function connectionsLabel(max: number | null | undefined): string {
   return max.toLocaleString();
 }
 
-// Expiry date, tinted red once it's passed. The date is spelled out using the
-// viewer's own locale and clock, which the server can't know, so React is told
-// to accept whatever the browser comes up with instead of treating the page as
-// broken.
+// Expiry date, tinted red once it's passed.
 function ExpiresCell({ expiresAt }: { expiresAt: string | null | undefined }) {
   const { text, expired } = expiryLabel(expiresAt);
-  return (
-    <span
-      suppressHydrationWarning
-      className={expired ? "text-destructive" : undefined}
-    >
-      {text}
-    </span>
-  );
+  return <span className={expired ? "text-destructive" : undefined}>{text}</span>;
 }
 
 // Enabled out of total, e.g. "1,180 / 1,500". Total is muted.

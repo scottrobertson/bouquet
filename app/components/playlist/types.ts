@@ -10,7 +10,7 @@ export type EditorChannel = {
   enabled: boolean;
   // Set when auto-disabled after repeated probe failures, so the row can show
   // it differently from a manual disable. Null otherwise.
-  autoDisabledAt: Date | null;
+  autoDisabledAt: string | null;
   epgSourceId: number | null;
   epgChannelId: string | null;
   sourceName: string;
@@ -37,6 +37,10 @@ export type EditorChannel = {
   probeVideoCodec: string | null;
   probeAudioCodec: string | null;
   probeBitrate: number | null;
+  // Probes that passed, out of those run, in the history window.
+  probePasses: number;
+  probeAttempts: number;
+  consecutiveProbeFailures: number;
   // Set when this channel is an alternate of another channel (its primary).
   primaryChannelId: number | null;
   altPosition: number;

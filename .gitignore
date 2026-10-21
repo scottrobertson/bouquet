@@ -6,6 +6,9 @@
 /.react-router/
 /build/
 
+# Rust
+/server/target/
+
 # SQLite data
 /data/
 *.db

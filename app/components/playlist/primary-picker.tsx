@@ -17,7 +17,7 @@ import {
 import {
   suggestPrimaries,
   type MatchTarget,
-} from "~/services/playlist/channel-match";
+} from "~/lib/channel-match";
 
 export type Primary = {
   id: number;

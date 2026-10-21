@@ -4,6 +4,42 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Probing now spots channels that are off air. When "Check the picture" is on (it is by default), a
+  probe that sees a frozen picture, like a logo card or an "off air" slate, still counts as a pass,
+  but its numbers are left out of the stream's quality so a quiet night can't drag it down. These
+  probes are marked "off air" in the probe history.
+
+- Each probe now opens one connection to the provider instead of up to three, so probing is quicker
+  and less likely to bump into the provider's connection limit. Every probe also measures the
+  stream's real bitrate, so the separate "Measure bitrate" setting is gone. Bitrate now counts only
+  the video, so a stream with extra audio tracks doesn't look better than it is. That reads a little
+  lower than before, and history from older probes evens out over the week.
+
+- Bouquet now keeps a week of probe history for every stream, and the quality shown in the editor
+  is the typical result across those probes rather than whatever the last one happened to see. A
+  probe only watches a few seconds of a live channel, so one that lands on an off air logo or a
+  slow server no longer makes the bitrate jump about or reshuffles smart sort. Readings far below
+  a stream's best are treated as a slate and left out. Pick "Probe history" from a channel's menu to
+  see every recent probe as a small chart and a list, with the ones that failed or were ignored
+  marked. Set
+  `PROBE_HISTORY_DAYS` to keep more or less than 7 days.
+
+- Smart sort now looks at how reliable a stream has been, not just its last probe. A single failed
+  probe after passing ones is treated as a blip, so a good stream keeps its place instead of
+  dropping below untested ones. A stream that failed more than one in five recent probes ranks
+  below steady ones, and the editor shows "5/7 ok" next to its quality so you can spot it.
+
+- A new Jobs page shows everything Bouquet does in the background: syncs, probes, uploads and
+  backups, whether you started them, the schedule did, or they followed on from something else.
+  Running jobs show their current step and a live progress bar, and every job keeps a step by step
+  log, so when a sync fails or a probe flags channels you can see exactly what happened. While
+  anything is running, the sidebar shows it with progress, and you get a toast when a job you
+  started finishes or any job fails.
+
+- Jobs on the same source now take turns, so a probe no longer competes with a sync for the
+  provider's connections, and asking for a sync that's already waiting doesn't queue a second one.
+  Restoring a backup waits until nothing is running, since it replaces all the data jobs work on.
+
 - Sources have a notes box on their page, for anything you want to remember about a provider like
   when it renews or who to contact for support. It saves when you click away from it.
 
@@ -389,6 +425,13 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- Bouquet's server is now written in Rust and ships as a single binary with the web app built in,
+  so the Docker image no longer needs Node. Nothing changes for your player: the M3U and EPG URLs,
+  their contents and your existing database all carry over as they are, and the database is
+  picked up on first start. Backups made by the last TypeScript version still restore. Older
+  backups (from before the last few releases) can't be upgraded by the new version; restore one of
+  those with the previous release first, then take a fresh backup.
+
 - When a probe fails, the server log now names the provider's category alongside the channel, so
   a line reads like `shammy: "UK: ITV 2 FHD" in "UK| ENTERTAINMENT" error: ...`. Providers file
   their channels by category, so when you report a batch of dead streams to them, the log already
@@ -565,6 +608,18 @@ All notable changes to this project are recorded here. Newest first.
   endpoints, so a playlist edit revalidates a small payload and feels instant.
 
 ## Fixed
+
+- When a provider turns a request away because it's busy (a 503 or 429), Bouquet now waits and
+  tries again, a few times with a growing pause, instead of giving up on it. Before, any guide
+  request the provider refused was quietly skipped, and the sync still looked complete while those
+  channels kept an old guide. If some channels still fail after retrying, the source now says how
+  many, so you know to sync again. Requests to the provider also ask for gzip, which cuts the data
+  a guide sync downloads by around 90%.
+
+- A source now shows as syncing until its guide has finished downloading too, not just its
+  channel list. It used to flip to OK partway through, so the page stopped watching for the rest
+  and the "Categories changed since the last sync" note stayed up after the sync had really
+  finished, until you reloaded.
 
 - The probe buttons in the playlist editor no longer touch a source you've switched off. "Probe
   enabled", "Probe missing", "Probe failed", "Probe auto-disabled", probing a category and probing

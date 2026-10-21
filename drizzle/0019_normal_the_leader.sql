@@ -1,1 +1,0 @@
-ALTER TABLE `sources` ADD `probe_detect_black_screen` integer DEFAULT true NOT NULL;

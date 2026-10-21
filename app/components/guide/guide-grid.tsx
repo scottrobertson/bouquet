@@ -79,8 +79,8 @@ export function GuideGrid({
   const [group, setGroup] = useState(ALL_GROUPS);
   const [nowMs, setNowMs] = useState(initialNowMs);
   const [selected, setSelected] = useState<Selected | null>(null);
-  // The grid formats times in the browser's locale and timezone, so it can't be
-  // server-rendered without a hydration mismatch. It's a client-only view.
+  // The grid draws after the first render, and the scroll positioning below
+  // waits for it.
   const [mounted, setMounted] = useState(false);
   // The day the left edge is currently showing, for the date label. Tracked from
   // the scroll position so it updates as you scroll across midnights.

@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   Gauge,
+  History,
   GripVertical,
   Loader2,
   MoreVertical,
@@ -41,6 +42,8 @@ import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { useChannelName } from "./channel-name";
 import { EpgPicker } from "./epg-picker";
+import { steady } from "~/lib/smart-sort";
+import { ProbeHistoryDialog } from "./probe-history";
 import { SmartSortDialog } from "./smart-sort-dialog";
 import type { EditorChannel } from "./types";
 
@@ -97,6 +100,7 @@ const QualityLine = memo(function QualityLine({
     ...meta.details,
     ...(meta.bitrate ? [meta.bitrate] : []),
   ];
+  const someFailed = channel.probePasses < channel.probeAttempts;
 
   return (
     <div className="flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground">
@@ -106,6 +110,17 @@ const QualityLine = memo(function QualityLine({
           {p}
         </span>
       ))}
+      {someFailed ? (
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            steady(channel) ? "text-muted-foreground" : "text-warning",
+          )}
+        >
+          <span className="text-muted-foreground/50">·</span>
+          {channel.probePasses}/{channel.probeAttempts} ok
+        </span>
+      ) : null}
     </div>
   );
 });
@@ -328,6 +343,7 @@ export function ChannelRowBody({
 }) {
   const fetcher = useFetcher();
   const [smartSortOpen, setSmartSortOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const logo = channel.customLogo || channel.epgLogo || channel.sourceLogo;
   const isAlternate = channel.primaryChannelId != null;
   // Alternates are always auto-named from their primary (any stored custom name
@@ -542,6 +558,9 @@ export function ChannelRowBody({
                 ? () => setSmartSortOpen(true)
                 : undefined
             }
+            onProbeHistory={
+              playlistId != null ? () => setHistoryOpen(true) : undefined
+            }
             onRevertName={
               renamed
                 ? () =>
@@ -563,6 +582,14 @@ export function ChannelRowBody({
           onOpenChange={setSmartSortOpen}
         />
       ) : null}
+      {!overlay && playlistId != null ? (
+        <ProbeHistoryDialog
+          channel={channel}
+          playlistId={playlistId}
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+        />
+      ) : null}
     </>
   );
 }
@@ -577,6 +604,7 @@ function GroupMenu({
   onProbe,
   onProbeGroup,
   onSmartSort,
+  onProbeHistory,
   onRevertName,
   probing,
 }: {
@@ -589,6 +617,7 @@ function GroupMenu({
   onProbeGroup?: () => void;
   // Set on a primary that has alternates: reorder the group by stream quality.
   onSmartSort?: () => void;
+  onProbeHistory?: () => void;
   // Set when the channel has a custom name: revert it to the source name.
   onRevertName?: () => void;
   probing: boolean;
@@ -636,6 +665,12 @@ function GroupMenu({
           <Gauge className="size-4" />
           {probing ? "Probing…" : "Probe"}
         </DropdownMenuItem>
+        {onProbeHistory ? (
+          <DropdownMenuItem onClick={onProbeHistory}>
+            <History className="size-4" />
+            Probe history
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         {group.isAlternate ? (
           <>

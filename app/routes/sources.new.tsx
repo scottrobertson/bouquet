@@ -1,64 +1,14 @@
-import { data, redirect } from "react-router";
-import { SourceForm } from "~/components/sources/source-form";
-import { parseSourceForm } from "~/components/sources/source-shared";
+import { SourceForm, type SourceFormResult } from "~/components/sources/source-form";
 import { PageHeader } from "~/components/page-header";
-import { db } from "~/db/index.server";
-import { sources } from "~/db/schema";
-import { startSync } from "~/services/sync/sync.server";
-import { validateAccount } from "~/services/xtream/client.server";
+import { apiAction } from "~/lib/api";
 import type { Route } from "./+types/sources.new";
 
 export function meta() {
   return [{ title: "Add source · Bouquet" }];
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const form = await request.formData();
-  const intent = form.get("intent");
-
-  const parsed = parseSourceForm(form);
-
-  if (intent === "test") {
-    if (!parsed.success) {
-      return data({ fieldErrors: fieldErrorsOf(parsed.error) }, { status: 400 });
-    }
-    const result = await validateAccount(parsed.data);
-    return data({
-      testResult: {
-        ok: result.ok,
-        message: result.message,
-        status: result.status,
-        expiresAt: result.expiresAt ? result.expiresAt.toISOString() : null,
-        maxConnections: result.maxConnections,
-      },
-    });
-  }
-
-  if (intent === "create") {
-    if (!parsed.success) {
-      return data({ fieldErrors: fieldErrorsOf(parsed.error) }, { status: 400 });
-    }
-    const created = db
-      .insert(sources)
-      .values({ ...parsed.data, syncStatus: "syncing" })
-      .returning()
-      .get();
-    // Kick the catalog sync in the background and go straight to the detail
-    // screen, which polls until the sync finishes.
-    startSync(created.id);
-    return redirect(`/sources/${created.id}`);
-  }
-
-  return data({ error: "Unknown action" }, { status: 400 });
-}
-
-function fieldErrorsOf(error: import("zod").ZodError) {
-  const out: Record<string, string> = {};
-  for (const issue of error.issues) {
-    const key = issue.path[0];
-    if (typeof key === "string" && !out[key]) out[key] = issue.message;
-  }
-  return out;
+export function clientAction({ request }: Route.ClientActionArgs) {
+  return apiAction<SourceFormResult>(request);
 }
 
 export default function SourceNew({ actionData }: Route.ComponentProps) {
