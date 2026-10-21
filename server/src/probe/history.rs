@@ -23,6 +23,7 @@ pub struct ProbeSample {
     pub audio_codec: Option<String>,
     pub bitrate: Option<i64>,
     pub error: Option<String>,
+    pub off_air: bool,
 }
 
 #[derive(Serialize, TS)]
@@ -39,7 +40,9 @@ pub struct ProbeHistorySample {
     pub audio_codec: Option<String>,
     pub bitrate: Option<i64>,
     pub error: Option<String>,
-    // Left out of the summary as a likely slate.
+    // The picture was frozen, so its numbers are left out of the summary.
+    pub off_air: bool,
+    // Left out of the summary because its bitrate was far below the best.
     pub ignored: bool,
 }
 
@@ -70,6 +73,7 @@ pub fn history(conn: &Connection, source_channel_id: i64, now: i64) -> Result<Pr
                 audio_codec: s.audio_codec,
                 bitrate: s.bitrate,
                 error: s.error,
+                off_air: s.off_air,
             })
             .collect(),
     })
@@ -112,12 +116,13 @@ fn most_common<T: PartialEq + Clone>(values: &[T]) -> Option<T> {
 /// Summarise a channel's samples, oldest first.
 pub fn summarise(samples: &[ProbeSample]) -> Summary {
     let ok: Vec<&ProbeSample> = samples.iter().filter(|s| s.status == "ok").collect();
-    let best = ok.iter().filter_map(|s| s.bitrate).filter(|b| *b > 0).max();
+    let on_air: Vec<&ProbeSample> = ok.iter().copied().filter(|s| !s.off_air).collect();
+    let best = on_air.iter().filter_map(|s| s.bitrate).filter(|b| *b > 0).max();
     let is_low = |s: &ProbeSample| match (s.bitrate, best) {
         (Some(b), Some(best)) => (b as f64) < best as f64 * LOW_BITRATE_FRACTION,
         _ => false,
     };
-    let (ignored, kept): (Vec<&ProbeSample>, Vec<&ProbeSample>) = ok.iter().partition(|s| is_low(s));
+    let (ignored, kept): (Vec<&ProbeSample>, Vec<&ProbeSample>) = on_air.iter().partition(|s| is_low(s));
 
     let mut bitrates: Vec<i64> = kept.iter().filter_map(|s| s.bitrate).filter(|b| *b > 0).collect();
     bitrates.sort();
@@ -148,7 +153,7 @@ pub fn window_start(now: i64) -> i64 {
 /// A channel's samples inside the history window, oldest first.
 pub fn samples_since(conn: &Connection, source_channel_id: i64, since: i64) -> Result<Vec<ProbeSample>> {
     let mut stmt = conn.prepare(
-        "SELECT id, probed_at, status, width, height, fps, video_codec, audio_codec, bitrate, error FROM probe_samples \
+        "SELECT id, probed_at, status, width, height, fps, video_codec, audio_codec, bitrate, error, off_air FROM probe_samples \
          WHERE source_channel_id = ? AND probed_at >= ? ORDER BY probed_at, id",
     )?;
     let rows = stmt.query_map(params![source_channel_id, since], |r| {
@@ -163,6 +168,7 @@ pub fn samples_since(conn: &Connection, source_channel_id: i64, since: i64) -> R
             audio_codec: r.get(7)?,
             bitrate: r.get(8)?,
             error: r.get(9)?,
+            off_air: r.get(10)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -173,8 +179,8 @@ pub fn samples_since(conn: &Connection, source_channel_id: i64, since: i64) -> R
 pub fn record(conn: &Connection, source_channel_id: i64, sample: &ProbeSample) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
-        "INSERT INTO probe_samples (source_channel_id, probed_at, status, width, height, fps, video_codec, audio_codec, bitrate, error) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO probe_samples (source_channel_id, probed_at, status, width, height, fps, video_codec, audio_codec, bitrate, error, off_air) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             source_channel_id,
             sample.probed_at,
@@ -185,7 +191,8 @@ pub fn record(conn: &Connection, source_channel_id: i64, sample: &ProbeSample) -
             sample.video_codec,
             sample.audio_codec,
             sample.bitrate,
-            sample.error
+            sample.error,
+            sample.off_air
         ],
     )?;
     let s = summarise(&samples_since(&tx, source_channel_id, window_start(sample.probed_at))?);
@@ -237,7 +244,20 @@ mod tests {
             audio_codec: Some("aac".into()),
             bitrate: Some(kbps),
             error: None,
+            off_air: false,
         }
+    }
+
+    #[test]
+    fn off_air_probes_pass_but_dont_count_towards_quality() {
+        let slate = ProbeSample { off_air: true, ..ok(2, 576, 100) };
+        let s = summarise(&[ok(1, 1080, 6000), slate.clone(), ok(3, 1080, 5000)]);
+        assert_eq!((s.height, s.bitrate), (Some(1080), Some(6000)));
+        assert_eq!((s.passes, s.attempts), (3, 3));
+        assert!(s.ignored.is_empty());
+
+        let s = summarise(&[slate]);
+        assert_eq!((s.height, s.bitrate, s.passes), (None, None, 1));
     }
 
     fn failed(id: i64) -> ProbeSample {

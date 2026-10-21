@@ -95,7 +95,6 @@ pub struct Source {
     pub probe_concurrency: i64,
     pub probe_interval_minutes: i64,
     pub probe_timeout_seconds: i64,
-    pub probe_measure_bitrate: bool,
     pub probe_detect_black_screen: bool,
     pub probe_status: String,
     pub last_probed_at: Option<i64>,
@@ -110,7 +109,7 @@ impl Source {
     pub const COLUMNS: &'static str = "id, name, type, server_url, stream_base_url, username, password, \
         sync_status, output_format, auto_import_groups, enabled, sync_interval_minutes, last_synced_at, \
         last_error, channel_count, expires_at, max_connections, account_status, epg_stale, probe_enabled, \
-        probe_concurrency, probe_interval_minutes, probe_timeout_seconds, probe_measure_bitrate, \
+        probe_concurrency, probe_interval_minutes, probe_timeout_seconds, \
         probe_detect_black_screen, probe_status, last_probed_at, probe_error, probe_total, probe_done, \
         notes, created_at";
 
@@ -139,15 +138,14 @@ impl Source {
             probe_concurrency: r.get(20)?,
             probe_interval_minutes: r.get(21)?,
             probe_timeout_seconds: r.get(22)?,
-            probe_measure_bitrate: r.get(23)?,
-            probe_detect_black_screen: r.get(24)?,
-            probe_status: r.get(25)?,
-            last_probed_at: r.get(26)?,
-            probe_error: r.get(27)?,
-            probe_total: r.get(28)?,
-            probe_done: r.get(29)?,
-            notes: r.get(30)?,
-            created_at: r.get(31)?,
+            probe_detect_black_screen: r.get(23)?,
+            probe_status: r.get(24)?,
+            last_probed_at: r.get(25)?,
+            probe_error: r.get(26)?,
+            probe_total: r.get(27)?,
+            probe_done: r.get(28)?,
+            notes: r.get(29)?,
+            created_at: r.get(30)?,
         })
     }
 

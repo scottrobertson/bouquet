@@ -1,4 +1,6 @@
-//! Runs ffprobe and ffmpeg against a stream URL to read its quality.
+//! Reads a stream once with ffmpeg and hands a copy to ffprobe, so a single
+//! connection to the provider gives us the stream's quality, its real bitrate
+//! and, when asked, whether the picture is black or frozen.
 
 use std::process::Stdio;
 use std::sync::LazyLock;
@@ -25,7 +27,7 @@ pub struct Quality {
     pub fps: Option<f64>,
     pub video_codec: Option<String>,
     pub audio_codec: Option<String>,
-    // Overall stream bitrate in kbps, when the provider reports it.
+    // The video track's bitrate in kbps, from the packets we read.
     pub bitrate: Option<i64>,
 }
 
@@ -34,11 +36,14 @@ pub struct ProbeResult {
     pub status: &'static str,
     pub quality: Quality,
     pub error: Option<String>,
+    // The picture didn't move, like a logo card shown while a channel is off
+    // air. The stream works, but its numbers say nothing about the programme.
+    pub off_air: bool,
 }
 
 impl ProbeResult {
     fn failed(status: &'static str, error: impl Into<String>) -> ProbeResult {
-        ProbeResult { status, quality: Quality::default(), error: Some(error.into()) }
+        ProbeResult { status, quality: Quality::default(), error: Some(error.into()), off_air: false }
     }
 }
 
@@ -61,6 +66,24 @@ fn positive_int(value: Option<&Value>) -> Option<i64> {
     (n.is_finite() && n > 0.0).then(|| n.trunc() as i64)
 }
 
+/// kbps of the video packets, over the time their timestamps span. Counting
+/// only video keeps extra audio tracks and padding out of the comparison.
+fn video_bitrate(packets: &[Value], video_index: i64, fps: Option<f64>) -> Option<i64> {
+    let mut bytes = 0.0;
+    let (mut first, mut last) = (f64::INFINITY, f64::NEG_INFINITY);
+    for p in packets.iter().filter(|p| p.get("stream_index").and_then(|i| i.as_i64()) == Some(video_index)) {
+        bytes += crate::js::number(p.get("size"));
+        let pts = crate::js::number(p.get("pts_time"));
+        if pts.is_finite() {
+            first = first.min(pts);
+            last = last.max(pts);
+        }
+    }
+    // The last frame still plays for one frame's time after its timestamp.
+    let seconds = last - first + fps.map(|f| 1.0 / f).unwrap_or(0.0);
+    (bytes > 0.0 && seconds.is_finite() && seconds > 0.0).then(|| (bytes * 8.0 / seconds / 1000.0).round() as i64)
+}
+
 /// The fields we store from ffprobe's JSON.
 pub fn parse_ffprobe(json: &Value) -> Quality {
     let Some(streams) = json.get("streams").and_then(|s| s.as_array()) else { return Quality::default() };
@@ -68,133 +91,28 @@ pub fn parse_ffprobe(json: &Value) -> Quality {
     let video = of_type("video");
     let audio = of_type("audio");
     let codec = |s: Option<&Value>| s.and_then(|s| s.get("codec_name")).and_then(|c| c.as_str()).map(String::from);
+    let fps = parse_frame_rate(video.and_then(|v| v.get("avg_frame_rate")))
+        .or_else(|| parse_frame_rate(video.and_then(|v| v.get("r_frame_rate"))));
+    let packets = json.get("packets").and_then(|p| p.as_array()).map(Vec::as_slice).unwrap_or_default();
+    let video_index = video.and_then(|v| v.get("index")).and_then(|i| i.as_i64());
     Quality {
         width: positive_int(video.and_then(|v| v.get("width"))),
         height: positive_int(video.and_then(|v| v.get("height"))),
-        fps: parse_frame_rate(video.and_then(|v| v.get("avg_frame_rate")))
-            .or_else(|| parse_frame_rate(video.and_then(|v| v.get("r_frame_rate")))),
+        fps,
         video_codec: codec(video),
         audio_codec: codec(audio),
-        bitrate: positive_int(json.get("format").and_then(|f| f.get("bit_rate")))
-            .map(|bps| (bps as f64 / 1000.0).round() as i64),
+        bitrate: video_index.and_then(|i| video_bitrate(packets, i, fps)),
     }
 }
 
-struct RunOutput {
-    timed_out: bool,
-    // None when the program couldn't be started at all.
-    status: Option<std::process::ExitStatus>,
-    stdout_bytes: Vec<u8>,
-    stdout_len: usize,
-    stderr: String,
-    spawn_error: Option<String>,
-}
-
-/// Run a program and gather its output, killing it once `limit` passes so a
-/// stuck stream never ties up a worker. With `count_stdout`, stdout is only
-/// measured, not kept, since it can be megabytes of video.
-async fn run(program: &str, args: &[String], limit: Duration, count_stdout: bool) -> RunOutput {
-    let mut child = match Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return RunOutput {
-                timed_out: false,
-                status: None,
-                stdout_bytes: vec![],
-                stdout_len: 0,
-                stderr: String::new(),
-                spawn_error: Some(e.to_string()),
-            };
-        }
-    };
-    let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
-    let read_out = async move {
-        let mut kept = Vec::new();
-        let mut len = 0;
-        let mut buf = vec![0u8; 64 * 1024];
-        while let Ok(n) = stdout.read(&mut buf).await {
-            if n == 0 {
-                break;
-            }
-            len += n;
-            if !count_stdout {
-                kept.extend_from_slice(&buf[..n]);
-            }
-        }
-        (kept, len)
-    };
-    let read_err = async move {
-        let mut s = Vec::new();
-        let _ = stderr.read_to_end(&mut s).await;
-        String::from_utf8_lossy(&s).into_owned()
-    };
-    let work = async { tokio::join!(read_out, read_err, child.wait()) };
-    match tokio::time::timeout(limit, work).await {
-        Ok(((kept, len), err, status)) => RunOutput {
-            timed_out: false,
-            status: status.ok(),
-            stdout_bytes: kept,
-            stdout_len: len,
-            stderr: err,
-            spawn_error: None,
-        },
-        Err(_) => {
-            // The output readers were dropped with the timed out future, so all
-            // that's left is to stop the process.
-            let _ = child.kill().await;
-            RunOutput { timed_out: true, status: None, stdout_bytes: vec![], stdout_len: 0, stderr: String::new(), spawn_error: None }
-        }
-    }
-}
-
-/// ffprobe a stream URL. Set `hls` for m3u8 streams.
-pub async fn probe_stream(url: &str, timeout_seconds: i64, hls: bool) -> ProbeResult {
-    let mut args: Vec<String> = vec!["-v".into(), "error".into()];
-    args.extend(hls_relax_args(hls).iter().map(|s| s.to_string()));
-    args.extend(["-print_format", "json", "-show_streams", "-show_format", url].map(String::from));
-    let out = run(&config().ffprobe_path, &args, Duration::from_secs(timeout_seconds.max(1) as u64), false).await;
-
-    if let Some(e) = out.spawn_error {
-        return ProbeResult::failed("error", e);
-    }
-    if out.timed_out {
-        return ProbeResult::failed("timeout", "Probe timed out");
-    }
-    let status = out.status.expect("a finished process has a status");
-    if !status.success() {
-        let last = out.stderr.trim().lines().last().map(str::to_string).filter(|l| !l.is_empty());
-        let msg = last.unwrap_or_else(|| match status.code() {
-            Some(code) => format!("ffprobe exited {code}"),
-            None => "ffprobe exited null".into(),
-        });
-        return ProbeResult::failed("error", clean_probe_error(&msg));
-    }
-    let Ok(json) = serde_json::from_slice::<Value>(&out.stdout_bytes) else {
-        return ProbeResult::failed("error", "Could not parse ffprobe output");
-    };
-    let quality = parse_ffprobe(&json);
-    // A stream with no video track isn't a usable channel.
-    if quality.width.is_none() && quality.height.is_none() {
-        return ProbeResult { status: "error", quality, error: Some("No video stream found".into()) };
-    }
-    ProbeResult { status: "ok", quality, error: None }
-}
-
-// Near-black frames have to cover this much of what was decoded. High, so
-// fades and ad breaks don't trip it.
-const BLACK_FRACTION: f64 = 0.9;
+// Black or frozen frames have to cover this much of what was decoded. High, so
+// fades, ad breaks and slow scenes don't trip it.
+const STILL_FRACTION: f64 = 0.9;
 
 static BLACK_DURATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"black_duration:([\d.]+)").unwrap());
+static FREEZE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"freezedetect\.freeze_(start|end): ([\d.]+)").unwrap());
 static DECODE_TIME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"time=(\d+:\d+:\d+\.\d+)").unwrap());
-static OUT_TIME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"out_time=(\d+:\d+:\d+\.\d+)").unwrap());
 
 // HH:MM:SS.ss in seconds.
 fn parse_timestamp(value: &str) -> f64 {
@@ -205,65 +123,146 @@ fn parse_timestamp(value: &str) -> f64 {
     }
 }
 
-/// Whether blackdetect's output means the picture was all black. Too little
-/// decoded counts as inconclusive, so a stream that stalls early isn't failed.
+fn decoded_seconds(stderr: &str) -> f64 {
+    DECODE_TIME.captures_iter(stderr).map(|c| parse_timestamp(&c[1])).fold(0.0, f64::max)
+}
+
+// Too little decoded counts as inconclusive, so a stream that stalls early
+// isn't judged on a second of video.
+fn mostly(still: f64, decoded: f64, window: f64) -> bool {
+    decoded >= window.min(1.0) && still / decoded >= STILL_FRACTION
+}
+
+/// Whether blackdetect's output means the picture was all black.
 pub fn parse_blackdetect(stderr: &str, window: f64) -> bool {
     let black: f64 = BLACK_DURATION.captures_iter(stderr).map(|c| c[1].parse::<f64>().unwrap_or(0.0)).sum();
-    let decoded = DECODE_TIME.captures_iter(stderr).map(|c| parse_timestamp(&c[1])).fold(0.0, f64::max);
-    if decoded < window.min(1.0) {
-        return false;
-    }
-    black / decoded >= BLACK_FRACTION
+    mostly(black, decoded_seconds(stderr), window)
 }
 
-/// Read a stream for `seconds` with ffmpeg's blackdetect filter. Any error
-/// counts as not black, so an inconclusive run never fails a channel.
-pub async fn detect_black_screen(url: &str, seconds: i64, hls: bool) -> bool {
-    let window = seconds.max(1);
-    let mut args: Vec<String> = vec!["-hide_banner".into()];
+/// Whether freezedetect's output means the picture barely moved. A freeze
+/// still going when the read stops never logs an end, so it runs to the end.
+pub fn parse_freezedetect(stderr: &str, window: f64) -> bool {
+    let decoded = decoded_seconds(stderr);
+    let mut frozen = 0.0;
+    let mut started: Option<f64> = None;
+    for c in FREEZE.captures_iter(stderr) {
+        let at: f64 = c[2].parse().unwrap_or(0.0);
+        match &c[1] {
+            "start" => started = Some(at),
+            _ => frozen += at - started.take().unwrap_or(at),
+        }
+    }
+    if let Some(start) = started {
+        frozen += (decoded - start).max(0.0);
+    }
+    mostly(frozen, decoded, window)
+}
+
+// The line worth showing when ffmpeg fails, skipping filter output and the
+// progress line.
+fn ffmpeg_error(stderr: &str) -> Option<String> {
+    stderr
+        .lines()
+        .map(str::trim)
+        .rfind(|l| !l.is_empty() && !l.starts_with("frame=") && !l.contains("detect @") && !l.contains("Parsed_"))
+        .map(str::to_string)
+}
+
+fn ffmpeg_args(url: &str, window: i64, hls: bool, check_picture: bool) -> Vec<String> {
+    let mut args: Vec<String> = vec!["-hide_banner".into(), "-nostats".into()];
     args.extend(hls_relax_args(hls).iter().map(|s| s.to_string()));
     args.extend(["-t".into(), window.to_string(), "-i".into(), url.into()]);
-    args.extend(["-an", "-vf", "blackdetect=d=0.1", "-f", "null", "-"].map(String::from));
-    // A little past the window, so a healthy stream finishes on its own first.
-    let out = run(&config().ffmpeg_path, &args, Duration::from_secs(window as u64 + 5), true).await;
-    if out.spawn_error.is_some() || out.timed_out {
-        return false;
+    if check_picture {
+        args.extend(
+            ["-map", "0:v:0", "-vf", "blackdetect=d=0.1,freezedetect=n=-60dB:d=2", "-f", "null", "-"].map(String::from),
+        );
     }
-    parse_blackdetect(&out.stderr, window as f64)
+    args.extend(["-map", "0", "-c", "copy", "-f", "mpegts", "pipe:1"].map(String::from));
+    args
 }
 
-/// kbps from bytes read over a window.
-pub fn bitrate_kbps(bytes: usize, seconds: f64) -> Option<i64> {
-    if bytes == 0 || seconds <= 0.0 {
-        return None;
-    }
-    Some((bytes as f64 * 8.0 / seconds / 1000.0).round() as i64)
-}
+const FFPROBE_ARGS: &[&str] = &[
+    "-v",
+    "error",
+    "-print_format",
+    "json",
+    "-show_streams",
+    "-show_packets",
+    "-show_entries",
+    "stream=index,codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate:packet=stream_index,pts_time,size",
+    "pipe:0",
+];
 
-/// The real muxed duration from ffmpeg's -progress output. Zero if none.
-pub fn parse_progress_seconds(stderr: &str) -> f64 {
-    OUT_TIME.captures_iter(stderr).map(|c| parse_timestamp(&c[1])).fold(0.0, f64::max)
-}
-
-/// Measure a stream's real bitrate by reading it for `seconds` and weighing
-/// the bytes. ffprobe can't report this for live streams. Divides by what
-/// ffmpeg actually muxed, so a stream that delivers less than asked still
-/// reads right.
-pub async fn measure_bitrate(url: &str, seconds: i64, hls: bool) -> Option<i64> {
-    let window = seconds.max(1);
-    let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
-    args.extend(hls_relax_args(hls).iter().map(|s| s.to_string()));
-    args.extend(["-t".into(), window.to_string(), "-i".into(), url.into()]);
-    args.extend(["-c", "copy", "-f", "mpegts", "pipe:1", "-progress", "pipe:2"].map(String::from));
-    let out = run(&config().ffmpeg_path, &args, Duration::from_secs(window as u64 + 5), true).await;
-    if out.spawn_error.is_some() || out.timed_out {
-        return None;
-    }
-    let elapsed = match parse_progress_seconds(&out.stderr) {
-        s if s > 0.0 => s,
-        _ => window as f64,
+/// Probe a stream URL. Set `hls` for m3u8 streams, and `check_picture` to also
+/// decode it and look for a black or frozen picture.
+pub async fn probe(url: &str, timeout_seconds: i64, hls: bool, check_picture: bool) -> ProbeResult {
+    let window = timeout_seconds.max(1);
+    let spawned = Command::new(&config().ffmpeg_path)
+        .args(ffmpeg_args(url, window, hls, check_picture))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn();
+    let mut ffmpeg = match spawned {
+        Ok(c) => c,
+        Err(e) => return ProbeResult::failed("error", e.to_string()),
     };
-    bitrate_kbps(out.stdout_len, elapsed)
+    let copy: Stdio = match ffmpeg.stdout.take().unwrap().try_into() {
+        Ok(s) => s,
+        Err(e) => return ProbeResult::failed("error", e.to_string()),
+    };
+    let mut ffprobe = match Command::new(&config().ffprobe_path)
+        .args(FFPROBE_ARGS)
+        .stdin(copy)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return ProbeResult::failed("error", e.to_string()),
+    };
+
+    let mut ffmpeg_err = ffmpeg.stderr.take().unwrap();
+    let mut probe_out = ffprobe.stdout.take().unwrap();
+    let work = async {
+        let mut err = Vec::new();
+        let mut out = Vec::new();
+        let (_, _, status, _) = tokio::join!(
+            ffmpeg_err.read_to_end(&mut err),
+            probe_out.read_to_end(&mut out),
+            ffmpeg.wait(),
+            ffprobe.wait(),
+        );
+        (String::from_utf8_lossy(&err).into_owned(), out, status)
+    };
+    // Room to connect, then the read itself.
+    let limit = Duration::from_secs((timeout_seconds.max(1) + window) as u64);
+    let Ok((stderr, stdout, status)) = tokio::time::timeout(limit, work).await else {
+        return ProbeResult::failed("timeout", "Probe timed out");
+    };
+
+    if !status.map(|s| s.success()).unwrap_or(false) {
+        if stderr.contains("matches no streams") {
+            return ProbeResult::failed("error", "No video stream found");
+        }
+        let msg = ffmpeg_error(&stderr).unwrap_or_else(|| "ffmpeg failed".into());
+        return ProbeResult::failed("error", clean_probe_error(&msg));
+    }
+    let Ok(json) = serde_json::from_slice::<Value>(&stdout) else {
+        return ProbeResult::failed("error", "Could not read the stream");
+    };
+    let quality = parse_ffprobe(&json);
+    // A stream with no video track isn't a usable channel.
+    if quality.width.is_none() && quality.height.is_none() {
+        return ProbeResult { status: "error", quality, error: Some("No video stream found".into()), off_air: false };
+    }
+    if check_picture && parse_blackdetect(&stderr, window as f64) {
+        return ProbeResult { status: "error", quality, error: Some("Black screen".into()), off_air: false };
+    }
+    let off_air = check_picture && parse_freezedetect(&stderr, window as f64);
+    ProbeResult { status: "ok", quality, error: None, off_air }
 }
 
 #[cfg(test)]
@@ -272,13 +271,18 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn reads_resolution_fps_and_codecs() {
+    fn reads_resolution_fps_codecs_and_video_bitrate() {
         let q = parse_ffprobe(&json!({
             "streams": [
-                { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "avg_frame_rate": "50/1" },
-                { "codec_type": "audio", "codec_name": "aac" },
+                { "index": 0, "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "avg_frame_rate": "50/1" },
+                { "index": 1, "codec_type": "audio", "codec_name": "aac" },
             ],
-            "format": { "bit_rate": "8200000" },
+            // 100 kB of video over 0.98s plus one frame, and audio that isn't counted.
+            "packets": [
+                { "stream_index": 0, "pts_time": "10.000000", "size": "50000" },
+                { "stream_index": 1, "pts_time": "10.000000", "size": "90000" },
+                { "stream_index": 0, "pts_time": "10.980000", "size": "50000" },
+            ],
         }));
         assert_eq!(q, Quality {
             width: Some(1920),
@@ -286,7 +290,7 @@ mod tests {
             fps: Some(50.0),
             video_codec: Some("h264".into()),
             audio_codec: Some("aac".into()),
-            bitrate: Some(8200),
+            bitrate: Some(800),
         });
     }
 
@@ -308,6 +312,12 @@ mod tests {
         assert_eq!(parse_ffprobe(&json!({})).video_codec, None);
     }
 
+    #[test]
+    fn no_packets_means_no_bitrate() {
+        let q = parse_ffprobe(&json!({ "streams": [{ "index": 0, "codec_type": "video", "width": 1280, "height": 720 }], "packets": [] }));
+        assert_eq!(q.bitrate, None);
+    }
+
     const FRAME_LINE: &str = "frame=  250 fps= 25 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=1x";
 
     #[test]
@@ -326,14 +336,66 @@ mod tests {
     }
 
     #[test]
-    fn bitrate_and_progress() {
-        assert_eq!(bitrate_kbps(5_538_104, 6.0), Some(7384));
-        assert_eq!(bitrate_kbps(0, 6.0), None);
-        assert_eq!(bitrate_kbps(1000, 0.0), None);
-        let progress = "out_time=00:00:05.000000\nprogress=continue\nout_time=00:00:10.000000\nprogress=continue\nout_time=00:00:09.500000\nprogress=end";
-        assert_eq!(parse_progress_seconds(progress), 10.0);
-        assert!((parse_progress_seconds("out_time=00:00:06.200000\nprogress=end") - 6.2).abs() < 1e-9);
-        assert_eq!(parse_progress_seconds(""), 0.0);
-        assert_eq!(parse_progress_seconds("out_time=N/A\nprogress=continue"), 0.0);
+    fn freezedetect() {
+        // Frozen from the first frame and still frozen when the read stopped.
+        let slate = format!("[Parsed_freezedetect_1 @ 0x1] lavfi.freezedetect.freeze_start: 0.0232222\n{FRAME_LINE}");
+        assert!(parse_freezedetect(&slate, 10.0));
+        let pause = format!(
+            "[Parsed_freezedetect_1 @ 0x1] lavfi.freezedetect.freeze_start: 3\n\
+             [Parsed_freezedetect_1 @ 0x1] lavfi.freezedetect.freeze_duration: 2.5\n\
+             [Parsed_freezedetect_1 @ 0x1] lavfi.freezedetect.freeze_end: 5.5\n{FRAME_LINE}"
+        );
+        assert!(!parse_freezedetect(&pause, 10.0));
+        assert!(!parse_freezedetect(FRAME_LINE, 10.0));
+    }
+
+    // Needs ffmpeg and ffprobe installed, so it only runs with --ignored.
+    #[tokio::test]
+    #[ignore]
+    async fn probes_real_clips() {
+        let dir = tempfile::tempdir().unwrap();
+        let make = |name: &str, video: &str| {
+            let path = dir.path().join(name);
+            let ok = std::process::Command::new(&config().ffmpeg_path)
+                .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", video])
+                .args(["-f", "lavfi", "-i", "sine=d=8", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "couldn't make {name}");
+            path.to_string_lossy().into_owned()
+        };
+        let moving = make("moving.ts", "testsrc2=s=1280x720:r=50:d=8");
+        let frozen = make("frozen.ts", "testsrc2=s=1280x720:r=25:d=1,loop=loop=-1:size=1,trim=duration=8");
+        let black = make("black.ts", "color=c=black:s=1280x720:r=25:d=8");
+
+        let r = probe(&moving, 5, false, true).await;
+        assert_eq!((r.status, r.off_air), ("ok", false), "{r:?}");
+        assert_eq!((r.quality.height, r.quality.fps, r.quality.video_codec.as_deref()), (Some(720), Some(50.0), Some("h264")));
+        assert_eq!(r.quality.audio_codec.as_deref(), Some("aac"));
+        assert!(r.quality.bitrate.unwrap_or(0) > 500, "{r:?}");
+
+        let r = probe(&frozen, 5, false, true).await;
+        assert_eq!((r.status, r.off_air), ("ok", true), "{r:?}");
+
+        let r = probe(&black, 5, false, true).await;
+        assert_eq!((r.status, r.error.as_deref()), ("error", Some("Black screen")), "{r:?}");
+
+        // Without the picture check nothing is decoded, so a frozen picture passes as normal.
+        let r = probe(&frozen, 5, false, false).await;
+        assert_eq!((r.status, r.off_air), ("ok", false), "{r:?}");
+
+        let r = probe(&dir.path().join("missing.ts").to_string_lossy(), 5, false, true).await;
+        assert_eq!(r.status, "error", "{r:?}");
+    }
+
+    #[test]
+    fn ffmpeg_error_skips_filter_and_progress_lines() {
+        let stderr = "[in#0 @ 0x1] Error opening input: Server returned 404 Not Found\n\
+                      Error opening input files: Server returned 404 Not Found\n";
+        assert_eq!(ffmpeg_error(stderr).as_deref(), Some("Error opening input files: Server returned 404 Not Found"));
+        let noisy = format!("Real problem\n[Parsed_freezedetect_1 @ 0x1] lavfi.freezedetect.freeze_start: 0\n{FRAME_LINE}");
+        assert_eq!(ffmpeg_error(&noisy).as_deref(), Some("Real problem"));
     }
 }

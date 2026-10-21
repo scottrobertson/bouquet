@@ -22,7 +22,6 @@ pub struct SourceInput {
     pub probe_concurrency: i64,
     pub probe_interval_minutes: i64,
     pub probe_timeout_seconds: i64,
-    pub probe_measure_bitrate: bool,
     pub probe_detect_black_screen: bool,
 }
 
@@ -69,7 +68,6 @@ pub fn parse_source_form(form: &Form) -> Result<SourceInput, BTreeMap<String, St
         probe_concurrency: form.int("probeConcurrency").filter(|n| (1..=20).contains(n)).unwrap_or(1),
         probe_interval_minutes: one_of(form, "probeIntervalMinutes", PROBE_INTERVALS, 1440),
         probe_timeout_seconds: one_of(form, "probeTimeoutSeconds", PROBE_TIMEOUTS, 10),
-        probe_measure_bitrate: checked("probeMeasureBitrate"),
         probe_detect_black_screen: checked("probeDetectBlackScreen"),
     })
 }

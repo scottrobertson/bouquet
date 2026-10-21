@@ -54,7 +54,7 @@ type Kind = "counted" | "ignored" | "failed";
 
 function kindOf(s: ProbeHistorySample): Kind {
   if (s.status !== "ok") return "failed";
-  return s.ignored ? "ignored" : "counted";
+  return s.ignored || s.offAir ? "ignored" : "counted";
 }
 
 const BAR_CLASS: Record<Kind, string> = {
@@ -65,7 +65,7 @@ const BAR_CLASS: Record<Kind, string> = {
 
 const LEGEND: Record<Kind, string> = {
   counted: "Counted",
-  ignored: "Ignored, likely a slate",
+  ignored: "Left out, likely off air",
   failed: "Failed",
 };
 
@@ -167,6 +167,7 @@ function Summary({
   history: ProbeHistory;
 }) {
   const ignored = history.samples.filter((s) => s.ignored).length;
+  const offAir = history.samples.filter((s) => s.offAir).length;
   const typical = [
     resolutionLabel(channel.probeWidth, channel.probeHeight),
     fpsLabel(channel.probeFps),
@@ -186,6 +187,9 @@ function Summary({
       <p>
         {channel.probePasses} of {channel.probeAttempts}{" "}
         {channel.probeAttempts === 1 ? "probe" : "probes"} passed.
+        {offAir > 0
+          ? ` ${offAir} showed a frozen picture, so ${offAir === 1 ? "it was" : "they were"} left out as off air.`
+          : ""}
         {ignored > 0
           ? ignored === 1
             ? " 1 low reading was ignored as a likely slate."
@@ -250,11 +254,13 @@ function HistoryBody({
             <span
               className={cn(
                 "min-w-0 flex-1",
-                s.ignored && "text-muted-foreground",
+                (s.ignored || s.offAir) && "text-muted-foreground",
               )}
             >
               {sampleQuality(s)}
-              {s.ignored ? (
+              {s.offAir ? (
+                <span className="text-muted-foreground/70"> · off air</span>
+              ) : s.ignored ? (
                 <span className="text-muted-foreground/70"> · ignored</span>
               ) : null}
             </span>

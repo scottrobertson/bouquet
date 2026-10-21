@@ -31,7 +31,6 @@ export interface SourceFormValues {
   probeConcurrency: number;
   probeIntervalMinutes: number;
   probeTimeoutSeconds: number;
-  probeMeasureBitrate: boolean;
   probeDetectBlackScreen: boolean;
 }
 
@@ -301,25 +300,6 @@ export function SourceForm({
 
         <div className="flex items-start gap-3">
           <Checkbox
-            id="probeMeasureBitrate"
-            name="probeMeasureBitrate"
-            defaultChecked={defaults?.probeMeasureBitrate ?? false}
-            className="mt-0.5"
-          />
-          <div className="space-y-1">
-            <Label htmlFor="probeMeasureBitrate" className="font-medium">
-              Measure bitrate
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Reads each stream for the full read time to measure its real data
-              rate, the best signal of actual quality. Much slower, since it
-              downloads several MB per channel instead of just the header.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-3">
-          <Checkbox
             id="probeDetectBlackScreen"
             name="probeDetectBlackScreen"
             defaultChecked={defaults?.probeDetectBlackScreen ?? true}
@@ -327,12 +307,14 @@ export function SourceForm({
           />
           <div className="space-y-1">
             <Label htmlFor="probeDetectBlackScreen" className="font-medium">
-              Detect black screens
+              Check the picture
             </Label>
             <p className="text-xs text-muted-foreground">
-              Reads a few seconds of each stream and marks it failed if the
-              picture is all black. Catches dead channels that still look fine to
-              ffprobe.
+              Decodes the video while probing. An all black picture marks the
+              channel failed, catching dead channels that still look fine on
+              paper. A frozen picture, like a logo shown while a channel is off
+              air, still passes but its numbers are left out of the quality
+              summary. Uses more CPU while probing.
             </p>
           </div>
         </div>

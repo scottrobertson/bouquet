@@ -10,6 +10,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_baseline.sql"),
     include_str!("../migrations/0002_jobs.sql"),
     include_str!("../migrations/0003_probe_samples.sql"),
+    include_str!("../migrations/0004_probe_off_air.sql"),
 ];
 
 /// How many drizzle migrations the TypeScript app had when the baseline was

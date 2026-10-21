@@ -4,6 +4,17 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Probing now spots channels that are off air. When "Check the picture" is on (it is by default), a
+  probe that sees a frozen picture, like a logo card or an "off air" slate, still counts as a pass,
+  but its numbers are left out of the stream's quality so a quiet night can't drag it down. These
+  probes are marked "off air" in the probe history.
+
+- Each probe now opens one connection to the provider instead of up to three, so probing is quicker
+  and less likely to bump into the provider's connection limit. Every probe also measures the
+  stream's real bitrate, so the separate "Measure bitrate" setting is gone. Bitrate now counts only
+  the video, so a stream with extra audio tracks doesn't look better than it is. That reads a little
+  lower than before, and history from older probes evens out over the week.
+
 - Bouquet now keeps a week of probe history for every stream, and the quality shown in the editor
   is the typical result across those probes rather than whatever the last one happened to see. A
   probe only watches a few seconds of a live channel, so one that lands on an off air logo or a

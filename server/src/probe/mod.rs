@@ -23,23 +23,15 @@ use ffprobe::ProbeResult;
 /// for ffmpeg.
 #[async_trait]
 pub trait Tools: Send + Sync {
-    async fn probe_stream(&self, url: &str, timeout_seconds: i64, hls: bool) -> ProbeResult;
-    async fn detect_black_screen(&self, url: &str, seconds: i64, hls: bool) -> bool;
-    async fn measure_bitrate(&self, url: &str, seconds: i64, hls: bool) -> Option<i64>;
+    async fn probe(&self, url: &str, timeout_seconds: i64, hls: bool, check_picture: bool) -> ProbeResult;
 }
 
 pub struct Ffmpeg;
 
 #[async_trait]
 impl Tools for Ffmpeg {
-    async fn probe_stream(&self, url: &str, timeout_seconds: i64, hls: bool) -> ProbeResult {
-        ffprobe::probe_stream(url, timeout_seconds, hls).await
-    }
-    async fn detect_black_screen(&self, url: &str, seconds: i64, hls: bool) -> bool {
-        ffprobe::detect_black_screen(url, seconds, hls).await
-    }
-    async fn measure_bitrate(&self, url: &str, seconds: i64, hls: bool) -> Option<i64> {
-        ffprobe::measure_bitrate(url, seconds, hls).await
+    async fn probe(&self, url: &str, timeout_seconds: i64, hls: bool, check_picture: bool) -> ProbeResult {
+        ffprobe::probe(url, timeout_seconds, hls, check_picture).await
     }
 }
 
@@ -87,8 +79,9 @@ pub fn channels_to_probe(conn: &Connection, source_id: i64) -> Result<Vec<Target
     Ok(stmt.query_map([source_id], target_from_row)?.collect::<rusqlite::Result<_>>()?)
 }
 
-fn quality_summary(r: &ProbeResult, bitrate: Option<i64>) -> String {
+fn quality_summary(r: &ProbeResult) -> String {
     let q = &r.quality;
+    let bitrate = q.bitrate;
     let resolution = match (q.width, q.height) {
         (_, Some(h)) if h > 0 => Some(if h >= 4320 {
             "8K".to_string()
@@ -124,21 +117,11 @@ impl Prober {
             .await?;
         bump_source(source.id);
 
-        let timeout = source.probe_timeout_seconds;
-        let mut r = self.tools.probe_stream(&url, timeout, hls).await;
-        let mut bitrate = r.quality.bitrate;
-        if r.status == "ok" && source.probe_measure_bitrate {
-            bitrate = self.tools.measure_bitrate(&url, timeout, hls).await.or(bitrate);
-        }
-        // ffprobe only reads stream metadata, so a valid video track with a black
-        // picture still looks fine to it.
-        if r.status == "ok" && source.probe_detect_black_screen && self.tools.detect_black_screen(&url, timeout, hls).await {
-            r.status = "error";
-            r.error = Some("Black screen".into());
-        }
+        let r = self.tools.probe(&url, source.probe_timeout_seconds, hls, source.probe_detect_black_screen).await;
 
         if r.status == "ok" {
-            ctx.info(format!("{}: {}", ch.name, quality_summary(&r, bitrate))).await;
+            let off_air = if r.off_air { " (picture frozen, likely off air)" } else { "" };
+            ctx.info(format!("{}: {}{off_air}", ch.name, quality_summary(&r))).await;
         } else {
             let category = ch.category_name.as_deref().unwrap_or("Uncategorised");
             let outcome = if r.status == "timeout" { "timed out" } else { "failed" };
@@ -148,6 +131,7 @@ impl Prober {
 
         // Only keep measurements for a pass. A black screen arrives with a full
         // set of numbers, and anything that ranks quality would trust them.
+        // Off air passes keep theirs for the history, but the summary skips them.
         let ok = r.status == "ok";
         let q = if ok { r.quality.clone() } else { Default::default() };
         let sample = history::ProbeSample {
@@ -159,8 +143,9 @@ impl Prober {
             fps: q.fps,
             video_codec: q.video_codec,
             audio_codec: q.audio_codec,
-            bitrate: if ok { bitrate } else { None },
+            bitrate: q.bitrate,
             error: r.error.clone(),
+            off_air: r.off_air,
         };
         self.db.call(move |conn| history::record(conn, id, &sample)).await?;
         Ok(ok)
@@ -518,19 +503,12 @@ mod tests {
 
     struct Fake {
         result: ProbeResult,
-        black: bool,
     }
 
     #[async_trait]
     impl Tools for Fake {
-        async fn probe_stream(&self, _: &str, _: i64, _: bool) -> ProbeResult {
+        async fn probe(&self, _: &str, _: i64, _: bool, _: bool) -> ProbeResult {
             self.result.clone()
-        }
-        async fn detect_black_screen(&self, _: &str, _: i64, _: bool) -> bool {
-            self.black
-        }
-        async fn measure_bitrate(&self, _: &str, _: i64, _: bool) -> Option<i64> {
-            None
         }
     }
 
@@ -670,6 +648,7 @@ mod tests {
                 bitrate: Some(20000),
             },
             error: None,
+            off_air: false,
         }
     }
 
@@ -677,7 +656,8 @@ mod tests {
     async fn black_screen_keeps_no_quality() {
         let s = setup();
         let id = add_sc(&s, "black", "UK", true);
-        let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: passing(), black: true }) };
+        let black = ProbeResult { status: "error", error: Some("Black screen".into()), ..passing() };
+        let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: black }) };
         p.run_probe(s.source, Some(vec![id]), &JobCtx::detached()).await.unwrap();
         let row: (String, String, Option<i64>, Option<i64>, Option<f64>, Option<String>, Option<i64>) = s
             .db
@@ -696,7 +676,7 @@ mod tests {
     async fn passing_probe_stores_quality() {
         let s = setup();
         let id = add_sc(&s, "good", "UK", true);
-        let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: passing(), black: false }) };
+        let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: passing() }) };
         p.run_probe(s.source, Some(vec![id]), &JobCtx::detached()).await.unwrap();
         let (status, height, failures): (String, i64, i64) = s
             .db
@@ -708,5 +688,29 @@ mod tests {
             )
             .unwrap();
         assert_eq!((status.as_str(), height, failures), ("ok", 2160, 0));
+    }
+
+    #[tokio::test]
+    async fn off_air_probe_passes_but_keeps_its_numbers_out() {
+        let s = setup();
+        let id = add_sc(&s, "slate", "UK", true);
+        let slate = ProbeResult {
+            off_air: true,
+            quality: ffprobe::Quality { height: Some(576), bitrate: Some(80), ..passing().quality },
+            ..passing()
+        };
+        let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: slate }) };
+        p.run_probe(s.source, Some(vec![id]), &JobCtx::detached()).await.unwrap();
+        let row: (String, Option<i64>, Option<i64>, i64, i64) = s
+            .db
+            .lock()
+            .query_row(
+                "SELECT probe_status, probe_height, probe_bitrate, probe_passes, consecutive_probe_failures \
+                 FROM source_channels WHERE id = ?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("ok".into(), None, None, 1, 0));
     }
 }

@@ -208,7 +208,7 @@ fn field_errors(errors: BTreeMap<String, String>) -> ApiResult {
 
 const SOURCE_SETTINGS: &str = "name = ?, server_url = ?, username = ?, password = ?, output_format = ?, \
     auto_import_groups = ?, sync_interval_minutes = ?, probe_enabled = ?, probe_concurrency = ?, \
-    probe_interval_minutes = ?, probe_timeout_seconds = ?, probe_measure_bitrate = ?, probe_detect_black_screen = ?";
+    probe_interval_minutes = ?, probe_timeout_seconds = ?, probe_detect_black_screen = ?";
 
 fn settings_params(s: &SourceInput) -> Vec<rusqlite::types::Value> {
     vec![
@@ -223,7 +223,6 @@ fn settings_params(s: &SourceInput) -> Vec<rusqlite::types::Value> {
         s.probe_concurrency.into(),
         s.probe_interval_minutes.into(),
         s.probe_timeout_seconds.into(),
-        (s.probe_measure_bitrate as i64).into(),
         (s.probe_detect_black_screen as i64).into(),
     ]
 }
@@ -241,8 +240,8 @@ async fn new_action(State(state): State<AppState>, form: Form) -> ApiResult {
                     conn.execute(
                         "INSERT INTO sources (name, server_url, username, password, output_format, auto_import_groups, \
                            sync_interval_minutes, probe_enabled, probe_concurrency, probe_interval_minutes, \
-                           probe_timeout_seconds, probe_measure_bitrate, probe_detect_black_screen) \
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           probe_timeout_seconds, probe_detect_black_screen) \
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         rusqlite::params_from_iter(settings_params(&input)),
                     )?;
                     Ok(conn.last_insert_rowid())
@@ -407,7 +406,6 @@ pub struct SourceFormValues {
     pub probe_concurrency: i64,
     pub probe_interval_minutes: i64,
     pub probe_timeout_seconds: i64,
-    pub probe_measure_bitrate: bool,
     pub probe_detect_black_screen: bool,
 }
 
@@ -438,7 +436,6 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
             probe_concurrency: s.probe_concurrency,
             probe_interval_minutes: s.probe_interval_minutes,
             probe_timeout_seconds: s.probe_timeout_seconds,
-            probe_measure_bitrate: s.probe_measure_bitrate,
             probe_detect_black_screen: s.probe_detect_black_screen,
         },
     })
