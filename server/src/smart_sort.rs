@@ -69,6 +69,18 @@ pub const CODEC_EFFICIENCY_TABLE: &[(&str, &[&str], f64)] = &[
     ("MPEG-2", &["mpeg2", "mpeg2video"], 0.5),
 ];
 
+/// A row of the codec table, for the preview's explainer.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct CodecEfficiency {
+    pub label: String,
+    pub factor: f64,
+}
+
+pub fn codec_efficiency() -> Vec<CodecEfficiency> {
+    CODEC_EFFICIENCY_TABLE.iter().map(|(label, _, factor)| CodecEfficiency { label: label.to_string(), factor: *factor }).collect()
+}
+
 // Bitrate is a measured estimate, so anything within half a Mbps counts as equal.
 const BITRATE_BUCKET_KBPS: f64 = 500.0;
 
@@ -112,7 +124,7 @@ const STEADY_PASS_RATE: f64 = 0.8;
 /// Whether the stream passed most of its recent probes. A stream that drops
 /// out every few days is worse to land on than a slightly lower quality one
 /// that's always up.
-fn steady(s: &SmartSortStream) -> bool {
+pub fn steady(s: &SmartSortStream) -> bool {
     s.probe_attempts < MIN_ATTEMPTS_FOR_RELIABILITY
         || s.probe_passes as f64 / s.probe_attempts as f64 >= STEADY_PASS_RATE
 }

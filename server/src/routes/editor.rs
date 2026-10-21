@@ -18,9 +18,10 @@ use crate::output::cache::invalidate;
 use crate::playlist::mutations as m;
 use crate::playlist::queries::{
     self as q, AutoChannelView, BROWSER_LIMIT, BrowserChannel, BrowserFilter, EditorCategory, EditorChannel, EpgChannel,
+    PreviewStream,
 };
 use crate::probe::{Only, PlaylistFilter, clear_playlist_probes};
-use crate::smart_sort::SmartSortConfig;
+use crate::smart_sort::{CodecEfficiency, SmartSortConfig, codec_efficiency};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -37,9 +38,6 @@ pub struct EditorPlaylist {
     pub id: i64,
     pub name: String,
     pub channel_name_template: String,
-    // The editor runs the same sort in the browser to flag groups that are out
-    // of order, so it needs the settings the real sort uses.
-    pub smart_sort: SmartSortConfig,
 }
 
 #[derive(Serialize, TS)]
@@ -61,6 +59,17 @@ pub struct EditorData {
     // Keyed by playlist category id.
     pub auto_channels: HashMap<String, Vec<AutoChannelView>>,
     pub any_probing: bool,
+    // Primaries whose group smart sort would reorder.
+    pub needs_smart_sort: Vec<i64>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SmartSortPreview {
+    pub config: SmartSortConfig,
+    pub streams: Vec<PreviewStream>,
+    pub codecs: Vec<CodecEfficiency>,
 }
 
 /// Kept light on purpose: the source browser loads on its own, so editing the
@@ -73,17 +82,18 @@ async fn load(State(state): State<AppState>, Path(id): Path<i64>, headers: Heade
             let Some(p) = Playlist::by_id(conn, id)? else { return Ok(None) };
             let cats = q::categories(conn, id)?;
             let mirrors: Vec<(i64, (i64, String))> = cats.iter().filter_map(|(c, m)| m.clone().map(|m| (c.id, m))).collect();
+            let channels = q::playlist_channels(conn, id, &p.alt_name_template)?;
             Ok(Some(EditorData {
                 output: EditorOutput {
                     m3u_url: format!("{origin}/output/m3u/{}", p.output_token),
                     epg_url: format!("{origin}/output/epg/{}", p.output_token),
                 },
-                channels: q::playlist_channels(conn, id, &p.alt_name_template)?,
+                needs_smart_sort: q::groups_needing_sort(&channels, &p.smart_sort_config()),
+                channels,
                 auto_channels: q::auto_channels(conn, &mirrors)?,
                 any_probing: q::has_probing_source(conn, id)?,
                 categories: cats.into_iter().map(|(c, _)| c).collect(),
                 playlist: EditorPlaylist {
-                    smart_sort: p.smart_sort_config(),
                     id: p.id,
                     name: p.name,
                     channel_name_template: p.channel_name_template,
@@ -298,7 +308,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
             let config = playlist.smart_sort_config();
             let primary = int_or_none(&form, "primaryId");
             let streams = db.call(move |conn| q::smart_sort_preview(conn, id, primary, &config)).await?;
-            done(json!({ "config": config, "streams": streams }))
+            done(json!(SmartSortPreview { config, streams, codecs: codec_efficiency() }))
         }
         "smartSortGroup" => {
             let (config, primary) = (playlist.smart_sort_config(), int_or_none(&form, "primaryId"));

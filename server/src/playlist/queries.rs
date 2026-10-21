@@ -11,7 +11,7 @@ use ts_rs::TS;
 use crate::alt_name::alt_name;
 use crate::epg_logo::{EpgLogoRef, EpgLogos};
 use crate::routes::api::{iso_opt, kinds};
-use crate::smart_sort::{SmartSortStream, factors_for, smart_sort_order};
+use crate::smart_sort::{SmartSortConfig, SmartSortStream, factors_for, needs_smart_sort, smart_sort_order, steady};
 use crate::xtream::{Creds, build_stream_url};
 
 // The source browser is virtualised, so this only bounds the payload, not
@@ -141,6 +141,8 @@ pub struct EditorChannel {
     pub probe_passes: i64,
     pub probe_attempts: i64,
     pub consecutive_probe_failures: i64,
+    // Passed enough recent probes that smart sort doesn't treat it as flaky.
+    pub probe_steady: bool,
     pub source_category_enabled: bool,
     // The logo a custom EPG pick lends, so the editor shows what output will.
     pub epg_logo: Option<String>,
@@ -206,6 +208,7 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
                 probe_passes: r.get(35)?,
                 probe_attempts: r.get(36)?,
                 consecutive_probe_failures: r.get(37)?,
+                probe_steady: false,
                 // No category row (uncategorised, or never seeded) counts as on.
                 source_category_enabled: r.get::<_, Option<bool>>(34)?.unwrap_or(true),
                 epg_logo: None,
@@ -223,12 +226,58 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
     for (r, logo_ref) in rows.iter_mut().zip(&refs) {
         let logo = logos.get(logo_ref);
         r.epg_logo = (!logo.is_empty()).then_some(logo);
+        r.probe_steady = steady(&editor_stream(r));
         r.auto_name = match r.primary_channel_id {
             Some(p) => alt_name(alt_template, name_of.get(&p).unwrap_or(&r.source_name), r.alt_position + 1, &r.source_provider_name),
             None => r.source_name.clone(),
         };
     }
     Ok(rows)
+}
+
+fn editor_stream(c: &EditorChannel) -> SmartSortStream {
+    SmartSortStream {
+        available: c.source_available,
+        source_enabled: c.source_enabled,
+        auto_disabled: c.auto_disabled_at.is_some(),
+        probe_status: c.probe_status.clone(),
+        probe_width: c.probe_width,
+        probe_height: c.probe_height,
+        probe_fps: c.probe_fps,
+        probe_video_codec: c.probe_video_codec.clone(),
+        probe_audio_codec: c.probe_audio_codec.clone(),
+        probe_bitrate: c.probe_bitrate,
+        probe_passes: c.probe_passes,
+        probe_attempts: c.probe_attempts,
+        consecutive_probe_failures: c.consecutive_probe_failures,
+    }
+}
+
+/// The primaries whose group smart sort would put in a different order, so the
+/// editor can flag them without anyone opening the preview.
+pub fn groups_needing_sort(rows: &[EditorChannel], config: &SmartSortConfig) -> Vec<i64> {
+    let mut alts: HashMap<i64, Vec<&EditorChannel>> = HashMap::new();
+    for r in rows {
+        if let Some(p) = r.primary_channel_id {
+            alts.entry(p).or_default().push(r);
+        }
+    }
+    let mut flagged = Vec::new();
+    for primary in rows.iter().filter(|r| r.primary_channel_id.is_none()) {
+        let Some(group) = alts.get_mut(&primary.id) else { continue };
+        group.sort_by_key(|r| (r.alt_position, r.id));
+        let members: Vec<&EditorChannel> = std::iter::once(primary).chain(group.iter().copied()).collect();
+        // A stream waiting on a probe counts as never probed until its result
+        // lands, so the group would look out of order for the whole run.
+        if members.iter().any(|m| matches!(m.probe_status.as_deref(), Some("queued") | Some("probing"))) {
+            continue;
+        }
+        let streams: Vec<SmartSortStream> = members.iter().map(|m| editor_stream(m)).collect();
+        if needs_smart_sort(&streams, config) {
+            flagged.push(primary.id);
+        }
+    }
+    flagged
 }
 
 fn logo_ref(r: &EditorChannel) -> EpgLogoRef {
@@ -537,5 +586,44 @@ mod tests {
         assert_eq!(preview.len(), 2);
         assert!(preview[0].currently_primary);
         assert_eq!(preview[1].current_position, 1);
+    }
+
+    #[test]
+    fn flags_groups_smart_sort_would_reorder() {
+        let db = test_support::db();
+        let conn = db.lock();
+        let s = test_support::source(&conn, "Main");
+        let set = |id: i64, status: &str, height: i64| {
+            conn.execute(
+                "UPDATE source_channels SET probe_status = ?, probe_height = ?, probe_fps = 50, probe_bitrate = 6000 WHERE id = ?",
+                rusqlite::params![status, height, id],
+            )
+            .unwrap();
+        };
+        let a = test_support::source_channel(&conn, s, "a", "BBC One", "UK");
+        let b = test_support::source_channel(&conn, s, "b", "BBC One HD", "UK");
+        let c = test_support::source_channel(&conn, s, "c", "ITV", "UK");
+        set(a, "ok", 720);
+        set(b, "ok", 1080);
+        set(c, "ok", 1080);
+        let p = test_support::playlist(&conn, "PL", "tok");
+        let cat = test_support::category(&conn, p, "UK", 0);
+        add_channels(&conn, p, cat, &[a, b, c], None).unwrap();
+        let rows = playlist_channels(&conn, p, "{name}").unwrap();
+        make_alternates(&conn, p, rows[0].id, &[rows[1].id]).unwrap();
+        let config = SmartSortConfig::default();
+
+        let rows = playlist_channels(&conn, p, "{name}").unwrap();
+        assert_eq!(groups_needing_sort(&rows, &config), [rows[0].id]);
+        assert!(rows.iter().all(|r| r.probe_steady));
+
+        // A probe still running on any stream holds the flag back until it lands.
+        set(b, "queued", 1080);
+        let rows = playlist_channels(&conn, p, "{name}").unwrap();
+        assert!(groups_needing_sort(&rows, &config).is_empty());
+
+        set(b, "ok", 576);
+        let rows = playlist_channels(&conn, p, "{name}").unwrap();
+        assert!(groups_needing_sort(&rows, &config).is_empty());
     }
 }

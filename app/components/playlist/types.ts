@@ -41,6 +41,8 @@ export type EditorChannel = {
   probePasses: number;
   probeAttempts: number;
   consecutiveProbeFailures: number;
+  // Passed enough recent probes that smart sort doesn't treat it as flaky.
+  probeSteady: boolean;
   // Set when this channel is an alternate of another channel (its primary).
   primaryChannelId: number | null;
   altPosition: number;

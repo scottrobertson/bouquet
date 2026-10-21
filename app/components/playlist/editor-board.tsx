@@ -55,10 +55,6 @@ import {
   SelectTrigger,
 } from "~/components/ui/select";
 import { cn } from "~/lib/utils";
-import {
-  needsSmartSort,
-  type SmartSortConfig,
-} from "~/lib/smart-sort";
 import { buildBoardRows, estimateRowHeight } from "./board-rows";
 import {
   AutoChannelRow,
@@ -101,13 +97,14 @@ export function EditorBoard({
   categories,
   channels,
   autoChannels,
-  smartSort,
+  needsSmartSort,
 }: {
   playlistId: number;
   categories: EditorCategory[];
   channels: EditorChannel[];
   autoChannels: Record<number, AutoChannelView[]>;
-  smartSort: SmartSortConfig;
+  // Primaries whose group smart sort would put in a different order.
+  needsSmartSort: number[];
 }) {
   const reorderFetcher = useFetcher();
   const reorderCatFetcher = useFetcher();
@@ -256,34 +253,7 @@ export function EditorBoard({
   const alternatesRef = useRef(alternatesByPrimary);
   alternatesRef.current = alternatesByPrimary;
 
-  // Primaries whose group smart sort would put in a different order, so the row
-  // can say so without anyone opening the preview. Everything the sort reads is
-  // already on the row, and a group is only a handful of streams, so this is
-  // cheap enough to redo on every edit.
-  const needsSort = useMemo(() => {
-    const flagged = new Set<number>();
-    for (const primary of items) {
-      if (primary.primaryChannelId != null) continue;
-      const alts = alternatesByPrimary.get(primary.id);
-      if (!alts?.length) continue;
-      const members = [primary, ...alts];
-      // A channel waiting on a probe counts as never-probed until the result
-      // lands, so the group would shuffle around mid-run and we'd suggest an
-      // order we're about to change our mind about. Say nothing until it's done.
-      if (
-        members.some(
-          (c) => c.probeStatus === "queued" || c.probeStatus === "probing",
-        )
-      )
-        continue;
-      const streams = members.map((c) => ({
-        ...c,
-        available: c.sourceAvailable,
-      }));
-      if (needsSmartSort(streams, smartSort)) flagged.add(primary.id);
-    }
-    return flagged;
-  }, [items, alternatesByPrimary, smartSort]);
+  const needsSort = useMemo(() => new Set(needsSmartSort), [needsSmartSort]);
 
   // Auto-sync categories are read-only: nothing can be dropped into them.
   const autoIds = useMemo(

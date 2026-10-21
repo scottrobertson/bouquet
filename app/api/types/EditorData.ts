@@ -5,4 +5,4 @@ import type { EditorChannel } from "./EditorChannel";
 import type { EditorOutput } from "./EditorOutput";
 import type { EditorPlaylist } from "./EditorPlaylist";
 
-export type EditorData = { playlist: EditorPlaylist, output: EditorOutput, categories: Array<EditorCategory>, channels: Array<EditorChannel>, autoChannels: { [key in string]: Array<AutoChannelView> }, anyProbing: boolean, };
+export type EditorData = { playlist: EditorPlaylist, output: EditorOutput, categories: Array<EditorCategory>, channels: Array<EditorChannel>, autoChannels: { [key in string]: Array<AutoChannelView> }, anyProbing: boolean, needsSmartSort: Array<number>, };

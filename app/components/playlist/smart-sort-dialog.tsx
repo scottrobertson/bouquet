@@ -16,37 +16,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import type { CodecEfficiency } from "~/api/types/CodecEfficiency";
+import type { PreviewStream } from "~/api/types/PreviewStream";
+import type { SmartSortConfig } from "~/api/types/SmartSortConfig";
+import type { SmartSortFactors } from "~/api/types/SmartSortFactors";
+import type { SmartSortPreview } from "~/api/types/SmartSortPreview";
 import { qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
-import {
-  CODEC_EFFICIENCY_TABLE,
-  type SmartSortConfig,
-  type SmartSortFactors,
-} from "~/lib/smart-sort";
 
-type PreviewStream = {
-  id: number;
-  sourceName: string;
-  providerName: string;
-  categoryName: string | null;
-  currentlyPrimary: boolean;
-  currentPosition: number;
-  probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
-  probeWidth: number | null;
-  probeHeight: number | null;
-  probeFps: number | null;
-  probeVideoCodec: string | null;
-  probeAudioCodec: string | null;
-  probeBitrate: number | null;
-  factors: SmartSortFactors;
-};
-
-type PreviewData = {
-  ok: boolean;
-  intent?: string;
-  config?: SmartSortConfig;
-  streams?: PreviewStream[];
-};
+type PreviewData = Partial<SmartSortPreview> & { ok: boolean; intent?: string };
 
 /** Short, scannable summary of the rules the sort used, from the playlist config.
     The bitrate rule carries a flag so we can hang the "how" popover off it. */
@@ -74,7 +52,7 @@ function ruleItems(config: SmartSortConfig): { text: string; bitrate?: boolean }
 
 /** The "show your working" popover: why bitrate is normalised and the per-codec
     multipliers it uses, read straight from the sort's own table. */
-function BitrateExplainer() {
+function BitrateExplainer({ codecs }: { codecs: CodecEfficiency[] }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -93,7 +71,7 @@ function BitrateExplainer() {
           rough H.264 equivalent first, then compare that.
         </p>
         <div className="rounded-md border border-border">
-          {CODEC_EFFICIENCY_TABLE.map((row) => (
+          {codecs.map((row) => (
             <div
               key={row.label}
               className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5 text-[12px] last:border-b-0"
@@ -317,7 +295,9 @@ export function SmartSortDialog({
                     <li key={r.text} className="flex items-center gap-1.5">
                       <span className="text-muted-foreground/40">•</span>
                       <span>{r.text}</span>
-                      {r.bitrate ? <BitrateExplainer /> : null}
+                      {r.bitrate ? (
+                        <BitrateExplainer codecs={data?.codecs ?? []} />
+                      ) : null}
                     </li>
                   ))}
                 </ul>

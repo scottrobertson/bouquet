@@ -42,7 +42,6 @@ import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { useChannelName } from "./channel-name";
 import { EpgPicker } from "./epg-picker";
-import { steady } from "~/lib/smart-sort";
 import { ProbeHistoryDialog } from "./probe-history";
 import { SmartSortDialog } from "./smart-sort-dialog";
 import type { EditorChannel } from "./types";
@@ -114,7 +113,7 @@ const QualityLine = memo(function QualityLine({
         <span
           className={cn(
             "flex shrink-0 items-center gap-1",
-            steady(channel) ? "text-muted-foreground" : "text-warning",
+            channel.probeSteady ? "text-muted-foreground" : "text-warning",
           )}
         >
           <span className="text-muted-foreground/50">·</span>

@@ -102,8 +102,15 @@ export function clientAction({ request }: Route.ClientActionArgs) {
   return apiAction<ActionResult>(request);
 }
 export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
-  const { playlist, categories, channels, autoChannels, output, anyProbing } =
-    loaderData;
+  const {
+    playlist,
+    categories,
+    channels,
+    autoChannels,
+    output,
+    anyProbing,
+    needsSmartSort,
+  } = loaderData;
 
   // Channels waiting on or mid-probe right now, for the live header count and
   // the list you get by hovering it.
@@ -207,7 +214,7 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
             categories={categories}
             channels={channels}
             autoChannels={autoChannels}
-            smartSort={playlist.smartSort}
+            needsSmartSort={needsSmartSort}
           />
         </ChannelNameTemplate.Provider>
       </div>
