@@ -12,7 +12,8 @@ env:
   PUSH: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-backend' }}
 
 jobs:
-  test:
+  web:
+    name: Web app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -27,6 +28,7 @@ jobs:
       - run: npm test
 
   server:
+    name: Server
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,13 +36,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Same Rust as .tool-versions, so clippy here flags exactly what it
+      # flags locally.
+      - id: rust
+        run: echo "version=$(awk '$1 == "rust" { print $2 }' ../.tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust.outputs.version }}
           components: clippy
 
+      # Saved even when clippy or a test fails, so the next run doesn't have
+      # to build every dependency from scratch again.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
+          cache-on-failure: true
 
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
@@ -55,8 +66,9 @@ jobs:
 
   # Builds the Docker image to make sure it still works. Only pushes from the
   # branches in PUSH.
-  build:
-    needs: [test, server]
+  docker:
+    name: Docker image
+    needs: [web, server]
     runs-on: ubuntu-latest
     permissions:
       contents: read
