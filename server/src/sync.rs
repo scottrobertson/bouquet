@@ -1,17 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use rusqlite::{Connection, params};
 
 use crate::db::Db;
 use crate::events::bump_source;
+use crate::jobs::{JobCtx, Jobs, Trigger, Work};
 use crate::models::Source;
 use crate::output::cache::invalidate_all;
 use crate::pool::{is_interval_due, map_pool, now};
 use crate::sources::categories::sync_source_categories;
 use crate::sources::changes::{BeforeChannel, SeenChannel, record_sync_changes};
-use crate::upload::request_upload_soon;
 use crate::xtream;
 
 // How long to keep programmes for sources that stop syncing.
@@ -28,66 +28,39 @@ fn set_error(conn: &Connection, source_id: i64, message: &str) -> Result<()> {
     Ok(())
 }
 
-/// Start a sync in the background. The source shows as syncing straight away
-/// so the UI updates before the slow fetch finishes.
-pub async fn start_sync(db: &Db, source_id: i64) {
-    let _ = db
-        .call(move |conn| {
-            conn.execute("UPDATE sources SET sync_status = 'syncing' WHERE id = ?", [source_id])?;
-            Ok(())
-        })
-        .await;
-    bump_source(source_id);
-    let db = db.clone();
-    tokio::spawn(async move {
-        if let Err(e) = run_sync(&db, source_id).await {
-            let msg = e.to_string();
-            let _ = db.call(move |conn| set_error(conn, source_id, &msg)).await;
-            bump_source(source_id);
-        }
-    });
-}
-
 /// Pull a source's catalog and guide. Channels the provider stops returning
 /// are marked unavailable rather than deleted. The channel step commits before
-/// the EPG step, so a slow or failing guide never throws away a good sync, but
-/// the source shows as syncing until the guide is done too.
-pub async fn run_sync(db: &Db, source_id: i64) -> Result<()> {
+/// the EPG step, so a slow or failing guide never throws away a good sync.
+/// A failure is recorded on the source as well as returned, so the source page
+/// shows it too.
+pub async fn run_sync(db: &Db, source_id: i64, ctx: &JobCtx) -> Result<()> {
     let Some(source) = db.call(move |conn| Ok(Source::by_id(conn, source_id)?)).await? else {
+        ctx.summary("The source was deleted before it could sync");
         return Ok(());
     };
-    println!("[sync] {}: starting", source.name);
     let started = Instant::now();
-    db.call(move |conn| {
-        conn.execute("UPDATE sources SET sync_status = 'syncing' WHERE id = ?", [source_id])?;
-        Ok(())
-    })
-    .await?;
-
     let creds = source.api_creds();
     let synced_at = now();
 
-    match sync_channels(db, &source, &creds, synced_at).await {
-        Ok(ChannelStep::Synced) => {}
-        Ok(ChannelStep::AccountFailed) => return Ok(()),
+    let channels = match sync_channels(db, &source, &creds, synced_at, ctx).await {
+        Ok(channels) => channels,
         Err(e) => {
-            eprintln!("[sync] {}: failed: {e:#}", source.name);
             let msg = e.to_string();
             db.call(move |conn| set_error(conn, source_id, &msg)).await?;
             bump_source(source_id);
-            return Ok(());
+            return Err(e);
         }
-    }
+    };
 
     // The guide is best effort. A failure still ends the sync "ok" but leaves a
     // note, so the catalog stays usable even without a guide.
-    let note = match sync_epg(db, &source, &creds).await {
+    let note = match sync_epg(db, &source, &creds, ctx).await {
         Ok(note) => note,
-        Err(e) => {
-            eprintln!("[sync] {}: EPG update failed: {e}", source.name);
-            Some(format!("Channels synced. EPG update failed: {e}"))
-        }
+        Err(e) => Some(format!("Channels synced. EPG update failed: {e}")),
     };
+    if let Some(note) = &note {
+        ctx.warn(note).await;
+    }
     db.call(move |conn| {
         conn.execute(
             "UPDATE sources SET sync_status = 'ok', last_error = ? WHERE id = ?",
@@ -98,45 +71,47 @@ pub async fn run_sync(db: &Db, source_id: i64) -> Result<()> {
     .await?;
     bump_source(source_id);
 
-    println!("[sync] {}: done in {:.1}s", source.name, started.elapsed().as_secs_f64());
+    ctx.info(format!("Done in {:.1}s", started.elapsed().as_secs_f64())).await;
+    ctx.summary(channels);
     // A fresh catalog and guide, so push playlists to their upload destinations.
-    request_upload_soon(db);
+    if let Some(jobs) = ctx.jobs() {
+        jobs.upload_all_soon();
+    }
     Ok(())
 }
 
-enum ChannelStep {
-    AccountFailed,
-    Synced,
-}
-
-async fn sync_channels(db: &Db, source: &Source, creds: &xtream::Creds, synced_at: i64) -> Result<ChannelStep> {
+/// Returns a short summary of what changed, like "1204 channels, 3 added".
+async fn sync_channels(db: &Db, source: &Source, creds: &xtream::Creds, synced_at: i64, ctx: &JobCtx) -> Result<String> {
     let source_id = source.id;
+    ctx.step("Checking the account").await;
     let account = xtream::validate_account(creds).await;
     if !account.ok {
-        let msg = account.message.clone().unwrap_or_else(|| "Account validation failed".into());
-        eprintln!("[sync] {}: account validation failed: {msg}", source.name);
-        db.call(move |conn| set_error(conn, source_id, &msg)).await?;
-        bump_source(source_id);
-        return Ok(ChannelStep::AccountFailed);
+        bail!(account.message.clone().unwrap_or_else(|| "Account validation failed".into()));
     }
+    ctx.info(match &account.status {
+        Some(status) => format!("Account is {status}"),
+        None => "Account is valid".to_string(),
+    })
+    .await;
 
+    ctx.step("Fetching channels").await;
     let fetch_started = Instant::now();
     let categories = xtream::fetch_live_categories(creds).await?;
     let streams = xtream::fetch_live_streams(creds).await?;
-    println!(
-        "[sync] {}: fetched {} categories, {} streams in {:.1}s",
-        source.name,
+    ctx.info(format!(
+        "Fetched {} categories and {} channels in {:.1}s",
         categories.len(),
         streams.len(),
         fetch_started.elapsed().as_secs_f64()
-    );
+    ))
+    .await;
     let category_names: HashMap<String, String> =
         categories.into_iter().map(|c| (c.category_id, c.category_name)).collect();
 
+    ctx.step("Saving channels").await;
     let auto_import = source.auto_import_groups;
-    let name = source.name.clone();
     let stream_count = streams.len();
-    db.call(move |conn| {
+    let (changes, pruned) = db.call(move |conn| {
         let before = catalog_snapshot(conn, source_id)?;
         let tx = conn.transaction()?;
         // Mark everything unavailable, then the upsert flips the channels still
@@ -201,23 +176,29 @@ async fn sync_channels(db: &Db, source: &Source, creds: &xtream::Creds, synced_a
         // their next poll rather than after the cache runs out.
         invalidate_all();
         bump_source(source_id);
-        println!("[sync] {name}: {stream_count} channels synced");
 
         // The change history must never break a sync.
-        match record_sync_changes(conn, source_id, &before, &seen, synced_at) {
-            Ok(Some((added, removed))) => println!("[sync] {name}: {added} added, {removed} removed since last sync"),
-            Ok(None) => {}
-            Err(e) => eprintln!("[sync] recording changes failed: {e:#}"),
-        }
+        let changes = record_sync_changes(conn, source_id, &before, &seen, synced_at).map_err(|e| format!("{e:#}"));
         // After the change log, so the diff above still sees the rows.
         let pruned = prune_unavailable_channels(conn, source_id)?;
-        if pruned > 0 {
-            println!("[sync] {name}: pruned {pruned} dead channels");
-        }
-        Ok(())
+        Ok((changes, pruned))
     })
     .await?;
-    Ok(ChannelStep::Synced)
+
+    ctx.info(format!("Saved {stream_count} channels")).await;
+    let mut summary = format!("{stream_count} channels");
+    match changes {
+        Ok(Some((added, removed))) => {
+            ctx.info(format!("{added} added and {removed} removed since the last sync")).await;
+            summary.push_str(&format!(", {added} added, {removed} removed"));
+        }
+        Ok(None) => {}
+        Err(e) => ctx.warn(format!("Couldn't record what changed: {e}")).await,
+    }
+    if pruned > 0 {
+        ctx.info(format!("Removed {pruned} dead channels that no playlist uses")).await;
+    }
+    Ok(summary)
 }
 
 fn catalog_snapshot(conn: &Connection, source_id: i64) -> Result<Vec<(String, BeforeChannel)>> {
@@ -231,8 +212,9 @@ fn catalog_snapshot(conn: &Connection, source_id: i64) -> Result<Vec<(String, Be
 
 /// Fetch and store the guide. Returns a note to show on the source when some
 /// channels still failed after retrying.
-async fn sync_epg(db: &Db, source: &Source, creds: &xtream::Creds) -> Result<Option<String>> {
+async fn sync_epg(db: &Db, source: &Source, creds: &xtream::Creds, ctx: &JobCtx) -> Result<Option<String>> {
     let source_id = source.id;
+    ctx.step("Fetching the guide").await;
     // Only channels that can reach output: available, and in an enabled
     // category or none. Channels sharing an EPG id share a guide, so fetch each
     // id once.
@@ -261,11 +243,15 @@ async fn sync_epg(db: &Db, source: &Source, creds: &xtream::Creds) -> Result<Opt
         })
         .await?;
 
-    println!("[sync] {}: fetching EPG for {} channels", source.name, targets.len());
+    ctx.set_total(targets.len() as i64).await;
     let started = Instant::now();
     let fetched = map_pool(targets.clone(), EPG_FETCH_CONCURRENCY, |(epg_id, stream_id)| {
         let creds = creds.clone();
-        async move { xtream::fetch_simple_data_table(&creds, &stream_id, &epg_id).await }
+        async move {
+            let result = xtream::fetch_simple_data_table(&creds, &stream_id, &epg_id).await;
+            ctx.tick().await;
+            result
+        }
     })
     .await;
     let failures = fetched.iter().filter(|r| r.is_err()).count();
@@ -277,6 +263,7 @@ async fn sync_epg(db: &Db, source: &Source, creds: &xtream::Creds) -> Result<Opt
     let results: Vec<Option<Vec<xtream::Programme>>> = fetched.into_iter().map(|r| r.ok()).collect();
 
     let total = targets.len();
+    ctx.step("Saving the guide").await;
     db.call(move |conn| {
         // Channels whose fetch failed keep their old programmes rather than going blank.
         let tx = conn.transaction()?;
@@ -304,12 +291,12 @@ async fn sync_epg(db: &Db, source: &Source, creds: &xtream::Creds) -> Result<Opt
     })
     .await?;
     let failed = if failures > 0 { format!(" ({failures} failed)") } else { String::new() };
-    println!(
-        "[sync] {}: EPG done, {}/{total} channels{failed} in {:.1}s",
-        source.name,
+    ctx.info(format!(
+        "Guide updated for {} of {total} channels{failed} in {:.1}s",
         total - failures,
         started.elapsed().as_secs_f64()
-    );
+    ))
+    .await;
     Ok((failures > 0).then(|| {
         format!(
             "Channels synced. The guide for {failures} of {total} channels couldn't be updated ({}), \
@@ -371,10 +358,10 @@ pub fn prune_old_programmes(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Sync the sources whose interval has passed, one at a time so providers
-/// aren't hit in parallel. Run hourly; most ticks sync nothing.
-pub async fn sync_due_sources(db: &Db) -> Result<()> {
-    let sources = db.call(|conn| Ok(Source::all(conn)?)).await?;
+/// Queue a sync for each source whose interval has passed. Run hourly; most
+/// ticks sync nothing.
+pub async fn sync_due_sources(jobs: &Jobs) -> Result<()> {
+    let sources = jobs.db().call(|conn| Ok(Source::all(conn)?)).await?;
     let t = now();
     let due: Vec<&Source> = sources
         .iter()
@@ -382,11 +369,9 @@ pub async fn sync_due_sources(db: &Db) -> Result<()> {
         .collect();
     println!("[sync] {} of {} sources due", due.len(), sources.len());
     for s in due {
-        if let Err(e) = run_sync(db, s.id).await {
-            eprintln!("[sync] {}: failed: {e:#}", s.name);
-        }
+        jobs.enqueue(Work::Sync { source_id: s.id }, Trigger::Scheduled).await?;
     }
-    db.call(|conn| prune_old_programmes(conn)).await
+    jobs.db().call(|conn| prune_old_programmes(conn)).await
 }
 
 #[cfg(test)]
@@ -490,7 +475,7 @@ mod tests {
             conn.last_insert_rowid()
         };
 
-        run_sync(&db, source).await.unwrap();
+        run_sync(&db, source, &JobCtx::detached()).await.unwrap();
 
         let conn = db.lock();
         let s = Source::by_id(&conn, source).unwrap().unwrap();
@@ -583,7 +568,7 @@ mod tests {
             conn.last_insert_rowid()
         };
 
-        run_sync(&db, source).await.unwrap();
+        run_sync(&db, source, &JobCtx::detached()).await.unwrap();
 
         let conn = db.lock();
         let s = Source::by_id(&conn, source).unwrap().unwrap();
@@ -638,7 +623,7 @@ mod tests {
                 .unwrap();
             conn.last_insert_rowid()
         };
-        run_sync(&db, source).await.unwrap();
+        assert!(run_sync(&db, source, &JobCtx::detached()).await.is_err());
         let s = Source::by_id(&db.lock(), source).unwrap().unwrap();
         assert_eq!(s.sync_status, "error");
         assert!(s.last_error.unwrap().starts_with("Connection failed"));

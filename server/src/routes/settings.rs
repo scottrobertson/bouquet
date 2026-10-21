@@ -49,11 +49,16 @@ async fn act(State(state): State<AppState>, form: Form) -> ApiResult {
             .await
             .map(|(file, _)| format!("Backup created: {file}")),
         "deleteBackup" => backups().delete(&file).map(|_| "Backup deleted".to_string()),
-        "restore" => state
-            .db
-            .call(move |conn| backups().restore(conn, &file))
-            .await
-            .map(|_| "Restored from backup.".to_string()),
+        // A restore replaces every table, so a job running at the same time
+        // would write into data that no longer exists.
+        "restore" => {
+            let db = state.db.clone();
+            state
+                .jobs
+                .run_exclusive(|| async move { db.call(move |conn| backups().restore(conn, &file)).await })
+                .await
+                .map(|_| "Restored from backup.".to_string())
+        }
         _ => return bad_request(json!({ "ok": false, "message": "Unknown action" })),
     };
     match result {

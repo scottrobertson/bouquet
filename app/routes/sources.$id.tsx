@@ -23,7 +23,8 @@ import type { SourceChannelRow } from "~/api/types/SourceChannelRow";
 import type { SourceDetailData } from "~/api/types/SourceDetailData";
 import { apiAction, apiLoad } from "~/lib/api";
 import { toast } from "sonner";
-import { useLiveRevalidate } from "~/lib/use-live-revalidate";
+import { useActiveJobsFor, useLiveSourceStatus } from "~/lib/jobs";
+import { ActiveJobCard } from "~/components/jobs/job-cards";
 import { PageHeader } from "~/components/page-header";
 import { RelativeTime } from "~/components/relative-time";
 import { SyncStatusBadge } from "~/components/sources/sync-status-badge";
@@ -82,16 +83,14 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
   const navigation = useNavigation();
   const navIntent = navigation.formData?.get("intent");
   const submitting = navigation.state !== "idle" && navIntent === "sync";
-  const syncing = submitting || source.syncStatus === "syncing";
+  const live = useLiveSourceStatus(source);
+  const syncing =
+    submitting || live.sync.status === "syncing" || live.sync.status === "queued";
   const probing =
     (navigation.state !== "idle" && navIntent === "probe") ||
-    source.probeStatus === "probing";
-
-  // Sync and probe both run in the background, so listen for live updates while
-  // either is still going.
-  useLiveRevalidate(
-    source.syncStatus === "syncing" || source.probeStatus === "probing",
-  );
+    live.probe.status === "probing" ||
+    live.probe.status === "queued";
+  const jobs = useActiveJobsFor({ sourceId: source.id });
 
   // Toast once when a background sync or probe is kicked off.
   const handled = useRef<typeof actionData>(undefined);
@@ -121,12 +120,12 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
                 Disabled
               </Badge>
             )}
-            <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
-            {probing || source.probeStatus !== "idle" ? (
+            <SyncStatusBadge status={submitting ? "syncing" : live.sync.status} />
+            {probing || live.probe.status !== "idle" ? (
               <ProbeStatusBadge
-                status={probing ? "probing" : source.probeStatus}
-                done={source.probeDone}
-                total={source.probeTotal}
+                status={live.probe.status === "idle" ? "probing" : live.probe.status}
+                done={live.probe.done}
+                total={live.probe.total}
               />
             ) : null}
           </span>
@@ -211,6 +210,14 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             />
           ) : null}
         </div>
+
+        {jobs.length > 0 ? (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {jobs.map((job) => (
+              <ActiveJobCard key={job.id} job={job} showLink={false} />
+            ))}
+          </div>
+        ) : null}
 
         {source.syncStatus === "error" && source.lastError ? (
           <div className="rounded-md border border-transparent bg-destructive/10 px-3 py-2 text-[13px] text-destructive">

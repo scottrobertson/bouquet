@@ -1,5 +1,6 @@
 import { NavLink } from "react-router";
 import {
+  Activity,
   ListVideo,
   PanelLeftClose,
   PanelLeftOpen,
@@ -8,6 +9,8 @@ import {
   Tv,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { useJobs } from "~/lib/jobs";
+import { JobsTray } from "~/components/jobs/job-cards";
 import { Button } from "~/components/ui/button";
 import {
   Tooltip,
@@ -18,6 +21,7 @@ import {
 const nav = [
   { to: "/sources", label: "Sources", icon: Radio },
   { to: "/playlists", label: "Playlists", icon: ListVideo },
+  { to: "/jobs", label: "Jobs", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -47,6 +51,8 @@ export function SidebarContent({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
+  const activeJobs = useJobs().active.length;
+
   return (
     <>
       <div
@@ -90,6 +96,7 @@ export function SidebarContent({
         )}
       >
         {nav.map((item) => {
+          const count = item.to === "/jobs" ? activeJobs : 0;
           // Static className with aria-current variants instead of a render
           // function, so it survives the Tooltip's asChild Slot when collapsed.
           const link = (
@@ -97,12 +104,21 @@ export function SidebarContent({
               to={item.to}
               onClick={onNavigate}
               className={cn(
-                "group flex items-center gap-2.5 rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.03] hover:text-foreground aria-[current=page]:bg-white/[0.06] aria-[current=page]:text-foreground",
+                "group relative flex items-center gap-2.5 rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.03] hover:text-foreground aria-[current=page]:bg-white/[0.06] aria-[current=page]:text-foreground",
                 collapsed ? "size-9 justify-center" : "h-11 px-2.5 md:h-8",
               )}
             >
               <item.icon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-aria-[current=page]:text-primary" />
               {!collapsed && item.label}
+              {count > 0 ? (
+                collapsed ? (
+                  <span className="absolute right-1.5 top-1.5 size-1.5 animate-pulse rounded-full bg-primary" />
+                ) : (
+                  <span className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold tabular-nums text-primary">
+                    {count}
+                  </span>
+                )
+              ) : null}
             </NavLink>
           );
 
@@ -119,9 +135,11 @@ export function SidebarContent({
         })}
       </nav>
 
+      <div className="mt-auto" />
+      {!collapsed && <JobsTray onNavigate={onNavigate} />}
       <div
         className={cn(
-          "mt-auto px-2 py-3",
+          "px-2 py-3",
           collapsed && "flex justify-center",
         )}
       >

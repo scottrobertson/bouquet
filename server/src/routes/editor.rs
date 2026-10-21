@@ -109,7 +109,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
         ok(body)
     };
     let db = &state.db;
-    let prober = &state.prober;
+    let jobs = &state.jobs;
     let channel_ids = form.ints("channelIds");
 
     // Runs one edit against the database and reports it done.
@@ -129,7 +129,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
             let index = form.get("index").filter(|v| !v.is_empty()).and_then(|v| v.trim().parse::<i64>().ok());
             let added = db.call(move |conn| m::add_channels(conn, id, category_id, &ids, index)).await?;
             let n = added.len();
-            prober.probe_added_channels(added).await?;
+            jobs.probe_added_channels(added, id).await?;
             done(json!({ "added": n }))
         }
         "addSourceCategory" => {
@@ -156,7 +156,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
                 return bad_request(json!({ "ok": false, "error": "Could not create category" }));
             };
             let n = added.len();
-            prober.probe_added_channels(added).await?;
+            jobs.probe_added_channels(added, id).await?;
             done(json!({ "added": n }))
         }
         "addMatching" => {
@@ -179,7 +179,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
                 })
                 .await?;
             let n = added.len();
-            prober.probe_added_channels(added).await?;
+            jobs.probe_added_channels(added, id).await?;
             done(json!({ "added": n }))
         }
         "createCategory" => {
@@ -237,13 +237,12 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
             edit!(move |conn| m::toggle_channel(conn, id, channel_id, enabled))
         }
         "probeChannel" => {
-            // One channel on demand, whatever its source's probe setting. Waits,
-            // so the row shows the result when the page reloads.
-            prober.probe_single_channel(int_or_none(&form, "sourceChannelId")).await?;
-            done(json!({}))
+            // One channel on demand, whatever its source's probe setting.
+            let queued = jobs.probe_channels(vec![int_or_none(&form, "sourceChannelId")], Some(id)).await?;
+            done(json!({ "queued": queued }))
         }
         "probeGroup" => {
-            let queued = prober.start_probe_group(id, int_or_none(&form, "primaryId")).await?;
+            let queued = jobs.probe_group(id, int_or_none(&form, "primaryId")).await?;
             done(json!({ "queued": queued }))
         }
         "probeAll" | "probeMissing" | "probeFailed" | "probeAutoDisabled" | "probeCategory" => {
@@ -256,7 +255,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
                     _ => None,
                 },
             };
-            let queued = prober.start_probe_playlist(id, filter).await?;
+            let queued = jobs.probe_playlist(id, filter).await?;
             done(json!({ "queued": queued }))
         }
         "clearProbes" => {
@@ -281,7 +280,7 @@ async fn act(State(state): State<AppState>, Path(id): Path<i64>, form: Form) -> 
             let (primary, ids) = (int_or_none(&form, "primaryId"), form.ints("sourceChannelIds"));
             let added = db.call(move |conn| m::add_alternates(conn, id, primary, &ids)).await?;
             let n = added.len();
-            prober.probe_added_channels(added).await?;
+            jobs.probe_added_channels(added, id).await?;
             done(json!({ "added": n }))
         }
         "reorderAlternates" => {

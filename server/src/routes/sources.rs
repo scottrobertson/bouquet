@@ -16,7 +16,7 @@ use crate::sources::categories::{SourceCategory, list_source_categories, set_all
 use crate::sources::changes::{changes_for_sync, list_syncs, PlaylistRef};
 use crate::sources::channels::{AUTO_OPEN_LIMIT, CategoryCount, SOURCE_CHANNEL_LIMIT, SourceChannelRow, list_source_channels, search_category_counts};
 use crate::sources::form::{SourceInput, parse_source_form};
-use crate::sync::start_sync;
+use crate::jobs::{Trigger, Work, active_by_source, live_status, probe_progress};
 use crate::xtream;
 
 pub fn routes() -> Router<AppState> {
@@ -88,10 +88,13 @@ async fn list(State(state): State<AppState>) -> ApiResult {
         .db
         .call(|conn| {
             let summaries = source_category_summaries(conn)?;
+            let active = active_by_source(conn)?;
             let sources = Source::all(conn)?
                 .into_iter()
                 .map(|s| {
                     let summary = summaries.get(&s.id).cloned().unwrap_or_default();
+                    let jobs = active.get(&s.id).map(Vec::as_slice).unwrap_or_default();
+                    let (probe_done, probe_total) = probe_progress(jobs);
                     SourceListRow {
                         expires_at: after_first_sync(&s, iso_opt(s.expires_at)),
                         max_connections: after_first_sync(&s, s.max_connections),
@@ -101,10 +104,10 @@ async fn list(State(state): State<AppState>) -> ApiResult {
                         username: s.username.clone(),
                         output_format: s.output_format.clone(),
                         sync_interval_minutes: s.sync_interval_minutes,
-                        sync_status: s.sync_status.clone(),
-                        probe_status: s.probe_status.clone(),
-                        probe_done: s.probe_done,
-                        probe_total: s.probe_total,
+                        sync_status: live_status(jobs, "sync", "syncing", &s.sync_status),
+                        probe_status: live_status(jobs, "probe", "probing", &s.probe_status),
+                        probe_done,
+                        probe_total,
                         channel_count: s.channel_count,
                         channels_on: (s.channel_count - summary.off_channels).max(0),
                         categories_total: summary.categories_total,
@@ -131,6 +134,10 @@ async fn set_enabled(state: &AppState, id: i64, enabled: bool) -> anyhow::Result
         .await
 }
 
+async fn sync(state: &AppState, id: i64) -> anyhow::Result<i64> {
+    state.jobs.enqueue(Work::Sync { source_id: id }, Trigger::Manual).await
+}
+
 async fn delete_source(state: &AppState, id: i64) -> anyhow::Result<()> {
     state
         .db
@@ -152,18 +159,18 @@ async fn list_action(State(state): State<AppState>, form: Form) -> ApiResult {
             })
             .await?;
         for id in &ids {
-            start_sync(&state.db, *id).await;
+            sync(&state, *id).await?;
         }
         return ok(json!({ "intent": "syncAll", "started": ids.len() }));
     }
     let Some(id) = form.int("id") else { return bad_request(json!({ "ok": false, "error": "Missing source" })) };
     match intent.as_str() {
         "sync" => {
-            start_sync(&state.db, id).await;
+            sync(&state, id).await?;
             ok(json!({ "intent": "sync", "started": true }))
         }
         "probe" => {
-            state.prober.start_probe(id).await;
+            state.jobs.probe_source(id, Trigger::Manual).await?;
             ok(json!({ "intent": "probe", "started": true }))
         }
         "setEnabled" => {
@@ -234,8 +241,8 @@ async fn new_action(State(state): State<AppState>, form: Form) -> ApiResult {
                     conn.execute(
                         "INSERT INTO sources (name, server_url, username, password, output_format, auto_import_groups, \
                            sync_interval_minutes, probe_enabled, probe_concurrency, probe_interval_minutes, \
-                           probe_timeout_seconds, probe_measure_bitrate, probe_detect_black_screen, sync_status) \
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'syncing')",
+                           probe_timeout_seconds, probe_measure_bitrate, probe_detect_black_screen) \
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         rusqlite::params_from_iter(settings_params(&input)),
                     )?;
                     Ok(conn.last_insert_rowid())
@@ -243,7 +250,7 @@ async fn new_action(State(state): State<AppState>, form: Form) -> ApiResult {
                 .await?;
             // Sync in the background and go straight to the source page, which
             // follows along until the sync finishes.
-            start_sync(&state.db, id).await;
+            sync(&state, id).await?;
             redirect(format!("/sources/{id}"))
         }
         _ => bad_request(json!({ "error": "Unknown action" })),
@@ -295,6 +302,8 @@ async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
         .call(move |conn| {
             let Some(s) = Source::by_id(conn, id)? else { return Ok(None) };
             let categories = list_source_categories(conn, id)?;
+            let jobs = active_by_source(conn)?.remove(&id).unwrap_or_default();
+            let (probe_done, probe_total) = probe_progress(&jobs);
             Ok(Some(SourceDetailData {
                 source: SourceDetail {
                     expires_at: after_first_sync(&s, iso_opt(s.expires_at)),
@@ -302,7 +311,7 @@ async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
                     id: s.id,
                     name: s.name,
                     enabled: s.enabled,
-                    sync_status: s.sync_status,
+                    sync_status: live_status(&jobs, "sync", "syncing", &s.sync_status),
                     last_synced_at: iso_opt(s.last_synced_at),
                     channel_count: s.channel_count,
                     last_error: s.last_error,
@@ -310,11 +319,11 @@ async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
                     sync_interval_minutes: s.sync_interval_minutes,
                     account_status: s.account_status,
                     probe_enabled: s.probe_enabled,
-                    probe_status: s.probe_status,
+                    probe_status: live_status(&jobs, "probe", "probing", &s.probe_status),
                     probe_interval_minutes: s.probe_interval_minutes,
                     last_probed_at: iso_opt(s.last_probed_at),
-                    probe_total: s.probe_total,
-                    probe_done: s.probe_done,
+                    probe_total,
+                    probe_done,
                     probe_error: s.probe_error,
                     notes: s.notes,
                 },
@@ -329,11 +338,11 @@ async fn detail_action(State(state): State<AppState>, Path(id): Path<i64>, form:
     let enabled = form.get("enabled") == Some("true");
     match form.intent().as_str() {
         "sync" => {
-            start_sync(&state.db, id).await;
+            sync(&state, id).await?;
             ok(json!({ "intent": "sync", "started": true }))
         }
         "probe" => {
-            state.prober.start_probe(id).await;
+            state.jobs.probe_source(id, Trigger::Manual).await?;
             ok(json!({ "intent": "probe", "started": true }))
         }
         "setEnabled" => {

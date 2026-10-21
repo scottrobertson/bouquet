@@ -11,7 +11,7 @@ use super::api::{ApiResult, bad_request, found, iso, iso_opt, kinds, ok, redirec
 use super::{AppState, external_origin, form::Form};
 use crate::models::Playlist;
 use crate::output::cache::invalidate;
-use crate::upload::start_upload;
+use crate::jobs::{Trigger, Work};
 use crate::upload::storage::S3Config;
 
 pub fn routes() -> Router<AppState> {
@@ -198,8 +198,12 @@ async fn settings(State(state): State<AppState>, Path(id): Path<i64>, headers: H
         .call(move |conn| {
             let Some(p) = Playlist::by_id(conn, id)? else { return Ok(None) };
             let mut stmt = conn.prepare(
-                "SELECT id, name, type, enabled, m3u_path, epg_path, public_url_base, upload_status, last_uploaded_at, \
-                   upload_error, config FROM upload_destinations WHERE playlist_id = ? ORDER BY id",
+                "SELECT id, name, type, enabled, m3u_path, epg_path, public_url_base, \
+                   CASE \
+                     WHEN EXISTS (SELECT 1 FROM jobs j WHERE j.destination_id = d.id AND j.status = 'running') THEN 'uploading' \
+                     WHEN EXISTS (SELECT 1 FROM jobs j WHERE j.destination_id = d.id AND j.status = 'queued') THEN 'queued' \
+                     ELSE upload_status END, \
+                   last_uploaded_at, upload_error, config FROM upload_destinations d WHERE playlist_id = ? ORDER BY id",
             )?;
             let destinations = stmt
                 .query_map([id], |r| {
@@ -449,7 +453,7 @@ async fn settings_action(State(state): State<AppState>, Path(id): Path<i64>, for
                 .await?;
             match (exists, dest_id) {
                 (true, Some(dest_id)) => {
-                    start_upload(&state.db, dest_id);
+                    state.jobs.enqueue(Work::Upload { destination_id: dest_id }, Trigger::Manual).await?;
                     done()
                 }
                 _ => with_status(StatusCode::NOT_FOUND, json!({ "ok": false, "error": "Destination not found", "intent": intent })),

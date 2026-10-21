@@ -3,7 +3,9 @@ import { useEffect } from "react";
 import { Form, Link, useActionData, useFetcher } from "react-router";
 import { toast } from "sonner";
 import type { PlaylistSettingsData } from "~/api/types/PlaylistSettingsData";
+import type { UploadStatus } from "~/api/types/UploadStatus";
 import { apiAction, apiLoad } from "~/lib/api";
+import { useActiveJobsFor } from "~/lib/jobs";
 import { CopyField } from "~/components/copy-field";
 import { PageHeader } from "~/components/page-header";
 import {
@@ -12,7 +14,6 @@ import {
 } from "~/components/playlists/destination-dialog";
 import { UploadStatusBadge } from "~/components/playlists/upload-status-badge";
 import { RelativeTime } from "~/components/relative-time";
-import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,9 +56,6 @@ export function clientAction({ request }: Route.ClientActionArgs) {
 export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
   const { playlist, m3uUrl, epgUrl, destinations } = loaderData;
   const actionData = useActionData<typeof clientAction>();
-
-  // Keep status badges live while an upload is running in the background.
-  useLiveRevalidate(destinations.some((d) => d.uploadStatus === "uploading"));
 
   useEffect(() => {
     if (actionData && "intent" in actionData && actionData.ok) {
@@ -347,7 +345,7 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
 }
 
 type DestinationRowData = DestinationDTO & {
-  uploadStatus: "idle" | "uploading" | "ok" | "error";
+  uploadStatus: UploadStatus;
   lastUploadedAt: string | null;
   uploadError: string | null;
   publicM3uUrl: string | null;
@@ -357,9 +355,19 @@ type DestinationRowData = DestinationDTO & {
 function DestinationRow({ destination }: { destination: DestinationRowData }) {
   const upload = useFetcher();
   const del = useFetcher();
+  const job = useActiveJobsFor({ destinationId: destination.id })[0];
   const uploading =
     destination.uploadStatus === "uploading" ||
+    destination.uploadStatus === "queued" ||
+    job != null ||
     upload.state !== "idle";
+  const status: UploadStatus = job
+    ? job.status === "running"
+      ? "uploading"
+      : "queued"
+    : upload.state !== "idle"
+      ? "uploading"
+      : destination.uploadStatus;
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card px-4 py-3">
@@ -369,7 +377,10 @@ function DestinationRow({ destination }: { destination: DestinationRowData }) {
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
             {destination.type}
           </span>
-          <UploadStatusBadge status={uploading ? "uploading" : destination.uploadStatus} />
+          <UploadStatusBadge status={status} />
+          {job?.status === "running" && job.step ? (
+            <span className="text-xs text-muted-foreground">{job.step}</span>
+          ) : null}
         </div>
         <div className="flex items-center gap-1.5">
           <upload.Form method="post">

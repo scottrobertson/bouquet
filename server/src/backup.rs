@@ -17,6 +17,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::db::{self, Db};
+use crate::jobs::JobCtx;
 use crate::output::cache::invalidate_all;
 
 static FILE_RE: LazyLock<Regex> =
@@ -174,10 +175,11 @@ impl Backups {
 
         let (safety, _) = self.create(conn, "prerestore")?;
 
+        // Job history is about this server, not the data, so it stays as it is.
         let tables: Vec<String> = {
             let mut stmt = conn.prepare(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' \
-                 AND name != '__drizzle_migrations'",
+                 AND name NOT IN ('__drizzle_migrations', 'jobs', 'job_logs')",
             )?;
             stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
         };
@@ -192,6 +194,13 @@ impl Backups {
             for t in &tables {
                 tx.execute(&format!("INSERT INTO main.\"{t}\" SELECT * FROM restore.\"{t}\""), [])?;
             }
+            // Jobs whose source or playlist isn't in the backup lose their link.
+            // The titles still say what they were.
+            tx.execute_batch(
+                "UPDATE jobs SET source_id = NULL WHERE source_id NOT IN (SELECT id FROM sources);
+                 UPDATE jobs SET playlist_id = NULL WHERE playlist_id NOT IN (SELECT id FROM playlists);
+                 UPDATE jobs SET destination_id = NULL WHERE destination_id NOT IN (SELECT id FROM upload_destinations);",
+            )?;
             tx.commit()?;
             Ok(())
         })();
@@ -236,13 +245,19 @@ pub fn backups() -> Backups {
     Backups { dir: crate::config::config().backups_path.clone() }
 }
 
-pub async fn auto_backup(db: &Db) -> Result<()> {
-    db.call(|conn| {
-        let b = backups();
-        b.create(conn, "auto")?;
-        b.prune_auto(crate::config::config().backup_keep)
-    })
-    .await
+/// The scheduled backup job.
+pub async fn auto_backup(db: &Db, ctx: &JobCtx) -> Result<()> {
+    ctx.step("Backing up").await;
+    let file = db
+        .call(|conn| {
+            let b = backups();
+            let (file, _) = b.create(conn, "auto")?;
+            b.prune_auto(crate::config::config().backup_keep)?;
+            Ok(file)
+        })
+        .await?;
+    ctx.summary(format!("Saved {file}"));
+    Ok(())
 }
 
 #[cfg(test)]
@@ -269,16 +284,21 @@ mod tests {
         test_support::source(&conn, "Main");
         test_support::playlist(&conn, "Keep me", "tok-keep");
         let (file, version) = backups.create(&conn, "manual").unwrap();
-        assert_eq!(version, 25);
+        assert_eq!(version, db::latest_version());
         assert!(backups.dir.join(&file).exists());
 
         conn.execute("DELETE FROM playlists", []).unwrap();
         test_support::playlist(&conn, "Different", "tok-diff");
+        conn.execute("INSERT INTO jobs (kind, trigger, title, created_at) VALUES ('sync', 'manual', 'Sync Main', 1)", [])
+            .unwrap();
         backups.restore(&mut conn, &file).unwrap();
 
         assert_eq!(playlist_names(&conn), ["Keep me"]);
         let n: i64 = conn.query_row("SELECT count(*) FROM sources", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
+        // Job history belongs to this server, so a restore leaves it alone.
+        let jobs: i64 = conn.query_row("SELECT count(*) FROM jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(jobs, 1);
     }
 
     #[test]

@@ -233,13 +233,14 @@ fn logo_ref(r: &EditorChannel) -> EpgLogoRef {
     }
 }
 
-/// Is any source behind this playlist probing right now? Keeps the editor
-/// listening for live results so quality fills in as it lands.
+/// Is a probe queued or running on any source behind this playlist? The
+/// editor shows it as probing until it's done.
 pub fn has_probing_source(conn: &Connection, playlist_id: i64) -> Result<bool> {
     Ok(conn
         .query_row(
-            "SELECT 1 FROM playlist_channels pc JOIN source_channels sc ON pc.source_channel_id = sc.id \
-             JOIN sources s ON sc.source_id = s.id WHERE pc.playlist_id = ? AND s.probe_status = 'probing' LIMIT 1",
+            "SELECT 1 FROM jobs j WHERE j.kind = 'probe' AND j.status IN ('queued', 'running') AND j.source_id IN ( \
+               SELECT sc.source_id FROM playlist_channels pc JOIN source_channels sc ON pc.source_channel_id = sc.id \
+               WHERE pc.playlist_id = ?) LIMIT 1",
             [playlist_id],
             |_| Ok(()),
         )

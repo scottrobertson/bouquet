@@ -19,7 +19,6 @@ import {
 import type { EditorData } from "~/api/types/EditorData";
 import type { EditorCategory, EditorChannel } from "~/components/playlist/types";
 import { apiAction, apiLoad } from "~/lib/api";
-import { useLiveRevalidate } from "~/lib/use-live-revalidate";
 import { toast } from "sonner";
 import {
   Tooltip,
@@ -125,15 +124,9 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
   // enabled set above.
   const autoDisabledCount = onSource.filter((c) => c.autoDisabledAt != null).length;
 
+  const probing = anyProbing || probingCount > 0;
   // One probe fetcher shared by the desktop button and the mobile menu, so a
   // probe started from either fires a single toast.
-  const probing = anyProbing || probingCount > 0;
-
-  // Keep listening for live updates until the channel count itself clears, not
-  // just while the source says "probing". The source flips to done a beat before
-  // the last channel rows do, and if we stopped here we'd be left showing a
-  // stale "Probing 1…" with nothing polling to clear it.
-  useLiveRevalidate(probing);
   const { submitting, probe } = useProbeAll();
 
   return (

@@ -21,10 +21,14 @@ pub mod kinds {
         };
     }
 
-    string_union!(SyncStatus, r#""idle" | "syncing" | "ok" | "error""#);
-    string_union!(SourceProbeStatus, r#""idle" | "probing" | "ok" | "error""#);
+    string_union!(SyncStatus, r#""idle" | "queued" | "syncing" | "ok" | "error""#);
+    string_union!(SourceProbeStatus, r#""idle" | "queued" | "probing" | "ok" | "error""#);
     string_union!(ChannelProbeStatus, r#""queued" | "probing" | "ok" | "error" | "timeout""#);
-    string_union!(UploadStatus, r#""idle" | "uploading" | "ok" | "error""#);
+    string_union!(UploadStatus, r#""idle" | "queued" | "uploading" | "ok" | "error""#);
+    string_union!(JobKind, r#""sync" | "probe" | "upload" | "backup""#);
+    string_union!(JobTrigger, r#""manual" | "scheduled" | "automatic""#);
+    string_union!(JobStatus, r#""queued" | "running" | "succeeded" | "failed" | "interrupted""#);
+    string_union!(JobLogLevel, r#""info" | "warn" | "error""#);
     string_union!(
         ChangeKind,
         r#""channel_added" | "channel_returned" | "channel_removed" | "category_added" | "category_removed""#

@@ -8,9 +8,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use rusqlite::{Connection, params, params_from_iter};
 
-use crate::db::{Db, ID_CHUNK, placeholders};
+use crate::db::{Db, ID_CHUNK, id_array, placeholders};
 use crate::debounce::Debouncer;
 use crate::events::bump_source;
+use crate::jobs::{JobCtx, Jobs, Trigger, Work};
 use crate::models::Source;
 use crate::playlist::mutations::{auto_disable_failed_channels, revive_recovered_channels};
 use crate::pool::{is_interval_due, map_pool, now};
@@ -108,7 +109,7 @@ fn quality_summary(r: &ProbeResult, bitrate: Option<i64>) -> String {
 impl Prober {
     /// Probe one channel and store the result on its source channel. Returns
     /// whether it passed. Every probe path goes through here.
-    async fn probe_and_store(&self, source: &Source, ch: &Target) -> Result<bool> {
+    async fn probe_and_store(&self, source: &Source, ch: &Target, ctx: &JobCtx) -> Result<bool> {
         let hls = source.output_format == "m3u8";
         let url = build_stream_url(&source.stream_creds(), &ch.stream_id, &source.output_format);
         let id = ch.id;
@@ -136,16 +137,12 @@ impl Prober {
         }
 
         if r.status == "ok" {
-            println!("[probe] {}: \"{}\" ok: {}", source.name, ch.name, quality_summary(&r, bitrate));
+            ctx.info(format!("{}: {}", ch.name, quality_summary(&r, bitrate))).await;
         } else {
             let category = ch.category_name.as_deref().unwrap_or("Uncategorised");
-            eprintln!(
-                "[probe] {}: \"{}\" in \"{category}\" {}: {}",
-                source.name,
-                ch.name,
-                r.status,
-                r.error.as_deref().unwrap_or("")
-            );
+            let outcome = if r.status == "timeout" { "timed out" } else { "failed" };
+            ctx.warn(format!("{} in {category} {outcome}: {}", ch.name, r.error.as_deref().unwrap_or("no reason given")))
+                .await;
         }
 
         // Only keep measurements for a pass. A black screen arrives with a full
@@ -169,49 +166,37 @@ impl Prober {
         Ok(ok)
     }
 
-    /// Probe a fixed list of one source's channels, tracking progress on the
-    /// source so the UI can show "42/300".
-    async fn probe_channel_list(&self, source: Source, channels: Vec<Target>) -> Result<()> {
+    /// Probe a fixed list of one source's channels.
+    async fn probe_channel_list(&self, source: Source, channels: Vec<Target>, ctx: &JobCtx) -> Result<()> {
         let source_id = source.id;
         let ids: Vec<i64> = channels.iter().map(|c| c.id).collect();
         let total = channels.len() as i64;
         let queued = ids.clone();
-        self.db
-            .call(move |conn| {
-                conn.execute(
-                    "UPDATE sources SET probe_status = 'probing', probe_total = ?, probe_done = 0, probe_error = NULL WHERE id = ?",
-                    params![total, source_id],
-                )?;
-                // Show the whole batch as waiting straight away; rows flip to
-                // probing and then their result as the pool works through them.
-                mark_queued(conn, &queued)
-            })
-            .await?;
+        // Show the whole batch as waiting straight away; rows flip to probing
+        // and then their result as the pool works through them.
+        self.db.call(move |conn| mark_queued(conn, &queued)).await?;
         bump_source(source_id);
-        println!("[probe] {}: probing {} channels, concurrency {}", source.name, total, source.probe_concurrency);
 
-        let results = map_pool(channels, source.probe_concurrency.max(1) as usize, |ch| {
+        ctx.step("Probing channels").await;
+        ctx.set_total(total).await;
+        let concurrency = source.probe_concurrency.max(1);
+        ctx.info(format!("Probing {total} channels, {concurrency} at a time")).await;
+        let results = map_pool(channels, concurrency as usize, |ch| {
             let source = &source;
             async move {
-                let ok = self.probe_and_store(source, &ch).await.unwrap_or(false);
-                let _ = self
-                    .db
-                    .call(move |conn| {
-                        conn.execute("UPDATE sources SET probe_done = probe_done + 1 WHERE id = ?", [source_id])?;
-                        Ok(())
-                    })
-                    .await;
+                let ok = self.probe_and_store(source, &ch, ctx).await.unwrap_or(false);
+                ctx.tick().await;
                 bump_source(source_id);
                 ok
             }
         })
         .await;
         let ok = results.iter().filter(|r| **r).count();
-        println!("[probe] {}: done, {ok} ok, {} failed", source.name, results.len() - ok);
 
         // Switch off channels whose failure streak just crossed their playlist's
         // limit, and bring back auto-disabled ones that pass again, before the
         // final nudge so the editor shows it all at once.
+        ctx.step("Updating playlists").await;
         self.db
             .call(move |conn| {
                 auto_disable_failed_channels(conn, &ids)?;
@@ -224,119 +209,106 @@ impl Prober {
             })
             .await?;
         bump_source(source_id);
+        ctx.summary(if results.is_empty() {
+            "No channels needed probing".to_string()
+        } else {
+            format!("{ok} working, {} failed", results.len() - ok)
+        });
         Ok(())
     }
 
-    fn spawn_channel_list(&self, source: Source, channels: Vec<Target>) {
-        let this = self.clone();
-        tokio::spawn(async move {
-            let source_id = source.id;
-            if let Err(e) = this.probe_channel_list(source, channels).await {
-                mark_error(&this.db, source_id, &e.to_string()).await;
-            }
-        });
-    }
-
-    /// Probe one source in the background: its channels used by any playlist,
-    /// the same set the scheduler uses.
-    pub async fn start_probe(&self, source_id: i64) {
+    /// The probe job for one source: the given channels, or without a list the
+    /// channels the scheduled probe covers. A failure is recorded on the source
+    /// as well as returned, so the source page shows it too.
+    pub async fn run_probe(&self, source_id: i64, channels: Option<Vec<i64>>, ctx: &JobCtx) -> Result<()> {
+        let found = self
+            .db
+            .call(move |conn| {
+                let Some(source) = Source::by_id(conn, source_id)? else { return Ok(None) };
+                let targets = match channels {
+                    None => channels_to_probe(conn, source_id)?,
+                    Some(ids) => targets_by_id(conn, &ids)?.into_iter().filter(|t| t.source_id == source_id).collect(),
+                };
+                Ok(Some((source, targets)))
+            })
+            .await?;
+        let Some((source, targets)) = found else {
+            ctx.summary("The source was deleted before it could probe");
+            return Ok(());
+        };
+        let ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
+        let Err(e) = self.probe_channel_list(source, targets, ctx).await else { return Ok(()) };
+        let message = e.to_string();
         let _ = self
             .db
             .call(move |conn| {
                 conn.execute(
-                    "UPDATE sources SET probe_status = 'probing', probe_total = 0, probe_done = 0, probe_error = NULL WHERE id = ?",
-                    [source_id],
+                    "UPDATE sources SET probe_status = 'error', probe_error = ? WHERE id = ?",
+                    params![message, source_id],
+                )?;
+                // Rows still waiting would otherwise read as queued forever.
+                conn.execute(
+                    "UPDATE source_channels SET probe_status = NULL \
+                     WHERE id IN rarray(?) AND probe_status IN ('queued', 'probing')",
+                    [id_array(ids)],
                 )?;
                 Ok(())
             })
             .await;
         bump_source(source_id);
-        let this = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = this.run_probe(source_id).await {
-                mark_error(&this.db, source_id, &e.to_string()).await;
-            }
-        });
+        Err(e)
+    }
+}
+
+impl Jobs {
+    /// Probe one source: its channels used by any playlist, the same set the
+    /// scheduler uses.
+    pub async fn probe_source(&self, source_id: i64, trigger: Trigger) -> Result<i64> {
+        self.enqueue(Work::Probe { source_id, channels: None, playlist_id: None }, trigger).await
     }
 
-    pub async fn run_probe(&self, source_id: i64) -> Result<()> {
-        let found = self
-            .db
-            .call(move |conn| {
-                let Some(source) = Source::by_id(conn, source_id)? else { return Ok(None) };
-                Ok(Some((source, channels_to_probe(conn, source_id)?)))
-            })
-            .await?;
-        match found {
-            Some((source, channels)) => self.probe_channel_list(source, channels).await,
-            None => Ok(()),
-        }
-    }
-
-    /// Probe one channel now, whatever its filters or the source's probe
-    /// setting. Waits for the result so the caller can reload afterwards.
-    pub async fn probe_single_channel(&self, source_channel_id: i64) -> Result<()> {
-        let found = self
-            .db
-            .call(move |conn| {
-                let target = conn
-                    .query_row(
-                        "SELECT source_id, id, stream_id, name, category_name FROM source_channels WHERE id = ?",
-                        [source_channel_id],
-                        target_from_row,
-                    )
-                    .ok();
-                let Some(target) = target else { return Ok(None) };
-                Ok(Source::by_id(conn, target.source_id)?.map(|s| (s, target)))
-            })
-            .await?;
-        let Some((source, target)) = found else { return Ok(()) };
-        self.probe_and_store(&source, &target).await?;
-        let id = target.id;
-        self.db
-            .call(move |conn| {
-                auto_disable_failed_channels(conn, &[id])?;
-                revive_recovered_channels(conn, &[id])
-            })
-            .await
-    }
-
-    /// Fan targets out across their sources, so each runs at its own
-    /// concurrency. Returns how many were queued.
-    pub async fn start_probe_targets(&self, targets: Vec<Target>) -> usize {
+    /// Queue a probe job per source, so each runs at its own concurrency.
+    /// Returns how many channels were queued.
+    async fn probe_targets(&self, targets: Vec<Target>, playlist_id: Option<i64>, trigger: Trigger) -> Result<usize> {
         let count = targets.len();
         let mut order: Vec<i64> = Vec::new();
-        let mut by_source: HashMap<i64, Vec<Target>> = HashMap::new();
+        let mut by_source: HashMap<i64, Vec<i64>> = HashMap::new();
         for t in targets {
             if !by_source.contains_key(&t.source_id) {
                 order.push(t.source_id);
             }
-            by_source.entry(t.source_id).or_default().push(t);
+            by_source.entry(t.source_id).or_default().push(t.id);
         }
+        let all: Vec<i64> = by_source.values().flatten().copied().collect();
+        // Rows show as waiting straight away, even when the job queues behind
+        // another one on the same source.
+        self.db().call(move |conn| mark_queued(conn, &all)).await?;
         for source_id in order {
-            let Ok(Some(source)) = self.db.call(move |conn| Ok(Source::by_id(conn, source_id)?)).await else { continue };
-            self.spawn_channel_list(source, by_source.remove(&source_id).unwrap_or_default());
+            bump_source(source_id);
+            let channels = by_source.remove(&source_id).unwrap_or_default();
+            self.enqueue(Work::Probe { source_id, channels: Some(channels), playlist_id }, trigger).await?;
         }
-        count
+        Ok(count)
     }
 
-    pub async fn start_probe_playlist(&self, playlist_id: i64, filter: PlaylistFilter) -> Result<usize> {
-        let targets = self.db.call(move |conn| playlist_probe_targets(conn, playlist_id, filter)).await?;
-        Ok(self.start_probe_targets(targets).await)
+    pub async fn probe_playlist(&self, playlist_id: i64, filter: PlaylistFilter) -> Result<usize> {
+        let targets = self.db().call(move |conn| playlist_probe_targets(conn, playlist_id, filter)).await?;
+        self.probe_targets(targets, Some(playlist_id), Trigger::Manual).await
     }
 
-    /// Probe chosen source channels in the order given, skipping switched-off
-    /// sources. Returns how many were queued.
-    pub async fn start_probe_channels(&self, source_channel_ids: Vec<i64>) -> Result<usize> {
-        let targets = self.db.call(move |conn| targets_by_id(conn, &source_channel_ids)).await?;
-        Ok(self.start_probe_targets(targets).await)
+    /// Probe chosen source channels in the order given, whatever the source's
+    /// probe setting, skipping switched-off sources. Returns how many were
+    /// queued.
+    pub async fn probe_channels(&self, source_channel_ids: Vec<i64>, playlist_id: Option<i64>) -> Result<usize> {
+        let targets = self.db().call(move |conn| targets_by_id(conn, &source_channel_ids)).await?;
+        self.probe_targets(targets, playlist_id, Trigger::Manual).await
     }
 
     /// Probe a whole alternate group, primary first. Its streams often come
     /// from different sources, so this fans out across them.
-    pub async fn start_probe_group(&self, playlist_id: i64, primary_id: i64) -> Result<usize> {
+    pub async fn probe_group(&self, playlist_id: i64, primary_id: i64) -> Result<usize> {
         let ids: Vec<i64> = self
-            .db
+            .db()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT source_channel_id FROM playlist_channels WHERE playlist_id = ?1 \
@@ -345,62 +317,24 @@ impl Prober {
                 Ok(stmt.query_map(params![playlist_id, primary_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
             })
             .await?;
-        self.start_probe_channels(ids).await
+        self.probe_channels(ids, Some(playlist_id)).await
     }
 
     /// Probe streams just added to a playlist, so their quality shows up without
-    /// waiting for the scheduled probe. Adds a few seconds apart share one run.
-    pub async fn probe_added_channels(&self, source_channel_ids: Vec<i64>) -> Result<()> {
-        let this = self.clone();
-        self.queue_added(source_channel_ids, move |batch| async move {
-            println!("[probe] probing {} newly added channel(s)", batch.len());
-            this.start_probe_targets(batch).await;
+    /// waiting for the scheduled probe. Adds a few seconds apart share one job.
+    pub async fn probe_added_channels(&self, source_channel_ids: Vec<i64>, playlist_id: i64) -> Result<()> {
+        let jobs = self.clone();
+        queue_added(self.db(), source_channel_ids, move |batch| async move {
+            if let Err(e) = jobs.probe_targets(batch, Some(playlist_id), Trigger::Automatic).await {
+                eprintln!("[probe] couldn't queue newly added channels: {e:#}");
+            }
         })
         .await
     }
 
-    async fn queue_added<F, Fut>(&self, source_channel_ids: Vec<i64>, run: F) -> Result<()>
-    where
-        F: FnOnce(Vec<Target>) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = ()> + Send + 'static,
-    {
-        if source_channel_ids.is_empty() {
-            return Ok(());
-        }
-        let targets = self
-            .db
-            .call(move |conn| {
-                let targets = channels_to_probe_on_add(conn, &source_channel_ids)?;
-                // Mark them waiting before the delay. The editor only listens for
-                // live results while something is probing, so rows still reading
-                // as unprobed after the add would never update on their own.
-                mark_queued(conn, &targets.iter().map(|t| t.id).collect::<Vec<_>>())?;
-                Ok(targets)
-            })
-            .await?;
-        if targets.is_empty() {
-            return Ok(());
-        }
-        for source_id in targets.iter().map(|t| t.source_id).collect::<BTreeSet<_>>() {
-            bump_source(source_id);
-        }
-        let mut pending = ADDED_PENDING.lock().unwrap_or_else(|e| e.into_inner());
-        for t in targets {
-            pending.insert(t.id, t);
-        }
-        drop(pending);
-        ADDED_SOON.call(move || async move {
-            let batch: Vec<Target> = ADDED_PENDING.lock().unwrap_or_else(|e| e.into_inner()).drain().map(|(_, t)| t).collect();
-            if !batch.is_empty() {
-                run(batch).await;
-            }
-        });
-        Ok(())
-    }
-
-    /// Probe the sources whose interval has passed, one at a time.
+    /// Queue a probe for each source whose interval has passed.
     pub async fn probe_due_sources(&self) -> Result<()> {
-        let sources = self.db.call(|conn| Ok(Source::all(conn)?)).await?;
+        let sources = self.db().call(|conn| Ok(Source::all(conn)?)).await?;
         let t = now();
         let due: Vec<&Source> = sources
             .iter()
@@ -408,16 +342,51 @@ impl Prober {
             .collect();
         println!("[probe] {} of {} sources due", due.len(), sources.len());
         for s in due {
-            if let Err(e) = self.run_probe(s.id).await {
-                mark_error(&self.db, s.id, &e.to_string()).await;
-            }
+            self.probe_source(s.id, Trigger::Scheduled).await?;
         }
         Ok(())
     }
 }
 
+async fn queue_added<F, Fut>(db: &Db, source_channel_ids: Vec<i64>, run: F) -> Result<()>
+where
+    F: FnOnce(Vec<Target>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    if source_channel_ids.is_empty() {
+        return Ok(());
+    }
+    let targets = db
+        .call(move |conn| {
+            let targets = channels_to_probe_on_add(conn, &source_channel_ids)?;
+            // Mark them waiting before the delay, so the rows don't read as
+            // unprobed while nothing is running yet.
+            mark_queued(conn, &targets.iter().map(|t| t.id).collect::<Vec<_>>())?;
+            Ok(targets)
+        })
+        .await?;
+    if targets.is_empty() {
+        return Ok(());
+    }
+    for source_id in targets.iter().map(|t| t.source_id).collect::<BTreeSet<_>>() {
+        bump_source(source_id);
+    }
+    let mut pending = ADDED_PENDING.lock().unwrap_or_else(|e| e.into_inner());
+    for t in targets {
+        pending.insert(t.id, t);
+    }
+    drop(pending);
+    ADDED_SOON.call(move || async move {
+        let batch: Vec<Target> = ADDED_PENDING.lock().unwrap_or_else(|e| e.into_inner()).drain().map(|(_, t)| t).collect();
+        if !batch.is_empty() {
+            run(batch).await;
+        }
+    });
+    Ok(())
+}
+
 // Wait a moment before probing just-added streams, so adding channels one at a
-// time still ends up as one probe run.
+// time still ends up as one probe job.
 static ADDED_SOON: Debouncer = Debouncer::new(Duration::from_secs(3));
 static ADDED_PENDING: LazyLock<Mutex<HashMap<i64, Target>>> = LazyLock::new(Default::default);
 
@@ -429,20 +398,6 @@ fn mark_queued(conn: &Connection, ids: &[i64]) -> Result<()> {
         )?;
     }
     Ok(())
-}
-
-async fn mark_error(db: &Db, source_id: i64, message: &str) {
-    let message = message.to_string();
-    let _ = db
-        .call(move |conn| {
-            conn.execute(
-                "UPDATE sources SET probe_status = 'error', probe_error = ? WHERE id = ?",
-                params![message, source_id],
-            )?;
-            Ok(())
-        })
-        .await;
-    bump_source(source_id);
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -665,11 +620,11 @@ mod tests {
             conn.execute("UPDATE playlist_channels SET enabled = 0, auto_disabled_at = 1", []).unwrap();
             conn.execute("UPDATE sources SET enabled = 0", []).unwrap();
         }
-        let p = Prober::new(&s.db);
+        let jobs = Jobs::new(&s.db);
         let auto = PlaylistFilter { only: Some(Only::AutoDisabled), ..Default::default() };
-        assert_eq!(p.start_probe_playlist(s.playlist, auto).await.unwrap(), 0);
-        assert_eq!(p.start_probe_playlist(s.playlist, PlaylistFilter::default()).await.unwrap(), 0);
-        assert_eq!(p.start_probe_channels(vec![a]).await.unwrap(), 0);
+        assert_eq!(jobs.probe_playlist(s.playlist, auto).await.unwrap(), 0);
+        assert_eq!(jobs.probe_playlist(s.playlist, PlaylistFilter::default()).await.unwrap(), 0);
+        assert_eq!(jobs.probe_channels(vec![a], None).await.unwrap(), 0);
         let status: Option<String> =
             s.db.lock().query_row("SELECT probe_status FROM source_channels WHERE id = ?", [a], |r| r.get(0)).unwrap();
         assert_eq!(status, None);
@@ -681,11 +636,10 @@ mod tests {
         s.db.lock().execute("UPDATE sources SET probe_enabled = 1", []).unwrap();
         let a = add_sc(&s, "a", "UK", true);
         let b = add_sc(&s, "b", "UK", true);
-        let p = Prober::new(&s.db);
         let runs = Arc::new(Mutex::new(Vec::new()));
         for id in [a, b] {
             let runs = runs.clone();
-            p.queue_added(vec![id], move |batch| async move { runs.lock().unwrap().push(batch) }).await.unwrap();
+            queue_added(&s.db, vec![id], move |batch| async move { runs.lock().unwrap().push(batch) }).await.unwrap();
         }
         let status: String =
             s.db.lock().query_row("SELECT probe_status FROM source_channels WHERE id = ?", [a], |r| r.get(0)).unwrap();
@@ -722,7 +676,7 @@ mod tests {
         let s = setup();
         let id = add_sc(&s, "black", "UK", true);
         let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: passing(), black: true }) };
-        p.probe_single_channel(id).await.unwrap();
+        p.run_probe(s.source, Some(vec![id]), &JobCtx::detached()).await.unwrap();
         let row: (String, String, Option<i64>, Option<i64>, Option<f64>, Option<String>, Option<i64>) = s
             .db
             .lock()
@@ -741,7 +695,7 @@ mod tests {
         let s = setup();
         let id = add_sc(&s, "good", "UK", true);
         let p = Prober { db: s.db.clone(), tools: Arc::new(Fake { result: passing(), black: false }) };
-        p.probe_single_channel(id).await.unwrap();
+        p.run_probe(s.source, Some(vec![id]), &JobCtx::detached()).await.unwrap();
         let (status, height, failures): (String, i64, i64) = s
             .db
             .lock()

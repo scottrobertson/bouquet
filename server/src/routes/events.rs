@@ -1,5 +1,5 @@
-//! Server-sent events. Tabs open this while a sync or probe is running and
-//! reload their data when something moves, instead of polling on a timer.
+//! Server-sent events. Every tab keeps this open to follow job progress live
+//! and reload its data when something moves, instead of polling on a timer.
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -23,10 +23,10 @@ async fn handler() -> Response {
     // Open with a comment so headers flush and the browser fires onopen
     // straight away, and set the reconnect delay.
     let hello = stream::iter([Ok::<_, Infallible>(Event::default().retry(Duration::from_secs(3)).comment("connected"))]);
-    let changes = BroadcastStream::new(events::subscribe()).filter_map(|change| async move {
-        // A lagged tab just missed some nudges; the next one reloads it anyway.
-        let change = change.ok()?;
-        Some(Ok(Event::default().data(serde_json::to_string(&change).ok()?)))
+    let changes = BroadcastStream::new(events::subscribe()).filter_map(|event| async move {
+        // A lagged tab just missed some updates; the next one catches it up.
+        let event = event.ok()?;
+        Some(Ok(Event::default().data(serde_json::to_string(&event).ok()?)))
     });
     let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> = Box::pin(hello.chain(changes));
     // The keepalive stops reverse proxies dropping the connection as idle.

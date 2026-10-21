@@ -5,6 +5,7 @@ const STYLES: Record<SourceProbeStatus, { label: string; className: string }> = 
   ok: { label: "Probed", className: "bg-success/10 text-success border-transparent" },
   error: { label: "Probe error", className: "bg-destructive/10 text-destructive border-transparent" },
   probing: { label: "Probing", className: "bg-warning/10 text-warning border-transparent" },
+  queued: { label: "Probe queued", className: "bg-muted text-muted-foreground border-transparent" },
   idle: { label: "Not probed", className: "bg-muted text-muted-foreground border-transparent" },
 };
 

@@ -2,7 +2,7 @@ use axum::Router;
 use axum::http::HeaderMap;
 
 use crate::db::Db;
-use crate::probe::Prober;
+use crate::jobs::Jobs;
 
 pub mod api;
 pub mod editor;
@@ -10,6 +10,7 @@ pub mod events;
 pub mod form;
 pub mod guide;
 pub mod img;
+pub mod jobs;
 pub mod output;
 pub mod playlists;
 pub mod settings;
@@ -19,12 +20,12 @@ pub mod static_files;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Db,
-    pub prober: Prober,
+    pub jobs: Jobs,
 }
 
 impl AppState {
     pub fn new(db: Db) -> AppState {
-        AppState { prober: Prober::new(&db), db }
+        AppState { jobs: Jobs::new(&db), db }
     }
 }
 
@@ -33,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .merge(output::routes())
         .merge(img::routes())
         .merge(events::routes())
+        .merge(jobs::routes())
         .merge(settings::routes())
         .merge(sources::routes())
         .merge(playlists::routes())

@@ -6,7 +6,10 @@ use rusqlite::{Connection, OptionalExtension};
 
 /// Schema changes, applied in order. The version is kept in SQLite's
 /// user_version.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_baseline.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_baseline.sql"),
+    include_str!("../migrations/0002_jobs.sql"),
+];
 
 /// How many drizzle migrations the TypeScript app had when the baseline was
 /// taken. A database it left at this point already matches the baseline.
@@ -123,18 +126,13 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     Ok(())
 }
 
-/// Sync and probe runs live only in memory. If the process died mid-run (say a
-/// container restart), the source would show as syncing or probing forever, so
-/// clear that on boot.
+/// The job queue lives only in memory. If the process died mid-run (say a
+/// container restart), its jobs would show as running forever, so close them
+/// off on boot.
 fn recover_interrupted_runs(conn: &Connection) -> Result<()> {
     conn.execute(
-        "UPDATE sources SET sync_status = 'error', last_error = 'Interrupted by a restart' \
-         WHERE sync_status = 'syncing'",
-        [],
-    )?;
-    conn.execute(
-        "UPDATE sources SET probe_status = 'error', probe_error = 'Interrupted by a restart' \
-         WHERE probe_status = 'probing'",
+        "UPDATE jobs SET status = 'interrupted', error = 'Interrupted by a restart', \
+           finished_at = unixepoch() WHERE status IN ('queued', 'running')",
         [],
     )?;
     // A channel's old result was already wiped when it was queued, so it goes
@@ -170,7 +168,7 @@ mod tests {
     fn fresh_database_gets_the_baseline() {
         let db = Db::open_in_memory().unwrap();
         let conn = db.lock();
-        assert_eq!(schema_version(&conn).unwrap(), 25);
+        assert_eq!(schema_version(&conn).unwrap(), latest_version());
         assert!(table_exists(&conn, "playlist_channels").unwrap());
     }
 
@@ -191,7 +189,7 @@ mod tests {
         }
         migrate(&mut conn).unwrap();
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, 25);
+        assert_eq!(version, latest_version());
     }
 
     #[test]

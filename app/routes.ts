@@ -26,6 +26,7 @@ export default [
     ),
     route("playlists/:id/settings", "routes/playlists.$id.settings.tsx"),
 
+    route("jobs", "routes/jobs.tsx"),
     route("settings", "routes/settings.tsx"),
   ]),
   // The Rust server answers everything that isn't a page: /api, the public

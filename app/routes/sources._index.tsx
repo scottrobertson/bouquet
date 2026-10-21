@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 import type { SourcesData } from "~/api/types/SourcesData";
 import { apiAction, apiLoad } from "~/lib/api";
-import { useLiveRevalidate } from "~/lib/use-live-revalidate";
+import { useLiveSourceStatus } from "~/lib/jobs";
 import { toast } from "sonner";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -65,11 +65,9 @@ export function clientAction({ request }: Route.ClientActionArgs) {
 export default function SourcesIndex({ loaderData }: Route.ComponentProps) {
   const { sources: rows } = loaderData;
 
-  // Syncs and probes run in the background, so listen for live updates while
-  // either is going.
-  const anySyncing = rows.some((s) => s.syncStatus === "syncing");
-  const anyProbing = rows.some((s) => s.probeStatus === "probing");
-  useLiveRevalidate(anySyncing || anyProbing);
+  const anySyncing = rows.some(
+    (s) => s.syncStatus === "syncing" || s.syncStatus === "queued",
+  );
 
   // Sync every source at once.
   const syncAllFetcher = useFetcher<typeof clientAction>();
@@ -176,10 +174,12 @@ function SourceRow({ source }: { source: Row }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const submitting =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sync";
-  const syncing = submitting || source.syncStatus === "syncing";
+  const { sync, probe } = useLiveSourceStatus(source);
+  const syncing = submitting || sync.status === "syncing" || sync.status === "queued";
   const probing =
     (fetcher.state !== "idle" && fetcher.formData?.get("intent") === "probe") ||
-    source.probeStatus === "probing";
+    probe.status === "probing" ||
+    probe.status === "queued";
 
   // Report sync results once the fetcher settles.
   const handled = useRef<typeof fetcher.data>(undefined);
@@ -206,13 +206,9 @@ function SourceRow({ source }: { source: Row }) {
 
   const statusBadge = (
     <div className="flex flex-wrap items-center gap-1.5">
-      <SyncStatusBadge status={syncing ? "syncing" : source.syncStatus} />
-      {source.probeStatus === "probing" ? (
-        <ProbeStatusBadge
-          status="probing"
-          done={source.probeDone}
-          total={source.probeTotal}
-        />
+      <SyncStatusBadge status={submitting ? "syncing" : sync.status} />
+      {probe.status === "probing" || probe.status === "queued" ? (
+        <ProbeStatusBadge status={probe.status} done={probe.done} total={probe.total} />
       ) : null}
     </div>
   );

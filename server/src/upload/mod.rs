@@ -8,6 +8,7 @@ use rusqlite::OptionalExtension;
 use crate::db::Db;
 use crate::debounce::Debouncer;
 use crate::events::bump_playlist;
+use crate::jobs::{JobCtx, Jobs, Trigger, Work};
 use crate::output::{m3u, resolve, xmltv};
 use crate::pool::now;
 
@@ -21,9 +22,9 @@ struct Destination {
     public_url_base: Option<String>,
 }
 
-/// Rebuild a destination's M3U and EPG and push both. It records its own
-/// status and never fails, so a batch upload carries on past a broken one.
-pub async fn upload_destination(db: &Db, dest_id: i64) {
+/// The upload job: rebuild a destination's M3U and EPG and push both. The
+/// result is recorded on the destination too, so the settings page shows it.
+pub async fn upload_destination(db: &Db, dest_id: i64, ctx: &JobCtx) -> Result<()> {
     let dest = db
         .call(move |conn| {
             Ok(conn
@@ -46,59 +47,55 @@ pub async fn upload_destination(db: &Db, dest_id: i64) {
                 .optional()?)
         })
         .await;
-    let Ok(Some(dest)) = dest else { return };
+    let Some(dest) = dest? else {
+        ctx.summary("The destination was deleted before it could upload");
+        return Ok(());
+    };
     let playlist_id = dest.playlist_id;
-
-    let _ = db
-        .call(move |conn| {
-            conn.execute(
-                "UPDATE upload_destinations SET upload_status = 'uploading', upload_error = NULL WHERE id = ?",
-                [dest_id],
-            )?;
-            Ok(())
-        })
-        .await;
+    let result = push(db, &dest, ctx).await;
+    let error = result.as_ref().err().map(|e| format!("{e:#}"));
+    db.call(move |conn| {
+        match error {
+            None => conn.execute(
+                "UPDATE upload_destinations SET upload_status = 'ok', last_uploaded_at = ?, upload_error = NULL WHERE id = ?",
+                rusqlite::params![now(), dest_id],
+            )?,
+            Some(e) => conn.execute(
+                "UPDATE upload_destinations SET upload_status = 'error', upload_error = ? WHERE id = ?",
+                rusqlite::params![e, dest_id],
+            )?,
+        };
+        Ok(())
+    })
+    .await?;
     bump_playlist(playlist_id);
-
-    let name = dest.name.clone();
-    let result = push(db, dest).await;
-    let _ = db
-        .call(move |conn| {
-            match &result {
-                Ok(()) => conn.execute(
-                    "UPDATE upload_destinations SET upload_status = 'ok', last_uploaded_at = ?, upload_error = NULL WHERE id = ?",
-                    rusqlite::params![now(), dest_id],
-                )?,
-                Err(e) => {
-                    eprintln!("[upload] destination {dest_id} ({name}) failed: {e:#}");
-                    conn.execute(
-                        "UPDATE upload_destinations SET upload_status = 'error', upload_error = ? WHERE id = ?",
-                        rusqlite::params![format!("{e:#}"), dest_id],
-                    )?
-                }
-            };
-            Ok(())
-        })
-        .await;
-    bump_playlist(playlist_id);
+    result?;
+    ctx.summary(format!("Uploaded {} and {}", dest.m3u_path, dest.epg_path));
+    Ok(())
 }
 
-async fn push(db: &Db, dest: Destination) -> Result<()> {
+async fn push(db: &Db, dest: &Destination, ctx: &JobCtx) -> Result<()> {
     let playlist_id = dest.playlist_id;
     let epg_url = match &dest.public_url_base {
         Some(base) if !base.is_empty() => join_url(base, &dest.epg_path),
         _ => String::new(),
     };
-    let (m3u, epg) = db
+    ctx.step("Building the playlist and guide").await;
+    let (m3u, epg, count) = db
         .call(move |conn| {
             let playlist = crate::models::Playlist::by_id(conn, playlist_id)?.ok_or_else(|| anyhow!("Playlist not found"))?;
             let channels = resolve::resolve_playlist_channels(conn, &playlist)?;
-            Ok((m3u::build_m3u(&channels, &epg_url), xmltv::build_xmltv(conn, &channels)?))
+            Ok((m3u::build_m3u(&channels, &epg_url), xmltv::build_xmltv(conn, &channels)?, channels.len()))
         })
         .await?;
+    ctx.info(format!("Built {count} channels for {} ({})", dest.name, dest.kind)).await;
     let target = storage::build_target(&dest.kind, &dest.config)?;
+    ctx.step(&format!("Uploading {}", dest.m3u_path)).await;
     target.write(&dest.m3u_path, &m3u).await?;
+    ctx.info(format!("Uploaded {} ({} KB)", dest.m3u_path, m3u.len().div_ceil(1024))).await;
+    ctx.step(&format!("Uploading {}", dest.epg_path)).await;
     target.write(&dest.epg_path, &epg).await?;
+    ctx.info(format!("Uploaded {} ({} KB)", dest.epg_path, epg.len().div_ceil(1024))).await;
     Ok(())
 }
 
@@ -107,47 +104,34 @@ fn join_url(base: &str, path: &str) -> String {
     format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
 }
 
-/// Upload one destination in the background. Used by the manual button.
-pub fn start_upload(db: &Db, dest_id: i64) {
-    let db = db.clone();
-    tokio::spawn(async move { upload_destination(&db, dest_id).await });
-}
-
-async fn enabled_destinations(db: &Db, playlist_id: Option<i64>) -> Vec<i64> {
+async fn enabled_destinations(db: &Db) -> Result<Vec<i64>> {
     db.call(move |conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id FROM upload_destinations WHERE enabled = 1 AND (?1 IS NULL OR playlist_id = ?1) ORDER BY id",
-        )?;
-        Ok(stmt.query_map([playlist_id], |r| r.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?)
+        let mut stmt = conn.prepare("SELECT id FROM upload_destinations WHERE enabled = 1 ORDER BY id")?;
+        Ok(stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?)
     })
     .await
-    .unwrap_or_default()
-}
-
-pub async fn upload_playlist(db: &Db, playlist_id: i64) {
-    for id in enabled_destinations(db, Some(playlist_id)).await {
-        upload_destination(db, id).await;
-    }
-}
-
-pub async fn upload_all_playlists(db: &Db) {
-    let ids = enabled_destinations(db, None).await;
-    if ids.is_empty() {
-        return;
-    }
-    println!("[upload] uploading {} destination(s)", ids.len());
-    for id in ids {
-        upload_destination(db, id).await;
-    }
 }
 
 // Wait after a sync before uploading, so a cron tick that syncs several sources
 // uploads once instead of once per source.
 static UPLOAD_SOON: Debouncer = Debouncer::new(Duration::from_secs(5));
 
-pub fn request_upload_soon(db: &Db) {
-    let db = db.clone();
-    UPLOAD_SOON.call(move || async move { upload_all_playlists(&db).await });
+impl Jobs {
+    /// Queue an upload job for every enabled destination, once syncs go quiet.
+    pub fn upload_all_soon(&self) {
+        let jobs = self.clone();
+        UPLOAD_SOON.call(move || async move {
+            let ids = match enabled_destinations(jobs.db()).await {
+                Ok(ids) => ids,
+                Err(e) => return eprintln!("[upload] couldn't list destinations: {e:#}"),
+            };
+            for id in ids {
+                if let Err(e) = jobs.enqueue(Work::Upload { destination_id: id }, Trigger::Automatic).await {
+                    eprintln!("[upload] couldn't queue destination {id}: {e:#}");
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -183,7 +167,7 @@ mod tests {
         let playlist = test_support::playlist(&db.lock(), "Test", "tok-upload");
         let dest = add_destination(&db, playlist, dir.path().to_str().unwrap(), Some("https://cdn.example.com/iptv"));
 
-        upload_destination(&db, dest).await;
+        let _ = upload_destination(&db, dest, &JobCtx::detached()).await;
 
         let m3u = std::fs::read_to_string(dir.path().join("playlist.m3u")).unwrap();
         assert!(m3u.contains("url-tvg=\"https://cdn.example.com/iptv/guide.xml\""));
@@ -205,7 +189,7 @@ mod tests {
         let playlist = test_support::playlist(&db.lock(), "Bad", "tok-bad");
         let dest = add_destination(&db, playlist, not_a_dir.to_str().unwrap(), None);
 
-        upload_destination(&db, dest).await;
+        let _ = upload_destination(&db, dest, &JobCtx::detached()).await;
 
         let (s, _, err) = status(&db, dest);
         assert_eq!(s, "error");

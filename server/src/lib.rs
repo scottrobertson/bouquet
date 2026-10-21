@@ -10,6 +10,7 @@ pub mod debounce;
 pub mod epg_logo;
 pub mod events;
 pub mod guide;
+pub mod jobs;
 pub mod js;
 pub mod models;
 pub mod output;

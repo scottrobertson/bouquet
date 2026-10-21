@@ -8,8 +8,9 @@ use tower_http::compression::CompressionLayer;
 async fn main() -> Result<()> {
     let cfg = config();
     let db = Db::open(&cfg.database_path)?;
-    bouquet::scheduler::start(&db);
-    let app = router(AppState::new(db)).layer(CompressionLayer::new());
+    let state = AppState::new(db);
+    bouquet::scheduler::start(&state.jobs);
+    let app = router(state).layer(CompressionLayer::new());
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", cfg.port)).await?;
     // CI waits for this exact line before smoke testing the image.

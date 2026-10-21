@@ -1,18 +1,16 @@
-//! Runs sync, probe and backup on their cron schedules, in the same process
-//! as the web server. The ticks are hourly and each job only acts on what's
-//! actually due, so a source's own interval controls the real timing.
+//! Queues sync, probe and backup jobs on their cron schedules, in the same
+//! process as the web server. The ticks are hourly and only queue what's
+//! actually due, so a source's own interval controls the real timing. A job
+//! still waiting from the last tick isn't queued twice.
 
 use std::future::Future;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Local;
 use croner::Cron;
 
 use crate::config::config;
-use crate::db::Db;
-use crate::probe::Prober;
+use crate::jobs::{Jobs, Trigger, Work};
 
 fn schedule<F, Fut>(label: &'static str, expression: &str, run: F)
 where
@@ -27,50 +25,37 @@ where
         }
     };
     println!("[cron] scheduled {label}: {expression}");
-    // A run can outlast the tick, so a tick is skipped while the last run is
-    // still going.
-    let running = Arc::new(AtomicBool::new(false));
     tokio::spawn(async move {
         loop {
             let Ok(next) = cron.find_next_occurrence(&Local::now(), false) else { return };
             let wait = (next - Local::now()).to_std().unwrap_or_default();
             tokio::time::sleep(wait).await;
-            if running.swap(true, Ordering::SeqCst) {
-                eprintln!("[cron] {label} still running, skipping this tick");
-                continue;
+            if let Err(e) = run().await {
+                eprintln!("[cron] {label} failed: {e:#}");
             }
-            let fut = run();
-            let running = running.clone();
-            tokio::spawn(async move {
-                match fut.await {
-                    Ok(()) => println!("[cron] {label} done"),
-                    Err(e) => eprintln!("[cron] {label} failed: {e:#}"),
-                }
-                running.store(false, Ordering::SeqCst);
-            });
         }
     });
 }
 
-pub fn start(db: &Db) {
+pub fn start(jobs: &Jobs) {
     let cfg = config();
     if !cfg.run_scheduler {
         return;
     }
-    let sync_db = db.clone();
+    let j = jobs.clone();
     schedule("sync", &cfg.sync_cron, move || {
-        let db = sync_db.clone();
-        async move { crate::sync::sync_due_sources(&db).await }
+        let jobs = j.clone();
+        async move { crate::sync::sync_due_sources(&jobs).await }
     });
-    let prober = Prober::new(db);
+    let j = jobs.clone();
     schedule("probe", &cfg.probe_cron, move || {
-        let prober = prober.clone();
-        async move { prober.probe_due_sources().await }
+        let jobs = j.clone();
+        async move { jobs.probe_due_sources().await }
     });
-    let backup_db = db.clone();
+    let j = jobs.clone();
     schedule("backup", &cfg.backup_cron, move || {
-        let db = backup_db.clone();
-        async move { crate::backup::auto_backup(&db).await }
+        let jobs = j.clone();
+        async move { jobs.enqueue(Work::Backup, Trigger::Scheduled).await.map(|_| ()) }
     });
 }
 

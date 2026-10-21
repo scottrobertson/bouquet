@@ -4,6 +4,17 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- A new Jobs page shows everything Bouquet does in the background: syncs, probes, uploads and
+  backups, whether you started them, the schedule did, or they followed on from something else.
+  Running jobs show their current step and a live progress bar, and every job keeps a step by step
+  log, so when a sync fails or a probe flags channels you can see exactly what happened. While
+  anything is running, the sidebar shows it with progress, and you get a toast when a job you
+  started finishes or any job fails.
+
+- Jobs on the same source now take turns, so a probe no longer competes with a sync for the
+  provider's connections, and asking for a sync that's already waiting doesn't queue a second one.
+  Restoring a backup waits until nothing is running, since it replaces all the data jobs work on.
+
 - Sources have a notes box on their page, for anything you want to remember about a provider like
   when it renews or who to contact for support. It saves when you click away from it.
 

@@ -5,6 +5,7 @@ const STYLES: Record<UploadStatus, { label: string; className: string }> = {
   ok: { label: "Uploaded", className: "bg-success/10 text-success border-transparent" },
   error: { label: "Error", className: "bg-destructive/10 text-destructive border-transparent" },
   uploading: { label: "Uploading", className: "bg-warning/10 text-warning border-transparent" },
+  queued: { label: "Upload queued", className: "bg-muted text-muted-foreground border-transparent" },
   idle: { label: "Not uploaded", className: "bg-muted text-muted-foreground border-transparent" },
 };
 

@@ -12,7 +12,7 @@ use super::api::{ApiResult, found, ok};
 use crate::guide::{GuideCategory, GuideSource, playlist_guide};
 use crate::models::Playlist;
 use crate::output::resolve::resolve_playlist_channels;
-use crate::sync::start_sync;
+use crate::jobs::{Trigger, Work};
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/api/playlists/{id}/guide", get(load).post(refresh))
@@ -75,7 +75,7 @@ async fn refresh(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResul
         .await?;
     let source_ids = found(source_ids)?;
     for sid in &source_ids {
-        start_sync(&state.db, *sid).await;
+        state.jobs.enqueue(Work::Sync { source_id: *sid }, Trigger::Manual).await?;
     }
     ok(json!({ "ok": true, "count": source_ids.len() }))
 }
