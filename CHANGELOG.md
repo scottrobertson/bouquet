@@ -425,6 +425,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- Smart sort judges bitrate by percentage instead of a fixed half a Mbps. Streams within about 15%
+  of each other count as a tie, which is fairer at both ends: half a Mbps was a big gap on a 2 Mbps
+  stream and almost nothing on a 15 Mbps one. Groups are also only flagged for sorting when a
+  stream wins by a clear margin, 20% or more on bitrate, so two near identical streams stop
+  trading places after every probe.
+
 - Bouquet's server is now written in Rust and ships as a single binary with the web app built in,
   so the Docker image no longer needs Node. Nothing changes for your player: the M3U and EPG URLs,
   their contents and your existing database all carry over as they are, and the database is

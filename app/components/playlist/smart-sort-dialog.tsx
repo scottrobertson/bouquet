@@ -84,8 +84,9 @@ function BitrateExplainer({ codecs }: { codecs: CodecEfficiency[] }) {
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground/70">
-          So HEVC at 4 Mbps counts as ~6.8 Mbps of H.264. The result is bucketed
-          to the nearest 0.5 Mbps, so tiny differences read as a tie.
+          So HEVC at 4 Mbps counts as ~6.8 Mbps of H.264. Streams within about
+          15% of each other count as a tie, and a group is only flagged for
+          sorting when a stream wins by 20% or more.
         </p>
       </PopoverContent>
     </Popover>

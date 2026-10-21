@@ -1,8 +1,9 @@
 //! Orders an alternate group's streams best-first from probe data. More pixels
 //! and more frames are plainly better, and for a given codec more bitrate means
 //! less compression. Codecs differ in efficiency, so bitrate is converted to a
-//! rough h264 equivalent before comparing, and bucketed so measurement noise
-//! can't reorder near-identical streams. Audio and liveness only break ties.
+//! rough h264 equivalent before comparing, and bucketed by percentage so
+//! measurement noise can't reorder near-identical streams. Audio and liveness
+//! only break ties.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -81,8 +82,9 @@ pub fn codec_efficiency() -> Vec<CodecEfficiency> {
     CODEC_EFFICIENCY_TABLE.iter().map(|(label, _, factor)| CodecEfficiency { label: label.to_string(), factor: *factor }).collect()
 }
 
-// Bitrate is a measured estimate, so anything within half a Mbps counts as equal.
-const BITRATE_BUCKET_KBPS: f64 = 500.0;
+// Bitrate is a measured estimate, so streams within about 15% of each other
+// land in the same bucket and count as equal.
+const BITRATE_BUCKET_STEP: f64 = 1.15;
 
 fn codec_factor(codec: Option<&str>) -> f64 {
     let Some(codec) = codec else { return 1.0 };
@@ -136,10 +138,17 @@ fn raw_bitrate(s: &SmartSortStream) -> Option<i64> {
     }
 }
 
-fn effective_bitrate(s: &SmartSortStream) -> f64 {
-    match raw_bitrate(s) {
-        Some(raw) => (raw as f64 * codec_factor(s.probe_video_codec.as_deref()) / BITRATE_BUCKET_KBPS).round(),
-        None => 0.0,
+// The h264 equivalent kbps, or 0 with no reading.
+fn normalised_bitrate(s: &SmartSortStream) -> f64 {
+    raw_bitrate(s).map(|raw| raw as f64 * codec_factor(s.probe_video_codec.as_deref())).unwrap_or(0.0)
+}
+
+// Buckets grow with the bitrate, so "close enough" means the same at 2 Mbps as
+// at 20 Mbps.
+fn bitrate_bucket(s: &SmartSortStream) -> f64 {
+    match normalised_bitrate(s) {
+        kbps if kbps > 0.0 => (kbps.ln() / BITRATE_BUCKET_STEP.ln()).round(),
+        _ => f64::NEG_INFINITY,
     }
 }
 
@@ -226,41 +235,75 @@ fn liveness(s: &SmartSortStream) -> Liveness {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum KeyKind {
+    // Liveness, resolution, frame rate, audio: any difference is a real one.
+    Step,
+    Bitrate,
+    // The raw bitrate, only there to order streams inside the same bucket.
+    Tiebreak,
+}
+
 // Comparison keys, all higher-is-better. The first key that differs decides.
-fn sort_keys(s: &SmartSortStream, config: &SmartSortConfig) -> Vec<f64> {
+fn sort_keys(s: &SmartSortStream, config: &SmartSortConfig) -> Vec<(f64, KeyKind)> {
+    use KeyKind::*;
     let mut keys = Vec::with_capacity(7);
     if config.available_first {
-        keys.push(liveness(s).rank());
-        keys.push(if steady(s) { 1.0 } else { 0.0 });
+        keys.push((liveness(s).rank(), Step));
+        keys.push((if steady(s) { 1.0 } else { 0.0 }, Step));
     }
-    let (res, fps, bitrate) = (resolution_rank(s), fps_rank(s), effective_bitrate(s));
+    let (res, fps, bitrate) = ((resolution_rank(s), Step), (fps_rank(s), Step), (bitrate_bucket(s), Bitrate));
     match config.prefer {
         SmartSortPrefer::Bitrate => keys.extend([bitrate, res, fps]),
         SmartSortPrefer::Resolution => keys.extend([res, fps, bitrate]),
     }
     if config.audio {
-        keys.push(audio_rank(s));
+        keys.push((audio_rank(s), Step));
     }
-    // Streams that land in the same bucket still order by their real numbers.
-    keys.push(raw_bitrate(s).unwrap_or(0) as f64);
+    keys.push((raw_bitrate(s).unwrap_or(0) as f64, Tiebreak));
     keys
+}
+
+fn compare(a: &[(f64, KeyKind)], b: &[(f64, KeyKind)]) -> std::cmp::Ordering {
+    let values = |k: &[(f64, KeyKind)]| k.iter().map(|(v, _)| *v).collect::<Vec<_>>();
+    values(b).partial_cmp(&values(a)).unwrap_or(std::cmp::Ordering::Equal)
 }
 
 /// Indices of `streams` best-first. Ties keep their input order.
 pub fn smart_sort_order(streams: &[SmartSortStream], config: &SmartSortConfig) -> Vec<usize> {
-    let keys: Vec<Vec<f64>> = streams.iter().map(|s| sort_keys(s, config)).collect();
+    let keys: Vec<Vec<(f64, KeyKind)>> = streams.iter().map(|s| sort_keys(s, config)).collect();
     let mut order: Vec<usize> = (0..streams.len()).collect();
     // sort_by is stable, so equal streams keep their current order.
-    order.sort_by(|&a, &b| {
-        keys[b].partial_cmp(&keys[a]).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    order.sort_by(|&a, &b| compare(&keys[a], &keys[b]));
     order
 }
 
-/// Whether smart sort would change this group. Members go in their current
-/// order, primary first.
+// A stream has to beat the one above it by this much on bitrate before the
+// group is flagged. Bucket edges still split close streams, so without it two
+// streams a few percent apart could swap places after every probe.
+const CLEAR_BITRATE_WIN: f64 = 1.2;
+
+/// Whether `a` is clearly better than `b`, not just ahead on a close call.
+fn clearly_beats(a: &SmartSortStream, b: &SmartSortStream, config: &SmartSortConfig) -> bool {
+    let (ka, kb) = (sort_keys(a, config), sort_keys(b, config));
+    let Some(((va, kind), (vb, _))) = ka.iter().zip(&kb).find(|((va, _), (vb, _))| va != vb) else { return false };
+    if va < vb {
+        return false;
+    }
+    match kind {
+        KeyKind::Step => true,
+        KeyKind::Bitrate => normalised_bitrate(a) >= normalised_bitrate(b) * CLEAR_BITRATE_WIN,
+        KeyKind::Tiebreak => false,
+    }
+}
+
+/// Whether smart sort would make a worthwhile change to this group. Members go
+/// in their current order, primary first.
 pub fn needs_smart_sort(members: &[SmartSortStream], config: &SmartSortConfig) -> bool {
-    members.len() >= 2 && smart_sort_order(members, config).iter().enumerate().any(|(i, &j)| i != j)
+    members
+        .iter()
+        .enumerate()
+        .any(|(i, above)| members[i + 1..].iter().any(|below| clearly_beats(below, above, config)))
 }
 
 /// The values that fed the sort, so the preview can show why a stream ranks
@@ -397,6 +440,39 @@ mod tests {
     fn hevc_bitrate_is_normalised() {
         let pair = [("hevc", stream(1080, 50.0, "hevc", "aac", 5.0)), ("h264", stream(1080, 50.0, "h264", "aac", 7.0))];
         assert_eq!(names(&pair, &DEFAULT)[0], "hevc");
+    }
+
+    #[test]
+    fn bitrate_buckets_scale_with_the_bitrate() {
+        let order = |a: f64, b: f64| {
+            let pair = [("a", stream(1080, 50.0, "h264", "aac", a)), ("b", stream(1080, 50.0, "h264", "eac3", b))];
+            names(&pair, &DEFAULT)[0]
+        };
+        // 3% apart at 15 Mbps is a tie, so audio decides.
+        assert_eq!(order(15.5, 15.0), "b");
+        // 20% apart at 2 Mbps isn't.
+        assert_eq!(order(2.4, 2.0), "a");
+    }
+
+    #[test]
+    fn only_a_clear_bitrate_win_flags_a_group() {
+        let group = |primary: f64, alt: f64| {
+            [stream(1080, 50.0, "h264", "aac", primary), stream(1080, 50.0, "h264", "aac", alt)]
+        };
+        // The sort would swap these, but 8% is too close to call.
+        assert_eq!(smart_sort_order(&group(6.0, 6.5), &DEFAULT), [1, 0]);
+        assert!(!needs_smart_sort(&group(6.0, 6.5), &DEFAULT));
+        assert!(needs_smart_sort(&group(6.0, 7.5), &DEFAULT));
+        // Resolution, frame rate and liveness differences always count.
+        let res = [stream(720, 50.0, "h264", "aac", 9.0), stream(1080, 50.0, "h264", "aac", 9.0)];
+        assert!(needs_smart_sort(&res, &DEFAULT));
+        // A clear win further down the group counts too.
+        let three = [
+            stream(1080, 50.0, "h264", "aac", 6.0),
+            stream(1080, 50.0, "h264", "aac", 6.2),
+            stream(1080, 50.0, "h264", "aac", 9.0),
+        ];
+        assert!(needs_smart_sort(&three, &DEFAULT));
     }
 
     #[test]
