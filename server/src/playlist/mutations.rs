@@ -389,14 +389,13 @@ pub fn bulk_move(conn: &Connection, playlist_id: i64, ids: &[i64], to_category_i
     if ids.is_empty() {
         return Ok(());
     }
-    let mut position = next_channel_position(conn, to_category_id)?;
+    let first = next_channel_position(conn, to_category_id)?;
     let tx = conn.unchecked_transaction()?;
-    for id in ids {
+    for (position, id) in (first..).zip(ids) {
         tx.execute(
             "UPDATE playlist_channels SET category_id = ?, position = ? WHERE id = ?",
             params![to_category_id, position, id],
         )?;
-        position += 1;
     }
     keep_alternates_with_primary(&tx, playlist_id)?;
     tx.commit()?;
@@ -623,14 +622,13 @@ pub fn add_alternates(conn: &Connection, playlist_id: i64, primary_id: i64, sour
         return Ok(vec![]);
     }
     let tx = conn.unchecked_transaction()?;
-    let mut next = max_alt_position(&tx, primary_id)? + 1;
-    for sc in &to_add {
+    let first = max_alt_position(&tx, primary_id)? + 1;
+    for (next, sc) in (first..).zip(&to_add) {
         tx.execute(
             "INSERT INTO playlist_channels (playlist_id, category_id, source_channel_id, position, primary_channel_id, \
                alt_position, epg_source_id, epg_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             params![playlist_id, primary.category_id, sc, primary.position, primary_id, next, primary.epg_source_id, primary.epg_channel_id],
         )?;
-        next += 1;
     }
     tx.commit()?;
     Ok(to_add)

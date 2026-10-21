@@ -233,7 +233,7 @@ impl Backups {
             .filter(|e| AUTO_RE.is_match(&e.file_name().to_string_lossy()))
             .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
             .collect();
-        autos.sort_by(|a, b| b.0.cmp(&a.0));
+        autos.sort_by_key(|a| std::cmp::Reverse(a.0));
         for (_, path) in autos.into_iter().skip(keep) {
             std::fs::remove_file(path)?;
         }
