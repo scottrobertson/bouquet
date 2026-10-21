@@ -38,7 +38,10 @@ pub enum Work {
     Upload {
         destination_id: i64,
     },
-    Backup,
+    /// Scheduled backups are pruned to the newest few, manual ones are kept.
+    Backup {
+        manual: bool,
+    },
     #[cfg(test)]
     Test {
         key: i64,
@@ -60,7 +63,7 @@ impl Work {
             Work::Sync { .. } => "sync",
             Work::Probe { .. } => "probe",
             Work::Upload { .. } => "upload",
-            Work::Backup => "backup",
+            Work::Backup { .. } => "backup",
             #[cfg(test)]
             Work::Test { .. } => "test",
         }
@@ -70,7 +73,7 @@ impl Work {
         match self {
             Work::Sync { source_id } | Work::Probe { source_id, .. } => Lock::Source(*source_id),
             Work::Upload { destination_id } => Lock::Destination(*destination_id),
-            Work::Backup => Lock::Free,
+            Work::Backup { .. } => Lock::Free,
             #[cfg(test)]
             Work::Test { key, .. } => Lock::Source(*key),
         }
@@ -279,7 +282,7 @@ fn describe(conn: &Connection, work: &Work) -> Result<Described> {
                 None => plain("Upload to a deleted destination".into()),
             }
         }
-        Work::Backup => plain("Back up the database".into()),
+        Work::Backup { .. } => plain("Back up the database".into()),
         #[cfg(test)]
         Work::Test { key, .. } => plain(format!("Test {key}")),
     })
@@ -464,7 +467,7 @@ impl Jobs {
             Work::Sync { source_id } => crate::sync::run_sync(self.db(), source_id, ctx).await,
             Work::Probe { source_id, channels, .. } => self.prober().run_probe(source_id, channels, ctx).await,
             Work::Upload { destination_id } => crate::upload::upload_destination(self.db(), destination_id, ctx).await,
-            Work::Backup => crate::backup::auto_backup(self.db(), ctx).await,
+            Work::Backup { manual } => crate::backup::run_backup(manual, ctx).await,
             #[cfg(test)]
             Work::Test { millis, fail, .. } => {
                 ctx.step("Working").await;

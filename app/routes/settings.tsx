@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { apiAction, apiLoad } from "~/lib/api";
+import { useActiveJobsFor } from "~/lib/jobs";
 import type { Route } from "./+types/settings";
 
 export function meta() {
@@ -46,8 +47,10 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
   const { backups, backupsPath, backupCron, backupKeep } = loaderData;
   const actionData = useActionData<typeof clientAction>();
   const nav = useNavigation();
+  const backupJob = useActiveJobsFor({ kind: "backup" })[0];
   const backingUp =
-    nav.state !== "idle" && nav.formData?.get("intent") === "backupNow";
+    backupJob != null ||
+    (nav.state !== "idle" && nav.formData?.get("intent") === "backupNow");
 
   // Surface the action result as a toast.
   useEffect(() => {

@@ -11,6 +11,7 @@ use super::api::{ApiResult, bad_request, ok};
 use super::{AppState, form::Form};
 use crate::backup::{BackupInfo, backups};
 use crate::config::config;
+use crate::jobs::{Trigger, Work};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -44,10 +45,10 @@ async fn act(State(state): State<AppState>, form: Form) -> ApiResult {
     let file = form.str("file");
     let result = match intent.as_str() {
         "backupNow" => state
-            .db
-            .call(|conn| backups().create(conn, "manual"))
+            .jobs
+            .enqueue(Work::Backup { manual: true }, Trigger::Manual)
             .await
-            .map(|(file, _)| format!("Backup created: {file}")),
+            .map(|_| "Backing up in the background".to_string()),
         "deleteBackup" => backups().delete(&file).map(|_| "Backup deleted".to_string()),
         // A restore replaces every table, so a job running at the same time
         // would write into data that no longer exists.

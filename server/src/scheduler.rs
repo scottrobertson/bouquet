@@ -55,7 +55,7 @@ pub fn start(jobs: &Jobs) {
     let j = jobs.clone();
     schedule("backup", &cfg.backup_cron, move || {
         let jobs = j.clone();
-        async move { jobs.enqueue(Work::Backup, Trigger::Scheduled).await.map(|_| ()) }
+        async move { jobs.enqueue(Work::Backup { manual: false }, Trigger::Scheduled).await.map(|_| ()) }
     });
 }
 

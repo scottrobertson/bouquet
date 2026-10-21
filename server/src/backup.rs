@@ -16,7 +16,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::db::{self, Db};
+use crate::db;
 use crate::jobs::JobCtx;
 use crate::output::cache::invalidate_all;
 
@@ -245,17 +245,25 @@ pub fn backups() -> Backups {
     Backups { dir: crate::config::config().backups_path.clone() }
 }
 
-/// The scheduled backup job.
-pub async fn auto_backup(db: &Db, ctx: &JobCtx) -> Result<()> {
+/// The backup job, for the schedule and the "Back up now" button. It reads
+/// through its own connection, so the app carries on serving requests while
+/// a big database is copied and compressed.
+pub async fn run_backup(manual: bool, ctx: &JobCtx) -> Result<()> {
     ctx.step("Backing up").await;
-    let file = db
-        .call(|conn| {
-            let b = backups();
-            let (file, _) = b.create(conn, "auto")?;
-            b.prune_auto(crate::config::config().backup_keep)?;
-            Ok(file)
-        })
-        .await?;
+    let file = tokio::task::spawn_blocking(move || -> Result<String> {
+        let conn = Connection::open_with_flags(
+            &crate::config::config().database_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let b = backups();
+        if manual {
+            return Ok(b.create(&conn, "manual")?.0);
+        }
+        let (file, _) = b.create(&conn, "auto")?;
+        b.prune_auto(crate::config::config().backup_keep)?;
+        Ok(file)
+    })
+    .await??;
     ctx.summary(format!("Saved {file}"));
     Ok(())
 }
@@ -263,6 +271,7 @@ pub async fn auto_backup(db: &Db, ctx: &JobCtx) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::Db;
     use crate::test_support;
 
     fn setup() -> (tempfile::TempDir, Db, Backups) {
@@ -270,6 +279,21 @@ mod tests {
         let db = Db::open(&dir.path().join("bouquet.db")).unwrap();
         let backups = Backups { dir: dir.path().join("backups") };
         (dir, db, backups)
+    }
+
+    #[test]
+    fn backs_up_through_its_own_read_only_connection() {
+        let (dir, db, backups) = setup();
+        test_support::playlist(&db.lock(), "Fresh", "tok-fresh");
+        let reader =
+            Connection::open_with_flags(dir.path().join("bouquet.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .unwrap();
+        // The app's connection stays free while the backup reads, and the
+        // backup still sees a write that is only in the WAL so far.
+        let (file, _) = backups.create(&reader, "manual").unwrap();
+        db.lock().execute("DELETE FROM playlists", []).unwrap();
+        backups.restore(&mut db.lock(), &file).unwrap();
+        assert_eq!(playlist_names(&db.lock()), ["Fresh"]);
     }
 
     fn playlist_names(conn: &Connection) -> Vec<String> {
