@@ -4,9 +4,12 @@ on:
   push:
   pull_request:
 
-# The image name on GitHub Container Registry.
+# The image name on GitHub Container Registry. Images are pushed from main as
+# latest, and from the rust-backend branch as rust so it can be tried out
+# before it merges.
 env:
   IMAGE_NAME: ghcr.io/scottrobertson/bouquet
+  PUSH: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-backend' }}
 
 jobs:
   test:
@@ -50,7 +53,8 @@ jobs:
           git status --porcelain ../app/api/types
           test -z "$(git status --porcelain ../app/api/types)"
 
-  # Builds the Docker image to make sure it still works. Only pushes on main.
+  # Builds the Docker image to make sure it still works. Only pushes from the
+  # branches in PUSH.
   build:
     needs: [test, server]
     runs-on: ubuntu-latest
@@ -63,20 +67,22 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       # Only need to log in when we're going to push.
-      - if: github.ref == 'refs/heads/main'
+      - if: env.PUSH == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # latest only on main, plus the git sha on every build.
+      # latest on main, rust on the rust-backend branch, plus the git sha on
+      # every build.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=rust,enable=${{ github.ref == 'refs/heads/rust-backend' }}
             type=sha,format=long
 
       # Build and load into the local docker so we can boot it before pushing.
@@ -106,5 +112,5 @@ jobs:
           docker rm -f smoke >/dev/null 2>&1 || true
           [ "$ok" = 1 ] || { echo "image did not boot"; exit 1; }
 
-      - if: github.ref == 'refs/heads/main'
+      - if: env.PUSH == 'true'
         run: echo "${{ steps.meta.outputs.tags }}" | xargs -n1 docker push
