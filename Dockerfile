@@ -13,19 +13,23 @@ RUN npm run build
 
 # The Rust server, with the browser app built into the binary.
 FROM rust:1-bookworm AS server
-WORKDIR /app
-COPY server ./server
-COPY --from=web /app/build ./build
-# The cache mounts keep downloaded crates and compiled dependencies between
-# builds, so only Bouquet's own code is recompiled.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/server/target \
-    cd server && cargo build --release && cp target/release/bouquet /usr/local/bin/bouquet
+WORKDIR /app/server
+# Compile the dependencies on their own first, against placeholder sources.
+# This layer only changes when Cargo.toml or Cargo.lock do, so CI's layer cache
+# skips rebuilding every crate when only Bouquet's own code changed.
+COPY server/Cargo.toml server/Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs && touch src/lib.rs \
+    && cargo build --release && rm -rf src
+COPY server ./
+COPY --from=web /app/build ../build
+# Touched so cargo sees the real sources as newer than the placeholder build.
+RUN touch src/main.rs src/lib.rs && cargo build --release \
+    && cp target/release/bouquet /usr/local/bin/bouquet
 
-FROM debian:bookworm-slim AS runtime
-# curl is handy for debugging the container (hitting internal routes, checking
-# streams). ca-certificates lets the server reach providers and S3 over https.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Distroless has just what a Rust binary needs: glibc, the gcc runtime and CA
+# certificates for reaching providers and S3 over https. The debug variant adds
+# a busybox shell and wget for poking around inside a running container.
+FROM gcr.io/distroless/cc-debian12:debug AS runtime
 # ffprobe/ffmpeg read stream quality for the probe feature. Use a current static
 # build instead of Debian's (which is an old 5.1 with backported HLS limits and
 # no -extension_picky), so its HLS handling matches dev. Kept first so this layer
@@ -33,5 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY --from=mwader/static-ffmpeg:8.1.2 /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=server /usr/local/bin/bouquet /usr/local/bin/bouquet
 WORKDIR /app
+# The debug variant starts a shell by default.
+ENTRYPOINT []
 EXPOSE 3000
 CMD ["bouquet"]
