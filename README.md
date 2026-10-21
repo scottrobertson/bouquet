@@ -144,16 +144,17 @@ as sensitive.
 
 ## Configuration
 
-| Env            | Default     | Purpose                                                               |
-| -------------- | ----------- | --------------------------------------------------------------------- |
-| `CONFIG_PATH`  | `./data`    | Directory for the database and backups                                |
-| `SYNC_CRON`    | `0 * * * *` | How often the sync check runs (each source syncs on its own interval) |
-| `PROBE_CRON`   | `0 * * * *` | How often the stream probe check runs                                 |
-| `BACKUP_CRON`  | `0 3 * * *` | Schedule for backups                                                  |
-| `BACKUP_KEEP`  | `14`        | Scheduled backups to keep                                             |
-| `FFPROBE_PATH` | `ffprobe`   | Path to the ffprobe binary                                            |
-| `FFMPEG_PATH`  | `ffmpeg`    | Path to the ffmpeg binary                                             |
-| `PORT`         | `3000`      | Server port                                                           |
+| Env                  | Default     | Purpose                                                               |
+| -------------------- | ----------- | --------------------------------------------------------------------- |
+| `CONFIG_PATH`        | `./data`    | Directory for the database and backups                                |
+| `SYNC_CRON`          | `0 * * * *` | How often the sync check runs (each source syncs on its own interval) |
+| `PROBE_CRON`         | `0 * * * *` | How often the stream probe check runs                                 |
+| `PROBE_HISTORY_DAYS` | `7`         | Days of probe results kept per stream, which quality is judged across |
+| `BACKUP_CRON`        | `0 3 * * *` | Schedule for backups                                                  |
+| `BACKUP_KEEP`        | `14`        | Scheduled backups to keep                                             |
+| `FFPROBE_PATH`       | `ffprobe`   | Path to the ffprobe binary                                            |
+| `FFMPEG_PATH`        | `ffmpeg`    | Path to the ffmpeg binary                                             |
+| `PORT`               | `3000`      | Server port                                                           |
 
 Database upgrades apply automatically on startup.
 

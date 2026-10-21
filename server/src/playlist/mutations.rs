@@ -651,7 +651,7 @@ pub fn reorder_alternates(conn: &Connection, playlist_id: i64, primary_id: i64, 
 }
 
 /// The smart sort fields for a playlist channel row, starting at column `i`:
-/// available, source enabled, auto_disabled_at, then the seven probe columns.
+/// available, source enabled, auto_disabled_at, then the probe columns.
 pub fn smart_sort_stream(r: &rusqlite::Row, i: usize) -> rusqlite::Result<SmartSortStream> {
     Ok(SmartSortStream {
         available: r.get(i)?,
@@ -664,11 +664,15 @@ pub fn smart_sort_stream(r: &rusqlite::Row, i: usize) -> rusqlite::Result<SmartS
         probe_video_codec: r.get(i + 7)?,
         probe_audio_codec: r.get(i + 8)?,
         probe_bitrate: r.get(i + 9)?,
+        probe_passes: r.get(i + 10)?,
+        probe_attempts: r.get(i + 11)?,
+        consecutive_probe_failures: r.get(i + 12)?,
     })
 }
 
 pub const SMART_SORT_COLUMNS: &str = "sc.available, s.enabled, pc.auto_disabled_at, sc.probe_status, sc.probe_width, \
-    sc.probe_height, sc.probe_fps, sc.probe_video_codec, sc.probe_audio_codec, sc.probe_bitrate";
+    sc.probe_height, sc.probe_fps, sc.probe_video_codec, sc.probe_audio_codec, sc.probe_bitrate, sc.probe_passes, \
+    sc.probe_attempts, sc.consecutive_probe_failures";
 
 /// Reorder a whole group best-first from its probe data, putting the winner in
 /// front. The group's name and guide stay with the group rather than the

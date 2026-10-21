@@ -54,6 +54,10 @@ pub struct SmartSortStream {
     pub probe_video_codec: Option<String>,
     pub probe_audio_codec: Option<String>,
     pub probe_bitrate: Option<i64>,
+    // Probes that passed, out of those run, in the history window.
+    pub probe_passes: i64,
+    pub probe_attempts: i64,
+    pub consecutive_probe_failures: i64,
 }
 
 /// Newer codecs give the same picture at a lower bitrate. The factors are
@@ -87,10 +91,30 @@ fn audio_rank_of(codec: &str) -> f64 {
     }
 }
 
+// One failed probe after passing ones is usually the provider having a moment,
+// so the stream keeps its place until it fails twice in a row.
+fn blip(s: &SmartSortStream) -> bool {
+    matches!(s.probe_status.as_deref(), Some("error") | Some("timeout"))
+        && s.consecutive_probe_failures == 1
+        && s.probe_passes > 0
+}
+
 // A channel waiting to be probed can still carry numbers from an earlier run.
 // The editor hides those as "No probe data", so the sort ignores them too.
 fn measured(s: &SmartSortStream) -> bool {
-    s.probe_status.as_deref() == Some("ok")
+    s.probe_status.as_deref() == Some("ok") || blip(s)
+}
+
+// Fewer than this many probes is too few to call a stream flaky.
+const MIN_ATTEMPTS_FOR_RELIABILITY: i64 = 3;
+const STEADY_PASS_RATE: f64 = 0.8;
+
+/// Whether the stream passed most of its recent probes. A stream that drops
+/// out every few days is worse to land on than a slightly lower quality one
+/// that's always up.
+fn steady(s: &SmartSortStream) -> bool {
+    s.probe_attempts < MIN_ATTEMPTS_FOR_RELIABILITY
+        || s.probe_passes as f64 / s.probe_attempts as f64 >= STEADY_PASS_RATE
 }
 
 fn raw_bitrate(s: &SmartSortStream) -> Option<i64> {
@@ -180,6 +204,9 @@ fn liveness(s: &SmartSortStream) -> Liveness {
     if !s.available {
         return Liveness::Unavailable;
     }
+    if blip(s) {
+        return Liveness::Working;
+    }
     match s.probe_status.as_deref() {
         Some("error") | Some("timeout") => Liveness::Failed,
         Some("ok") => Liveness::Working,
@@ -189,9 +216,10 @@ fn liveness(s: &SmartSortStream) -> Liveness {
 
 // Comparison keys, all higher-is-better. The first key that differs decides.
 fn sort_keys(s: &SmartSortStream, config: &SmartSortConfig) -> Vec<f64> {
-    let mut keys = Vec::with_capacity(6);
+    let mut keys = Vec::with_capacity(7);
     if config.available_first {
         keys.push(liveness(s).rank());
+        keys.push(if steady(s) { 1.0 } else { 0.0 });
     }
     let (res, fps, bitrate) = (resolution_rank(s), fps_rank(s), effective_bitrate(s));
     match config.prefer {
@@ -238,12 +266,21 @@ pub struct SmartSortFactors {
     pub normalised_bitrate_kbps: Option<i64>,
     pub audio_rank: f64,
     pub codec_adjusted: bool,
+    pub probe_passes: i64,
+    pub probe_attempts: i64,
+    pub steady: bool,
+    // The last probe failed, but it's ranked on its history as a one off.
+    pub blip: bool,
 }
 
 pub fn factors_for(s: &SmartSortStream) -> SmartSortFactors {
     let factor = codec_factor(s.probe_video_codec.as_deref());
     let raw = raw_bitrate(s);
     SmartSortFactors {
+        probe_passes: s.probe_passes,
+        probe_attempts: s.probe_attempts,
+        steady: steady(s),
+        blip: blip(s),
         liveness: liveness(s),
         resolution_rank: resolution_rank(s),
         fps_rank: fps_rank(s),
@@ -273,7 +310,42 @@ mod tests {
             probe_video_codec: Some(vcodec.into()),
             probe_audio_codec: Some(acodec.into()),
             probe_bitrate: Some((mbps * 1000.0).round() as i64),
+            probe_passes: 0,
+            probe_attempts: 0,
+            consecutive_probe_failures: 0,
         }
+    }
+
+    fn with_history(mut s: SmartSortStream, passes: i64, attempts: i64, failures_in_a_row: i64) -> SmartSortStream {
+        s.probe_passes = passes;
+        s.probe_attempts = attempts;
+        s.consecutive_probe_failures = failures_in_a_row;
+        s
+    }
+
+    #[test]
+    fn one_failure_after_passing_probes_keeps_its_place() {
+        let blip = with_history(with_status(stream(2160, 50.0, "hevc", "eac3", 20.0), Some("timeout")), 6, 7, 1);
+        let list = [("plain", stream(1080, 50.0, "h264", "aac", 6.0)), ("blip", blip.clone())];
+        assert_eq!(names(&list, &DEFAULT), ["blip", "plain"]);
+        assert_eq!(factors_for(&blip).liveness, Liveness::Working);
+        assert!(factors_for(&blip).blip);
+
+        let twice = with_history(blip.clone(), 5, 7, 2);
+        assert_eq!(names(&[("plain", stream(1080, 50.0, "h264", "aac", 6.0)), ("twice", twice)], &DEFAULT)[0], "plain");
+        let never_passed = with_history(blip, 0, 1, 1);
+        assert_eq!(factors_for(&never_passed).liveness, Liveness::Failed);
+    }
+
+    #[test]
+    fn flaky_streams_rank_below_steady_ones() {
+        let flaky = with_history(stream(2160, 50.0, "hevc", "eac3", 20.0), 4, 7, 0);
+        let steady = with_history(stream(1080, 50.0, "h264", "aac", 6.0), 7, 7, 0);
+        let list = [("flaky", flaky.clone()), ("steady", steady)];
+        assert_eq!(names(&list, &DEFAULT), ["steady", "flaky"]);
+        assert_eq!(names(&list, &SmartSortConfig { available_first: false, ..DEFAULT }), ["flaky", "steady"]);
+        // Two probes is too few to call it flaky.
+        assert!(factors_for(&with_history(flaky, 1, 2, 0)).steady);
     }
 
     fn with_status(mut s: SmartSortStream, status: Option<&str>) -> SmartSortStream {

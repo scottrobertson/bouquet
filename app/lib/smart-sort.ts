@@ -30,6 +30,10 @@ export type SmartSortStream = {
   probeVideoCodec: string | null;
   probeAudioCodec: string | null;
   probeBitrate: number | null;
+  // Probes that passed, out of those run, in the history window.
+  probePasses: number;
+  probeAttempts: number;
+  consecutiveProbeFailures: number;
 };
 
 // Newer codecs deliver the same picture at a lower bitrate, so we convert every
@@ -73,10 +77,36 @@ function codecFactor(codec: string | null): number {
   return CODEC_EFFICIENCY[codec.toLowerCase()] ?? 1;
 }
 
+// One failed probe after passing ones is usually the provider having a moment,
+// so the stream keeps its place until it fails twice in a row.
+function blip(s: SmartSortStream): boolean {
+  return (
+    (s.probeStatus === "error" || s.probeStatus === "timeout") &&
+    s.consecutiveProbeFailures === 1 &&
+    s.probePasses > 0
+  );
+}
+
 // A channel waiting to be probed can still carry numbers from an earlier run.
 // The editor hides those as "No probe data", so the sort ignores them too.
 function measured(s: SmartSortStream): boolean {
-  return s.probeStatus === "ok";
+  return s.probeStatus === "ok" || blip(s);
+}
+
+// Fewer than this many probes is too few to call a stream flaky.
+const MIN_ATTEMPTS_FOR_RELIABILITY = 3;
+const STEADY_PASS_RATE = 0.8;
+
+/** Whether the stream passed most of its recent probes. A stream that drops
+    out every few days is worse to land on than a slightly lower quality one
+    that's always up. */
+export function steady(
+  s: Pick<SmartSortStream, "probePasses" | "probeAttempts">,
+): boolean {
+  return (
+    s.probeAttempts < MIN_ATTEMPTS_FOR_RELIABILITY ||
+    s.probePasses / s.probeAttempts >= STEADY_PASS_RATE
+  );
 }
 
 function rawBitrate(s: SmartSortStream): number | null {
@@ -142,6 +172,7 @@ function liveness(s: SmartSortStream): Liveness {
   if (!s.sourceEnabled) return "sourceOff";
   if (s.autoDisabledAt != null) return "autoDisabled";
   if (!s.available) return "unavailable";
+  if (blip(s)) return "working";
   if (s.probeStatus === "error" || s.probeStatus === "timeout") return "failed";
   if (s.probeStatus === "ok") return "working";
   return "unprobed";
@@ -155,7 +186,7 @@ function livenessRank(s: SmartSortStream): number {
 // decides the order.
 function sortKeys(s: SmartSortStream, config: SmartSortConfig): number[] {
   const keys: number[] = [];
-  if (config.availableFirst) keys.push(livenessRank(s));
+  if (config.availableFirst) keys.push(livenessRank(s), steady(s) ? 1 : 0);
   const res = resolutionRank(s);
   const fps = fpsRank(s);
   const bitrate = effectiveBitrate(s);
@@ -213,12 +244,21 @@ export type SmartSortFactors = {
   normalisedBitrateKbps: number | null;
   audioRank: number;
   codecAdjusted: boolean;
+  probePasses: number;
+  probeAttempts: number;
+  steady: boolean;
+  // The last probe failed, but it's ranked on its history as a one off.
+  blip: boolean;
 };
 
 export function factorsFor(s: SmartSortStream): SmartSortFactors {
   const factor = codecFactor(s.probeVideoCodec);
   const raw = rawBitrate(s);
   return {
+    probePasses: s.probePasses,
+    probeAttempts: s.probeAttempts,
+    steady: steady(s),
+    blip: blip(s),
     liveness: liveness(s),
     resolutionRank: resolutionRank(s),
     fpsRank: fpsRank(s),

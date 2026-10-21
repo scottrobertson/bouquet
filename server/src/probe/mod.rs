@@ -1,4 +1,5 @@
 pub mod ffprobe;
+pub mod history;
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -149,20 +150,19 @@ impl Prober {
         // set of numbers, and anything that ranks quality would trust them.
         let ok = r.status == "ok";
         let q = if ok { r.quality.clone() } else { Default::default() };
-        let bitrate = if ok { bitrate } else { None };
-        let (status, error) = (r.status, r.error.clone());
-        self.db
-            .call(move |conn| {
-                conn.execute(
-                    "UPDATE source_channels SET probed_at = ?, probe_status = ?, probe_width = ?, probe_height = ?, \
-                       probe_fps = ?, probe_video_codec = ?, probe_audio_codec = ?, probe_bitrate = ?, probe_error = ?, \
-                       consecutive_probe_failures = CASE WHEN ? THEN 0 ELSE consecutive_probe_failures + 1 END \
-                     WHERE id = ?",
-                    params![now(), status, q.width, q.height, q.fps, q.video_codec, q.audio_codec, bitrate, error, ok, id],
-                )?;
-                Ok(())
-            })
-            .await?;
+        let sample = history::ProbeSample {
+            id: 0,
+            probed_at: now(),
+            status: r.status.to_string(),
+            width: q.width,
+            height: q.height,
+            fps: q.fps,
+            video_codec: q.video_codec,
+            audio_codec: q.audio_codec,
+            bitrate: if ok { bitrate } else { None },
+            error: r.error.clone(),
+        };
+        self.db.call(move |conn| history::record(conn, id, &sample)).await?;
         Ok(ok)
     }
 
@@ -201,6 +201,7 @@ impl Prober {
             .call(move |conn| {
                 auto_disable_failed_channels(conn, &ids)?;
                 revive_recovered_channels(conn, &ids)?;
+                history::prune(conn, now())?;
                 conn.execute(
                     "UPDATE sources SET probe_status = 'ok', last_probed_at = ?, probe_error = NULL WHERE id = ?",
                     params![now(), source_id],
@@ -481,9 +482,9 @@ pub fn channels_to_probe_on_add(conn: &Connection, ids: &[i64]) -> Result<Vec<Ta
     Ok(out)
 }
 
-/// Wipe the probe results for every channel in a playlist so they read as
-/// unprobed. Results live on the shared source channel, so this clears them
-/// for any other playlist using the same stream too.
+/// Wipe the probe results and history for every channel in a playlist so they
+/// read as unprobed. Results live on the shared source channel, so this clears
+/// them for any other playlist using the same stream too.
 pub fn clear_playlist_probes(conn: &Connection, playlist_id: i64) -> Result<usize> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT sc.id, sc.source_id FROM playlist_channels pc \
@@ -496,12 +497,13 @@ pub fn clear_playlist_probes(conn: &Connection, playlist_id: i64) -> Result<usiz
             &format!(
                 "UPDATE source_channels SET probe_status = NULL, probed_at = NULL, probe_width = NULL, \
                    probe_height = NULL, probe_fps = NULL, probe_video_codec = NULL, probe_audio_codec = NULL, \
-                   probe_bitrate = NULL, probe_error = NULL WHERE id IN ({})",
+                   probe_bitrate = NULL, probe_error = NULL, probe_passes = 0, probe_attempts = 0 WHERE id IN ({})",
                 placeholders(chunk.len())
             ),
             params_from_iter(chunk),
         )?;
     }
+    conn.execute("DELETE FROM probe_samples WHERE source_channel_id IN rarray(?)", [id_array(ids.iter().copied())])?;
     for source_id in rows.iter().map(|r| r.1).collect::<BTreeSet<_>>() {
         bump_source(source_id);
     }

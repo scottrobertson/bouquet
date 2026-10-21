@@ -5,4 +5,4 @@ import type { Liveness } from "./Liveness";
  * The values that fed the sort, so the preview can show why a stream ranks
  * where it does.
  */
-export type SmartSortFactors = { liveness: Liveness, resolutionRank: number, fpsRank: number, rawBitrateKbps: number | null, normalisedBitrateKbps: number | null, audioRank: number, codecAdjusted: boolean, };
+export type SmartSortFactors = { liveness: Liveness, resolutionRank: number, fpsRank: number, rawBitrateKbps: number | null, normalisedBitrateKbps: number | null, audioRank: number, codecAdjusted: boolean, probePasses: number, probeAttempts: number, steady: boolean, blip: boolean, };

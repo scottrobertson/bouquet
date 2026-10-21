@@ -4,6 +4,20 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- Bouquet now keeps a week of probe history for every stream, and the quality shown in the editor
+  is the typical result across those probes rather than whatever the last one happened to see. A
+  probe only watches a few seconds of a live channel, so one that lands on an off air logo or a
+  slow server no longer makes the bitrate jump about or reshuffles smart sort. Readings far below
+  a stream's best are treated as a slate and left out. Pick "Probe history" from a channel's menu to
+  see every recent probe as a small chart and a list, with the ones that failed or were ignored
+  marked. Set
+  `PROBE_HISTORY_DAYS` to keep more or less than 7 days.
+
+- Smart sort now looks at how reliable a stream has been, not just its last probe. A single failed
+  probe after passing ones is treated as a blip, so a good stream keeps its place instead of
+  dropping below untested ones. A stream that failed more than one in five recent probes ranks
+  below steady ones, and the editor shows "5/7 ok" next to its quality so you can spot it.
+
 - A new Jobs page shows everything Bouquet does in the background: syncs, probes, uploads and
   backups, whether you started them, the schedule did, or they followed on from something else.
   Running jobs show their current step and a live progress bar, and every job keeps a step by step

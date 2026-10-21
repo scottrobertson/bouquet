@@ -42,14 +42,14 @@ export function resolutionTier(height: number | null): ResolutionTier | null {
 }
 
 /** Frame rate label, trimming a trailing ".0" so 25.0 reads as "25fps". */
-function fpsLabel(fps: number | null): string | null {
+export function fpsLabel(fps: number | null): string | null {
   if (!fps || fps <= 0) return null;
   const rounded = Math.round(fps * 100) / 100;
   return `${rounded}fps`;
 }
 
 /** Bitrate label in kbps/Mbps, e.g. "850 kbps" or "8.2 Mbps". */
-function bitrateLabel(kbps: number | null): string | null {
+export function bitrateLabel(kbps: number | null): string | null {
   if (!kbps || kbps <= 0) return null;
   if (kbps >= 1000) return `${(kbps / 1000).toFixed(1)} Mbps`;
   return `${kbps} kbps`;

@@ -1,5 +1,5 @@
-//! The playlist editor: its page data, every edit it posts, and the two lists
-//! it loads on demand (the source browser and the EPG picker).
+//! The playlist editor: its page data, every edit it posts, and what it loads
+//! on demand (the source browser, the EPG picker and a stream's probe history).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -27,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/playlists/{id}", get(load).post(act))
         .route("/api/playlists/{id}/epg-channels", get(epg_channels))
         .route("/api/playlists/{id}/source-channels", get(source_channels))
+        .route("/api/playlists/{id}/probe-history", get(probe_history))
 }
 
 #[derive(Serialize, TS)]
@@ -353,6 +354,19 @@ pub struct EpgChannelsData {
 async fn epg_channels(State(state): State<AppState>) -> ApiResult {
     let epg_channels = state.db.call(|conn| q::epg_channels(conn)).await?;
     ok(EpgChannelsData { epg_channels })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProbeHistoryQuery {
+    source_channel_id: i64,
+}
+
+/// One stream's recent probes, loaded when its history dialog opens.
+async fn probe_history(State(state): State<AppState>, Query(query): Query<ProbeHistoryQuery>) -> ApiResult {
+    let id = query.source_channel_id;
+    let history = state.db.call(move |conn| crate::probe::history::history(conn, id, crate::pool::now())).await?;
+    ok(history)
 }
 
 #[derive(Serialize, TS)]

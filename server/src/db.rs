@@ -9,6 +9,7 @@ use rusqlite::{Connection, OptionalExtension};
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_baseline.sql"),
     include_str!("../migrations/0002_jobs.sql"),
+    include_str!("../migrations/0003_probe_samples.sql"),
 ];
 
 /// How many drizzle migrations the TypeScript app had when the baseline was

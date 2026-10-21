@@ -39,6 +39,9 @@ function stream(
     probeVideoCodec: vcodec,
     probeAudioCodec: acodec,
     probeBitrate: Math.round(bitrateMbps * 1000),
+    probePasses: 0,
+    probeAttempts: 0,
+    consecutiveProbeFailures: 0,
     ...extra,
   };
 }
@@ -108,6 +111,40 @@ describe("smartSort scoring", () => {
     ];
     expect(smartSort(list, DEFAULT).map((s) => s.name)).toEqual(["plain", "stale4k"]);
     expect(needsSmartSort(list, DEFAULT)).toBe(false);
+  });
+
+  it("keeps a stream's place after one failure following passing probes", () => {
+    const history = { probePasses: 6, probeAttempts: 7, consecutiveProbeFailures: 1 };
+    const blip = stream("blip", 2160, 50, "hevc", "eac3", 20, {
+      probeStatus: "timeout",
+      ...history,
+    });
+    const plain = stream("plain", 1080, 50, "h264", "aac", 6);
+    expect(smartSort([plain, blip], DEFAULT).map((s) => s.name)).toEqual(["blip", "plain"]);
+    expect(factorsFor(blip).liveness).toBe("working");
+    expect(factorsFor(blip).blip).toBe(true);
+
+    const twice = { ...blip, name: "twice", probePasses: 5, consecutiveProbeFailures: 2 };
+    expect(smartSort([plain, twice], DEFAULT)[0].name).toBe("plain");
+    const neverPassed = { ...blip, probePasses: 0, probeAttempts: 1 };
+    expect(factorsFor(neverPassed).liveness).toBe("failed");
+  });
+
+  it("ranks flaky streams below steady ones", () => {
+    const flaky = stream("flaky", 2160, 50, "hevc", "eac3", 20, {
+      probePasses: 4,
+      probeAttempts: 7,
+    });
+    const steady = stream("steady", 1080, 50, "h264", "aac", 6, {
+      probePasses: 7,
+      probeAttempts: 7,
+    });
+    expect(smartSort([flaky, steady], DEFAULT).map((s) => s.name)).toEqual(["steady", "flaky"]);
+    expect(
+      smartSort([flaky, steady], { ...DEFAULT, availableFirst: false }).map((s) => s.name),
+    ).toEqual(["flaky", "steady"]);
+    // Two probes is too few to call it flaky.
+    expect(factorsFor({ ...flaky, probePasses: 1, probeAttempts: 2 }).steady).toBe(true);
   });
 });
 

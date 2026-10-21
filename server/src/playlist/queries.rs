@@ -138,6 +138,9 @@ pub struct EditorChannel {
     pub probe_video_codec: Option<String>,
     pub probe_audio_codec: Option<String>,
     pub probe_bitrate: Option<i64>,
+    pub probe_passes: i64,
+    pub probe_attempts: i64,
+    pub consecutive_probe_failures: i64,
     pub source_category_enabled: bool,
     // The logo a custom EPG pick lends, so the editor shows what output will.
     pub epg_logo: Option<String>,
@@ -156,7 +159,8 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
            sc.name, sc.logo, sc.available, sc.category_name, sc.source_id, sc.epg_channel_id, sc.stream_id, \
            s.name, s.enabled, s.server_url, s.stream_base_url, s.username, s.password, s.output_format, \
            sc.probe_status, sc.probe_error, sc.probe_width, sc.probe_height, sc.probe_fps, sc.probe_video_codec, \
-           sc.probe_audio_codec, sc.probe_bitrate, cat.enabled \
+           sc.probe_audio_codec, sc.probe_bitrate, cat.enabled, sc.probe_passes, sc.probe_attempts, \
+           sc.consecutive_probe_failures \
          FROM playlist_channels pc \
          JOIN source_channels sc ON pc.source_channel_id = sc.id \
          JOIN sources s ON sc.source_id = s.id \
@@ -199,6 +203,9 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
                 probe_video_codec: r.get(31)?,
                 probe_audio_codec: r.get(32)?,
                 probe_bitrate: r.get(33)?,
+                probe_passes: r.get(35)?,
+                probe_attempts: r.get(36)?,
+                consecutive_probe_failures: r.get(37)?,
                 // No category row (uncategorised, or never seeded) counts as on.
                 source_category_enabled: r.get::<_, Option<bool>>(34)?.unwrap_or(true),
                 epg_logo: None,
