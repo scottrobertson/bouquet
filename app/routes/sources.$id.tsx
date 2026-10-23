@@ -4,10 +4,12 @@ import {
   Gauge,
   History,
   Loader2,
+  MoreVertical,
   Pencil,
   Power,
   PowerOff,
   RefreshCw,
+  Trash2,
   Tv,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -18,6 +20,7 @@ import {
   useFetcher,
   useFetchers,
   useNavigation,
+  useSubmit,
 } from "react-router";
 import type { SourceChannelRow } from "~/api/types/SourceChannelRow";
 import type { SourceDetailData } from "~/api/types/SourceDetailData";
@@ -41,10 +44,16 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Switch } from "~/components/ui/switch";
@@ -84,6 +93,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
   const navIntent = navigation.formData?.get("intent");
   const submitting = navigation.state !== "idle" && navIntent === "sync";
   const live = useLiveSourceStatus(source);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const syncing =
     submitting || live.sync.status === "syncing" || live.sync.status === "queued";
   const probing =
@@ -131,7 +141,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             ) : null}
           </span>
         }
-        actionsClassName="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
+        actionsClassName="grid w-full grid-cols-[1fr_1fr_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
         actions={
           <>
             <Form method="post" className="contents">
@@ -146,21 +156,23 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
                 {probing ? "Probing..." : "Probe now"}
               </Button>
             </Form>
-            <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
+            {/* On a phone the less used actions go in a menu, so they don't
+                stack up three rows of buttons above the page. */}
+            <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex">
               <Link to={`/sources/${source.id}/changes`}>
                 <History className="size-4" />
                 Changes
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
+            <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex">
               <Link to={`/sources/${source.id}/edit`}>
                 <Pencil className="size-4" />
                 Edit
               </Link>
             </Button>
-            <Form method="post" className="contents">
+            <Form method="post" className="hidden sm:contents">
               <input type="hidden" name="enabled" value={String(!source.enabled)} />
-              <Button type="submit" name="intent" value="setEnabled" size="sm" variant="outline" className="w-full sm:w-auto">
+              <Button type="submit" name="intent" value="setEnabled" size="sm" variant="outline">
                 {source.enabled ? (
                   <PowerOff className="size-4" />
                 ) : (
@@ -169,7 +181,24 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
                 {source.enabled ? "Disable" : "Enable"}
               </Button>
             </Form>
-            <DeleteSourceButton name={source.name} />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="hidden text-destructive hover:text-destructive sm:inline-flex"
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete
+            </Button>
+            <SourceMoreMenu
+              sourceId={source.id}
+              enabled={source.enabled}
+              onDelete={() => setDeleteOpen(true)}
+            />
+            <DeleteSourceDialog
+              name={source.name}
+              open={deleteOpen}
+              onOpenChange={setDeleteOpen}
+            />
           </>
         }
       />
@@ -188,28 +217,26 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
             on={onCount}
             off={offCount}
           />
-          <Meta
-            label="Last synced"
-            value={<RelativeTime date={source.lastSyncedAt} />}
-          />
-          <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
-          <Meta
-            label="Last probed"
-            value={
-              source.probeEnabled || source.lastProbedAt
-                ? <RelativeTime date={source.lastProbedAt} />
-                : "Off"
-            }
-          />
-          <ExpiresMeta expiresAt={source.expiresAt} />
-          <Meta label="Connections" value={connectionsLabel(source.maxConnections)} />
-          {source.accountStatus ? (
+          <div className="col-span-2 divide-y divide-border rounded-lg border border-border bg-card sm:contents sm:divide-y-0">
             <Meta
-              label="Status"
-              value={source.accountStatus}
-              className="hidden sm:flex"
+              label="Last synced"
+              value={<RelativeTime date={source.lastSyncedAt} />}
             />
-          ) : null}
+            <Meta label="Refresh" value={syncIntervalLabel(source.syncIntervalMinutes)} />
+            <Meta
+              label="Last probed"
+              value={
+                source.probeEnabled || source.lastProbedAt
+                  ? <RelativeTime date={source.lastProbedAt} />
+                  : "Off"
+              }
+            />
+            <ExpiresMeta expiresAt={source.expiresAt} />
+            <Meta label="Connections" value={connectionsLabel(source.maxConnections)} />
+            {source.accountStatus ? (
+              <Meta label="Status" value={source.accountStatus} />
+            ) : null}
+          </div>
         </div>
 
         {jobs.length > 0 ? (
@@ -670,6 +697,8 @@ const statLabel = "text-xs text-muted-foreground sm:text-[13px]";
 // Value is prominent on the mobile card, normal inline text on desktop.
 const statValue = "text-base font-semibold tabular-nums sm:text-[13px] sm:font-medium";
 
+// A single fact. On mobile it's a label and value row inside one shared card,
+// since a card each would make the page very tall for a few short values.
 function Meta({
   label,
   value,
@@ -682,9 +711,16 @@ function Meta({
   className?: string;
 }) {
   return (
-    <div className={cn(statCell, className)}>
-      <span className={statLabel}>{label}</span>
-      <span className={cn(statValue, valueClassName)}>{value}</span>
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 px-3 py-2 sm:justify-start sm:gap-2 sm:p-0",
+        className,
+      )}
+    >
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className={cn("text-[13px] font-medium tabular-nums", valueClassName)}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -744,14 +780,68 @@ function MetaCount({
   );
 }
 
-function DeleteSourceButton({ name }: { name: string }) {
+function SourceMoreMenu({
+  sourceId,
+  enabled,
+  onDelete,
+}: {
+  sourceId: number;
+  enabled: boolean;
+  onDelete: () => void;
+}) {
+  const submit = useSubmit();
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="w-full border bg-background text-destructive hover:text-destructive dark:border-input dark:bg-input/30 sm:w-auto sm:border-0 sm:bg-transparent sm:shadow-none">
-          Delete
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="outline" className="sm:hidden" aria-label="More actions">
+          <MoreVertical className="size-4" />
         </Button>
-      </AlertDialogTrigger>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link to={`/sources/${sourceId}/changes`}>
+            <History className="size-4" />
+            Changes
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to={`/sources/${sourceId}/edit`}>
+            <Pencil className="size-4" />
+            Edit
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() =>
+            submit(
+              { intent: "setEnabled", enabled: String(!enabled) },
+              { method: "post" },
+            )
+          }
+        >
+          {enabled ? <PowerOff className="size-4" /> : <Power className="size-4" />}
+          {enabled ? "Disable" : "Enable"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={onDelete}>
+          <Trash2 className="size-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function DeleteSourceDialog({
+  name,
+  open,
+  onOpenChange,
+}: {
+  name: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {name}?</AlertDialogTitle>

@@ -34,7 +34,11 @@ async fn load(State(state): State<AppState>) -> ApiResult {
     let cfg = config();
     ok(SettingsData {
         backups: backups_list,
-        backups_path: cfg.backups_path.display().to_string(),
+        // Resolve any "../" so the page shows the folder you'd actually open.
+        backups_path: std::fs::canonicalize(&cfg.backups_path)
+            .unwrap_or_else(|_| cfg.backups_path.clone())
+            .display()
+            .to_string(),
         backup_cron: cfg.backup_cron.clone(),
         backup_keep: cfg.backup_keep,
     })

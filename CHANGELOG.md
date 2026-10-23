@@ -427,6 +427,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- A source's page is much shorter on a phone. Sync and Probe stay as buttons, with Changes, Edit,
+  Disable and Delete in a menu next to them, and the last synced, refresh, expiry and similar
+  details sit as rows in one card instead of a card each.
+- The Backups section on Settings is a short list of the folder and the schedule instead of a
+  paragraph, and the folder shows its real location rather than a path with "../" in it. The note
+  about older backups being upgraded moved into the restore confirmation.
 - More of the app fits a phone. The backups list on Settings folds its type, version and size under
   the date, so the download, restore and delete buttons are always in view. The Jobs filters stay
   on one row you can swipe. Pages that sit under another one, like a source's Changes or a

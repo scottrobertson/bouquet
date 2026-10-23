@@ -82,14 +82,22 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
 
       <div className="max-w-3xl space-y-3 px-4 py-5 md:px-8 md:py-6">
         <h2 className="text-[13px] font-medium">Backups</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Each backup is a full snapshot of the database, gzipped, in{" "}
-          <code className="rounded bg-secondary px-1 py-0.5 text-xs wrap-anywhere">{backupsPath}</code>.
-          Drop a file in there and it shows up here. Auto-backups run on{" "}
-          <code className="rounded bg-secondary px-1 py-0.5 text-xs">{backupCron}</code>,
-          keeping the latest {backupKeep}. Restoring replaces everything; an older
-          backup is upgraded to the current version as part of the restore.
-        </p>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
+          <dt className="text-muted-foreground">Folder</dt>
+          <dd>
+            <code className="text-xs wrap-anywhere">{backupsPath}</code>
+            <p className="text-xs text-muted-foreground">
+              Drop a backup file in here and it shows up below.
+            </p>
+          </dd>
+          <dt className="text-muted-foreground">Schedule</dt>
+          <dd>
+            <code className="text-xs">{backupCron}</code>
+            <span className="text-muted-foreground">
+              , keeping the latest {backupKeep}
+            </span>
+          </dd>
+        </dl>
 
         {backups.length === 0 ? (
           <EmptyState
@@ -224,7 +232,8 @@ function RestoreButton({ file, disabled }: { file: string; disabled: boolean }) 
           <AlertDialogDescription>
             This replaces all current sources, categories, and playlists with the
             contents of the backup. A safety backup of the current state is taken
-            first. Afterwards, run a sync to refill the channel browser.
+            first, and a backup from an older version is upgraded as it's
+            restored. Afterwards, run a sync to refill the channel browser.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
