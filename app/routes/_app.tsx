@@ -51,11 +51,15 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
 
   return (
     <JobsProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
+      {/* On phones 100vh is taller than the visible screen and hides the bottom
+          of the page behind Safari's toolbar, so size to what's visible. The
+          viewport tag lets the page draw under the notch and home bar, so pad
+          clear of them. */}
+      <div className="flex h-dvh overflow-hidden bg-background pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
         <AppSidebar collapsed={collapsed} onToggle={toggleCollapsed} />
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Mobile top bar. Desktop uses the always-on sidebar instead. */}
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden">
+          <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border px-3 pt-[env(safe-area-inset-top)] md:hidden">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="size-9">
@@ -78,7 +82,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
             </div>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-y-auto">
+          <main className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
             <Outlet />
           </main>
         </div>

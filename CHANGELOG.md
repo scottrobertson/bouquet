@@ -615,6 +615,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Fixed
 
+- On a phone, the bottom of each page could sit behind Safari's toolbar, which hid things like the
+  editor's "Add selected" bar. Pages now fit the part of the screen you can actually see, and keep
+  clear of the notch and home bar.
 - When a provider turns a request away because it's busy (a 503 or 429), Bouquet now waits and
   tries again, a few times with a growing pause, instead of giving up on it. Before, any guide
   request the provider refused was quietly skipped, and the sync still looked complete while those

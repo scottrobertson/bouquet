@@ -42,7 +42,7 @@ export default function App() {
 // Shown while the first page's data loads.
 export function HydrateFallback() {
   return (
-    <div className="h-screen bg-background">
+    <div className="h-dvh bg-background">
       <PageLoading />
     </div>
   );
@@ -65,7 +65,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-2 p-6 text-center">
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-2 p-6 text-center">
       <h1 className="text-lg font-semibold">{message}</h1>
       <p className="text-sm text-muted-foreground">{details}</p>
       {stack && (
