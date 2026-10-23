@@ -14,6 +14,15 @@ updates:
       - dependency-name: "better-sqlite3"
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: "cargo"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+    groups:
+      all:
+        patterns:
+          - "*"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
