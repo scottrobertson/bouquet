@@ -37,6 +37,7 @@ import {
   SelectTrigger,
 } from "~/components/ui/select";
 import { logoSrc } from "~/lib/logo";
+import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 import { cn } from "~/lib/utils";
 import {
   PrimaryPicker,
@@ -409,7 +410,7 @@ export function SourceBrowser({
             Source channels
           </div>
           {results.length > 0 ? (
-            <div className="flex items-center gap-3">
+            <div className="ml-auto flex items-center gap-3">
               <button
                 type="button"
                 onClick={toggleAll}
@@ -432,7 +433,7 @@ export function SourceBrowser({
             onToggle={toggleCategoryFilter}
             onClear={() => setParam("categories", "")}
           />
-          <div className="relative w-1/2">
+          <div className="relative flex-1 md:w-1/2 md:flex-none">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
@@ -690,6 +691,7 @@ function CategoryFilter({
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const coarse = useCoarsePointer();
   const label =
     selected.length === 0
       ? "All categories"
@@ -701,7 +703,7 @@ function CategoryFilter({
         <Button
           variant="outline"
           size="sm"
-          className="w-1/2 cursor-pointer justify-between font-normal"
+          className="w-2/5 cursor-pointer justify-between font-normal md:w-1/2"
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
@@ -710,7 +712,14 @@ function CategoryFilter({
           <ChevronDown className="size-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
+      <PopoverContent
+        className="w-64 p-0"
+        align="start"
+        // On a phone, focusing the filter box opens the keyboard over the list.
+        onOpenAutoFocus={(e) => {
+          if (coarse) e.preventDefault();
+        }}
+      >
         <Command>
           <CommandInput placeholder="Filter categories..." />
           <CommandList>

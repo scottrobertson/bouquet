@@ -100,14 +100,16 @@ export default function Jobs({ loaderData }: Route.ComponentProps) {
             <h2 className="text-[13px] font-medium text-muted-foreground">
               History
             </h2>
-            <div className="flex flex-wrap gap-1">
+            {/* One row that swipes sideways on a phone, so the filters don't
+                wrap onto a second line. */}
+            <div className="-mx-4 flex w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0">
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
                   type="button"
                   onClick={() => setFilter(f.value)}
                   className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground",
+                    "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground",
                     filter === f.value && "bg-white/[0.07] text-foreground",
                   )}
                 >

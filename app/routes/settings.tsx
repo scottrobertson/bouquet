@@ -84,7 +84,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
         <h2 className="text-[13px] font-medium">Backups</h2>
         <p className="text-[13px] text-muted-foreground">
           Each backup is a full snapshot of the database, gzipped, in{" "}
-          <code className="rounded bg-secondary px-1 py-0.5 text-xs">{backupsPath}</code>.
+          <code className="rounded bg-secondary px-1 py-0.5 text-xs wrap-anywhere">{backupsPath}</code>.
           Drop a file in there and it shows up here. Auto-backups run on{" "}
           <code className="rounded bg-secondary px-1 py-0.5 text-xs">{backupCron}</code>,
           keeping the latest {backupKeep}. Restoring replaces everything; an older
@@ -103,9 +103,9 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
               <TableHeader>
                 <TableRow className="border-white/5 hover:bg-transparent">
                   <TableHead>When</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead className="text-right">Size</TableHead>
+                  <TableHead className="hidden sm:table-cell">Type</TableHead>
+                  <TableHead className="hidden sm:table-cell">Version</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Size</TableHead>
                   <TableHead className="w-32" />
                 </TableRow>
               </TableHeader>
@@ -137,24 +137,35 @@ function BackupRow({ backup: b }: { backup: BackupInfo }) {
   // Older backups restore fine (they get upgraded); only newer-than-app or
   // unrecognized files are blocked.
   const restoreBlocked = !b.valid || b.isNewerThanApp;
+  const type =
+    b.trigger === "auto"
+      ? "Scheduled"
+      : b.trigger === "manual"
+        ? "Manual"
+        : b.trigger === "prerestore"
+          ? "Pre-restore"
+          : "Added";
 
   return (
     <TableRow className="border-white/5">
       <TableCell className="whitespace-nowrap text-muted-foreground">
         <RelativeTime date={b.createdAt ?? b.modifiedAt} />
+        {/* A phone has no room for the other columns, so they fold in here and
+            leave space for the buttons. */}
+        <div className="mt-0.5 text-xs whitespace-normal text-muted-foreground/70 sm:hidden">
+          {type} · {versionLabel(b)}
+          {b.isNewerThanApp ? (
+            <span className="text-warning"> · newer than app</span>
+          ) : null}{" "}
+          · {formatSize(b.size)}
+        </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         <Badge className="border-transparent bg-secondary text-muted-foreground">
-          {b.trigger === "auto"
-            ? "Scheduled"
-            : b.trigger === "manual"
-              ? "Manual"
-              : b.trigger === "prerestore"
-                ? "Pre-restore"
-                : "Added"}
+          {type}
         </Badge>
       </TableCell>
-      <TableCell className="text-muted-foreground">
+      <TableCell className="hidden text-muted-foreground sm:table-cell">
         <span className="flex items-center gap-1.5">
           {versionLabel(b)}
           {b.isNewerThanApp ? (
@@ -168,7 +179,7 @@ function BackupRow({ backup: b }: { backup: BackupInfo }) {
           ) : null}
         </span>
       </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
+      <TableCell className="hidden text-right tabular-nums text-muted-foreground sm:table-cell">
         {formatSize(b.size)}
       </TableCell>
       <TableCell>

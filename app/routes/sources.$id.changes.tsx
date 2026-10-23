@@ -1,4 +1,4 @@
-import { ArrowLeft, History } from "lucide-react";
+import { History } from "lucide-react";
 import type { SourceChangesData } from "~/api/types/SourceChangesData";
 import { apiLoad } from "~/lib/api";
 import { Link, useNavigate } from "react-router";
@@ -6,7 +6,6 @@ import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
 import { RelativeTime } from "~/components/relative-time";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -66,14 +65,7 @@ export default function SourceChanges({ loaderData }: Route.ComponentProps) {
       <PageHeader
         title="Changes"
         description={`What ${source.name} added and removed on each sync.`}
-        actions={
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/sources/${source.id}`}>
-              <ArrowLeft className="size-4" />
-              Back to source
-            </Link>
-          </Button>
-        }
+        backTo={`/sources/${source.id}`}
       />
 
       {syncs.length === 0 ? (

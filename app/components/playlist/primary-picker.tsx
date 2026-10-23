@@ -18,6 +18,7 @@ import {
   suggestPrimaries,
   type MatchTarget,
 } from "~/lib/channel-match";
+import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 
 export type Primary = {
   id: number;
@@ -59,6 +60,7 @@ export function PrimaryPicker({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
+  const coarse = useCoarsePointer();
 
   const suggestedIds = new Set(suggested.map((s) => s.id));
   const rest = primaries.filter((p) => !suggestedIds.has(p.id));
@@ -78,6 +80,12 @@ export function PrimaryPicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        collisionPadding={16}
+        // On a phone, focusing the search box opens the keyboard over the
+        // suggestions, which are usually what you want.
+        onOpenAutoFocus={(e) => {
+          if (coarse) e.preventDefault();
+        }}
         className="w-[min(28rem,calc(100vw-2rem))] p-0"
       >
         <Command>

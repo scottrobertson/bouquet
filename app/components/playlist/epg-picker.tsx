@@ -57,6 +57,8 @@ export function EpgPicker({
   playlistId,
   fetcher,
   alternates,
+  open,
+  onOpenChange: setOpen,
 }: {
   channel: EditorChannel;
   playlistId: number;
@@ -64,8 +66,11 @@ export function EpgPicker({
   // The primary's alternates, when this channel is an alt group primary. Their
   // own source EPGs are surfaced at the top as likely guides.
   alternates?: EditorChannel[];
+  // Controlled by the row, so its menu can open the picker on a phone, where the
+  // picker's own button is hidden.
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const epgFetcher = useFetcher<{ epgChannels: EpgChannel[] }>();
 

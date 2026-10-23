@@ -341,7 +341,7 @@ export function SourceForm({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button type="submit" name="intent" value={submitIntent} disabled={saving}>
           {saving ? "Saving..." : submitLabel}
         </Button>

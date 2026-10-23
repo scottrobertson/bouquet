@@ -1,6 +1,6 @@
-import { ArrowLeft, Pencil, Trash2, Upload } from "lucide-react";
+import { Pencil, Trash2, Upload } from "lucide-react";
 import { useEffect } from "react";
-import { Form, Link, useActionData, useFetcher } from "react-router";
+import { Form, useActionData, useFetcher } from "react-router";
 import { toast } from "sonner";
 import type { PlaylistSettingsData } from "~/api/types/PlaylistSettingsData";
 import type { UploadStatus } from "~/api/types/UploadStatus";
@@ -74,14 +74,7 @@ export default function PlaylistSettings({ loaderData }: Route.ComponentProps) {
     <div>
       <PageHeader
         title="Playlist settings"
-        actions={
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/playlists/${playlist.id}`}>
-              <ArrowLeft className="size-4" />
-              Back to editor
-            </Link>
-          </Button>
-        }
+        backTo={`/playlists/${playlist.id}`}
       />
 
       <div className="max-w-2xl space-y-8 px-4 py-5 md:px-8 md:py-6">

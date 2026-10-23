@@ -24,7 +24,11 @@ export function clientAction({ request }: Route.ClientActionArgs) {
 export default function SourceEdit({ loaderData, actionData, params }: Route.ComponentProps) {
   return (
     <div>
-      <PageHeader title="Edit source" description="Update connection details." />
+      <PageHeader
+        title="Edit source"
+        description="Update connection details."
+        backTo={`/sources/${params.id}`}
+      />
       <div className="px-4 py-5 md:px-8 md:py-6">
         <SourceForm
           defaults={loaderData.source}

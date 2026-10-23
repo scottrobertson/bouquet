@@ -17,6 +17,7 @@ export default function SourceNew({ actionData }: Route.ComponentProps) {
       <PageHeader
         title="Add source"
         description="Connect an Xtream Codes provider."
+        backTo="/sources"
       />
       <div className="px-4 py-5 md:px-8 md:py-6">
         <SourceForm

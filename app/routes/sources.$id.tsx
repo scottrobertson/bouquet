@@ -112,6 +112,7 @@ export default function SourceDetail({ loaderData, actionData }: Route.Component
     <div>
       <PageHeader
         border={false}
+        backTo="/sources"
         title={
           <span className="flex flex-wrap items-center gap-2.5">
             {source.name}

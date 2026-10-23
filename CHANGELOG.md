@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- You can change a channel's EPG from a phone. The EPG button is hidden on narrow screens to make
+  room for the channel name, so the channel's menu now has an EPG option there instead.
 - Probing now spots channels that are off air. When "Check the picture" is on (it is by default), a
   probe that sees a frozen picture, like a logo card or an "off air" slate, still counts as a pass,
   but its numbers are left out of the stream's quality so a quiet night can't drag it down. These
@@ -425,6 +427,12 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- More of the app fits a phone. The backups list on Settings folds its type, version and size under
+  the date, so the download, restore and delete buttons are always in view. The Jobs filters stay
+  on one row you can swipe. Pages that sit under another one, like a source's Changes or a
+  playlist's Settings, all use the same back arrow next to the title.
+- On a phone, the "Add as alternate of…" and category filter lists no longer jump straight into
+  their search box, which brought the keyboard up over the list you were about to tap.
 - The playlist editor fits a phone better. It drops the app's top bar and puts the menu button in
   the playlist's own header, which frees up room for channels. The filter box gets the full width,
   with a "+ Category" button that swaps in the new category box when you need it. Badges like
@@ -624,6 +632,8 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Fixed
 
+- On a phone, the Settings page and the add and edit source forms no longer scroll sideways, and the
+  probe history and smart sort windows no longer run to the very edges of the screen.
 - On a phone, the bottom of each page could sit behind Safari's toolbar, which hid things like the
   editor's "Add selected" bar. Pages now fit the part of the screen you can actually see, and keep
   clear of the notch and home bar.

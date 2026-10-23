@@ -18,6 +18,7 @@ import {
   Sparkles,
   Trash2,
   Tv,
+  Tv2,
   Unlink,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
@@ -352,6 +353,7 @@ export function ChannelRowBody({
   const fetcher = useFetcher();
   const [smartSortOpen, setSmartSortOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [epgOpen, setEpgOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const logo = channel.customLogo || channel.epgLogo || channel.sourceLogo;
   const isAlternate = channel.primaryChannelId != null;
@@ -546,6 +548,8 @@ export function ChannelRowBody({
               playlistId={playlistId}
               fetcher={fetcher}
               alternates={alternates}
+              open={epgOpen}
+              onOpenChange={setEpgOpen}
             />
           </span>
         )}
@@ -587,6 +591,9 @@ export function ChannelRowBody({
             }
             onProbeHistory={
               playlistId != null ? () => setHistoryOpen(true) : undefined
+            }
+            onEpg={
+              playlistId == null || isAlternate ? undefined : () => setEpgOpen(true)
             }
             onRename={group.isAlternate ? undefined : () => setEditingName(true)}
             onRevertName={
@@ -633,6 +640,7 @@ function GroupMenu({
   onProbeGroup,
   onSmartSort,
   onProbeHistory,
+  onEpg,
   onRename,
   onRevertName,
   probing,
@@ -647,6 +655,8 @@ function GroupMenu({
   // Set on a primary that has alternates: reorder the group by stream quality.
   onSmartSort?: () => void;
   onProbeHistory?: () => void;
+  // Unset on alternates, which always use their primary's guide.
+  onEpg?: () => void;
   // Unset on alternates, which are named from their primary.
   onRename?: () => void;
   // Set when the channel has a custom name: revert it to the source name.
@@ -751,6 +761,13 @@ function GroupMenu({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
+        ) : null}
+        {/* The EPG button sits on the row itself from sm up. */}
+        {onEpg ? (
+          <DropdownMenuItem onClick={onEpg} className="sm:hidden">
+            <Tv2 className="size-4" />
+            EPG
+          </DropdownMenuItem>
         ) : null}
         {onRename ? (
           <DropdownMenuItem onClick={() => (renameOnClose.current = true)}>
