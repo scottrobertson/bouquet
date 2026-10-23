@@ -76,6 +76,7 @@ pub struct AutoChannelView {
     pub logo: Option<String>,
     pub provider_name: String,
     pub stream_url: String,
+    pub catchup_days: i64,
 }
 
 /// The live channels of each auto-sync group, keyed by playlist category id:
@@ -84,7 +85,7 @@ pub fn auto_channels(conn: &Connection, mirrors: &[(i64, (i64, String))]) -> Res
     let mut out = HashMap::new();
     let mut stmt = conn.prepare(
         "SELECT sc.id, sc.name, sc.logo, s.name, sc.stream_id, s.server_url, s.stream_base_url, s.username, s.password, \
-           s.output_format FROM source_channels sc JOIN sources s ON s.id = sc.source_id \
+           s.output_format, sc.tv_archive_duration FROM source_channels sc JOIN sources s ON s.id = sc.source_id \
          WHERE sc.source_id = ? AND sc.category_name = ? AND sc.available = 1 ORDER BY sc.position, sc.id",
     )?;
     for (category_id, (source_id, name)) in mirrors {
@@ -97,6 +98,7 @@ pub fn auto_channels(conn: &Connection, mirrors: &[(i64, (i64, String))]) -> Res
                 logo: r.get(2)?,
                 provider_name: r.get(3)?,
                 stream_url: stream_url(r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, &stream_id, &format),
+                catchup_days: r.get(10)?,
             })
         })?;
         out.insert(category_id.to_string(), rows.collect::<rusqlite::Result<_>>()?);
@@ -147,6 +149,7 @@ pub struct EditorChannel {
     // The logo a custom EPG pick lends, so the editor shows what output will.
     pub epg_logo: Option<String>,
     pub stream_url: String,
+    pub catchup_days: i64,
     // For an alternate, the name it gets from its primary. For a primary, just
     // the source name.
     pub auto_name: String,
@@ -162,7 +165,7 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
            s.name, s.enabled, s.server_url, s.stream_base_url, s.username, s.password, s.output_format, \
            sc.probe_status, sc.probe_error, sc.probe_width, sc.probe_height, sc.probe_fps, sc.probe_video_codec, \
            sc.probe_audio_codec, sc.probe_bitrate, cat.enabled, sc.probe_passes, sc.probe_attempts, \
-           sc.consecutive_probe_failures \
+           sc.consecutive_probe_failures, sc.tv_archive_duration \
          FROM playlist_channels pc \
          JOIN source_channels sc ON pc.source_channel_id = sc.id \
          JOIN sources s ON sc.source_id = s.id \
@@ -208,6 +211,7 @@ pub fn playlist_channels(conn: &Connection, playlist_id: i64, alt_template: &str
                 probe_passes: r.get(35)?,
                 probe_attempts: r.get(36)?,
                 consecutive_probe_failures: r.get(37)?,
+                catchup_days: r.get(38)?,
                 probe_steady: false,
                 // No category row (uncategorised, or never seeded) counts as on.
                 source_category_enabled: r.get::<_, Option<bool>>(34)?.unwrap_or(true),
@@ -442,6 +446,7 @@ pub struct BrowserChannel {
     pub source_enabled: bool,
     pub epg_channel_id: Option<String>,
     pub stream_url: String,
+    pub catchup_days: i64,
 }
 
 fn count(conn: &Connection, f: &BrowserFilter) -> Result<i64> {
@@ -464,7 +469,7 @@ pub fn browser_channels(conn: &Connection, f: &BrowserFilter) -> Result<(Vec<Bro
     // bottom and are the first cut by the limit.
     let mut stmt = conn.prepare(&format!(
         "SELECT sc.id, sc.name, sc.logo, sc.category_name, sc.available, sc.source_id, s.name, s.enabled, sc.epg_channel_id, \
-           sc.stream_id, s.server_url, s.stream_base_url, s.username, s.password, s.output_format \
+           sc.stream_id, s.server_url, s.stream_base_url, s.username, s.password, s.output_format, sc.tv_archive_duration \
          FROM source_channels sc JOIN sources s ON s.id = sc.source_id WHERE {where_sql} \
          ORDER BY s.enabled DESC, s.name, sc.position, sc.id LIMIT {BROWSER_LIMIT}"
     ))?;
@@ -483,6 +488,7 @@ pub fn browser_channels(conn: &Connection, f: &BrowserFilter) -> Result<(Vec<Bro
                 source_enabled: r.get(7)?,
                 epg_channel_id: r.get(8)?,
                 stream_url: stream_url(r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, &stream_id, &format),
+                catchup_days: r.get(15)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -571,6 +577,7 @@ mod tests {
         let s = test_support::source(&conn, "Main");
         let a = test_support::source_channel(&conn, s, "a", "BBC One", "UK");
         let b = test_support::source_channel(&conn, s, "b", "BBC One Backup", "UK");
+        conn.execute("UPDATE source_channels SET tv_archive_duration = 7 WHERE id = ?", [b]).unwrap();
         let p = test_support::playlist(&conn, "PL", "tok");
         let cat = test_support::category(&conn, p, "UK", 0);
         add_channels(&conn, p, cat, &[a, b], None).unwrap();
@@ -579,6 +586,7 @@ mod tests {
         let rows = playlist_channels(&conn, p, "{name} (Alt {n})").unwrap();
         assert_eq!(rows[0].auto_name, "BBC One");
         assert_eq!(rows[1].auto_name, "BBC One (Alt 1)");
+        assert_eq!((rows[0].catchup_days, rows[1].catchup_days), (0, 7));
         assert!(rows[0].source_category_enabled);
         assert_eq!(rows[0].stream_url, "http://s/live/u/p/a.ts");
 

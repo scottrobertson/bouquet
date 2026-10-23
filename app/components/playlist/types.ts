@@ -26,6 +26,8 @@ export type EditorChannel = {
   sourceCategoryEnabled: boolean;
   // The provider's direct stream URL, for the Play in VLC / copy actions.
   streamUrl: string;
+  // Days of catchup the provider keeps, 0 when none.
+  catchupDays: number;
   // Latest ffprobe result for the underlying stream. Null = never probed.
   // "queued"/"probing" are live states shown while a probe is in flight.
   probeStatus: "queued" | "probing" | "ok" | "error" | "timeout" | null;
@@ -71,6 +73,7 @@ export type AutoChannelView = {
   logo: string | null;
   providerName: string;
   streamUrl: string;
+  catchupDays: number;
 };
 
 export type EpgChannel = {
@@ -102,4 +105,5 @@ export type BrowserChannel = {
   // The provider's direct stream URL, so a channel can be tried in VLC before
   // it's added to the playlist.
   streamUrl: string;
+  catchupDays: number;
 };

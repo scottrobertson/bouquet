@@ -44,6 +44,7 @@ import {
   type Primary,
   type SuggestedPrimary,
 } from "./primary-picker";
+import { CatchupIcon } from "./catchup-icon";
 import { StreamMenu } from "./stream-menu";
 import type { BrowserChannel, EditorCategory } from "./types";
 
@@ -835,7 +836,7 @@ function SourceRow({
     <div
       onClick={(e) => onSelect(e.shiftKey)}
       className={cn(
-        "flex cursor-pointer items-center gap-2 px-3 py-3.5 transition-colors hover:bg-white/[0.02] md:py-1.5",
+        "flex cursor-pointer items-center gap-2 py-3.5 pl-3 pr-2 transition-colors hover:bg-white/[0.02] md:py-1.5",
         indented && "pl-4",
         checked && "bg-primary/5",
         highlighted && "bg-primary/10 ring-1 ring-inset ring-primary/40",
@@ -863,6 +864,7 @@ function SourceRow({
           <span className="ml-1 text-[11px] text-warning">· unavailable</span>
         ) : null}
       </span>
+      <CatchupIcon days={channel.catchupDays} />
       <StreamMenu streamUrl={channel.streamUrl} />
     </div>
   );

@@ -35,6 +35,7 @@ import {
 import { logoSrc } from "~/lib/logo";
 import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 import { cn } from "~/lib/utils";
+import { CatchupIcon } from "./catchup-icon";
 import { AlternateRow, PrimaryRow } from "./channel-row";
 import { useChannelName } from "./channel-name";
 import { StreamMenu } from "./stream-menu";
@@ -218,6 +219,7 @@ export const AutoChannelRow = memo(function AutoChannelRow({
       <span className="min-w-0 flex-1 truncate text-[13px]">
         {formatName(channel.name, channel.providerName)}
       </span>
+      <CatchupIcon days={channel.catchupDays} />
       <StreamMenu streamUrl={channel.streamUrl} />
     </div>
   );

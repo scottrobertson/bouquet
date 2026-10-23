@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Added
 
+- The playlist editor marks channels that have catchup with a small rewind icon, in both the
+  playlist and the source browser, so you can tell which streams let players rewind before you add
+  them. Hover it to see how many days the provider keeps.
 - You can change a channel's EPG from a phone. The EPG button is hidden on narrow screens to make
   room for the channel name, so the channel's menu now has an EPG option there instead.
 - Probing now spots channels that are off air. When "Check the picture" is on (it is by default), a

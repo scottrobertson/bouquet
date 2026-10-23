@@ -42,6 +42,7 @@ import { logoSrc } from "~/lib/logo";
 import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
+import { CatchupIcon } from "./catchup-icon";
 import { useChannelName } from "./channel-name";
 import { EpgPicker } from "./epg-picker";
 import { ProbeHistoryDialog } from "./probe-history";
@@ -487,6 +488,7 @@ export function ChannelRowBody({
                 </TooltipContent>
               </Tooltip>
             ) : null}
+            <CatchupIcon days={channel.catchupDays} />
             {group?.hasAlternates ? (
               <Badge className="shrink-0 border-transparent bg-white/[0.06] text-muted-foreground">
                 {group.altCount} alt{group.altCount === 1 ? "" : "s"}
