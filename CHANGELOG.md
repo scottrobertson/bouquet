@@ -425,6 +425,15 @@ All notable changes to this project are recorded here. Newest first.
 
 ## Changed
 
+- The playlist editor fits a phone better. It drops the app's top bar and puts the menu button in
+  the playlist's own header, which frees up room for channels. The filter box gets the full width,
+  with a "+ Category" button that swaps in the new category box when you need it. Badges like
+  "Category off" sit under the channel name, so they no longer cut the name down to a few letters.
+- On a touch screen, tapping a channel or category name no longer starts renaming it, since that
+  was easy to do by accident while scrolling. Every channel and category menu now has a Rename
+  option instead, which works with a mouse too.
+- On a touch screen, channels drag by their grip handle only, so a finger on the rest of the row
+  scrolls the list.
 - Smart sort judges bitrate by percentage instead of a fixed half a Mbps. Streams within about 15%
   of each other count as a tie, which is fairer at both ends: half a Mbps was a big gap on a 2 Mbps
   stream and almost nothing on a 15 Mbps one. Groups are also only flagged for sorting when a

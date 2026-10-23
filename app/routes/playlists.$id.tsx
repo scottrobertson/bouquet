@@ -35,6 +35,7 @@ import {
 } from "~/components/ui/dialog";
 import { ChannelNameTemplate } from "~/components/playlist/channel-name";
 import { EditorBoard } from "~/components/playlist/editor-board";
+import { MobileNavButton } from "~/components/mobile-nav";
 import { ProbeQueue, probeQueue } from "~/components/playlist/probe-queue";
 import { Button } from "~/components/ui/button";
 import {
@@ -55,6 +56,8 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import type { Route } from "./+types/playlists.$id";
+
+export const handle = { ownMobileHeader: true };
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `${loaderData?.playlist.name ?? "Playlist"} · Bouquet` }];
@@ -138,8 +141,9 @@ export default function PlaylistEditor({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 md:px-6 md:pt-3">
+        <div className="flex min-w-0 items-center gap-1 md:gap-3">
+          <MobileNavButton className="md:hidden" />
           <Button asChild variant="ghost" size="icon" className="size-7 shrink-0">
             <Link to="/playlists">
               <ArrowLeft className="size-4" />

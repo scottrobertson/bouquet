@@ -209,6 +209,13 @@ export function EditorBoard({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [active, setActive] = useState<ActiveDrag>(null);
   const [newCategory, setNewCategory] = useState("");
+  // A phone is too narrow for the filter and the new category box side by side,
+  // so a button swaps the filter out for the new category box.
+  const [namingCategory, setNamingCategory] = useState(false);
+  const newCategoryRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (namingCategory) newCategoryRef.current?.focus();
+  }, [namingCategory]);
   // Which pane shows on mobile. Desktop shows both side by side regardless.
   const [view, setView] = useState<"source" | "playlist">("playlist");
 
@@ -538,6 +545,7 @@ export function EditorBoard({
     else if (wasCreating.current) {
       wasCreating.current = false;
       setNewCategory("");
+      setNamingCategory(false);
     }
   }, [creatingCat]);
 
@@ -1087,7 +1095,8 @@ export function EditorBoard({
           <div className="border-b border-border px-4 py-3">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                Playlist
+                {/* The phone tabs already say which pane this is. */}
+                <span className="hidden md:inline">Playlist</span>
                 {adding ? (
                   <span className="flex items-center gap-1 normal-case tracking-normal text-primary">
                     <Loader2 className="size-3 animate-spin" />
@@ -1134,7 +1143,12 @@ export function EditorBoard({
               </div>
             </div>
             <div className="flex gap-2">
-              <div className="relative w-1/2">
+              <div
+                className={cn(
+                  "relative flex-1 md:w-1/2 md:flex-none",
+                  namingCategory && "hidden md:block",
+                )}
+              >
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   ref={plSearchRef}
@@ -1169,9 +1183,14 @@ export function EditorBoard({
                     e.preventDefault();
                     createCategory();
                   }
+                  if (e.key === "Escape") setNamingCategory(false);
                 }}
+                ref={newCategoryRef}
                 placeholder="New category name"
-                className="h-8 flex-1"
+                className={cn(
+                  "h-8 flex-1",
+                  !namingCategory && "hidden md:block",
+                )}
               />
               <Button
                 type="button"
@@ -1179,10 +1198,34 @@ export function EditorBoard({
                 variant="secondary"
                 onClick={createCategory}
                 disabled={!newCategory.trim() || creatingCat}
+                className={cn(!namingCategory && "hidden md:inline-flex")}
               >
                 <Plus className="size-4" />
                 Add
               </Button>
+              {namingCategory ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setNamingCategory(false)}
+                  className="size-8 md:hidden"
+                  aria-label="Cancel"
+                >
+                  <X className="size-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setNamingCategory(true)}
+                  className="md:hidden"
+                >
+                  <Plus className="size-4" />
+                  Category
+                </Button>
+              )}
             </div>
           </div>
 

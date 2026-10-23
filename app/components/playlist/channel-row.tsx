@@ -38,6 +38,7 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { logoSrc } from "~/lib/logo";
+import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 import { cleanProbeError, qualityMeta } from "~/lib/quality";
 import { cn } from "~/lib/utils";
 import { useChannelName } from "./channel-name";
@@ -173,21 +174,29 @@ export function PrimaryRow({
   insertAbove?: boolean;
 }) {
   const dragDisabled = group?.dragDisabled ?? false;
+  // With a mouse the whole row is the drag handle. On a touch screen a finger
+  // on the row has to scroll the list, so only the grip drags there.
+  const coarse = useCoarsePointer();
   return (
-    // The whole row is the drag handle. Interactive controls below stop
-    // propagation so they click/toggle instead of starting a drag.
+    // Interactive controls below stop propagation so they click/toggle instead
+    // of starting a drag.
     <div
       className={cn(
         "group/row flex items-center gap-1.5 border-b border-white/5 px-2 py-2 transition-colors hover:bg-white/[0.02] sm:gap-2 sm:px-3",
-        !dragDisabled && "cursor-grab active:cursor-grabbing",
+        !dragDisabled && !coarse && "cursor-grab active:cursor-grabbing",
         selected && "bg-primary/5",
       )}
       style={insertAbove ? { boxShadow: "inset 0 2px 0 0 var(--primary)" } : undefined}
-      {...dragHandleProps}
+      {...(coarse ? {} : dragHandleProps)}
     >
-      {/* The whole row is the drag handle; the grip is just an affordance, so
-          hide it on mobile to claw back width. */}
-      {dragDisabled ? null : (
+      {dragDisabled ? null : coarse ? (
+        <span
+          className="-my-2 flex shrink-0 touch-none items-center self-stretch px-2 text-muted-foreground/60"
+          {...dragHandleProps}
+        >
+          <GripVertical className="size-4" />
+        </span>
+      ) : (
         <GripVertical className="hidden size-4 shrink-0 text-muted-foreground/50 sm:block" />
       )}
       <span
@@ -343,6 +352,7 @@ export function ChannelRowBody({
   const fetcher = useFetcher();
   const [smartSortOpen, setSmartSortOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const logo = channel.customLogo || channel.epgLogo || channel.sourceLogo;
   const isAlternate = channel.primaryChannelId != null;
   // Alternates are always auto-named from their primary (any stored custom name
@@ -373,6 +383,37 @@ export function ChannelRowBody({
   // This row's own probe is in flight. The server status only catches up on the
   // next poll, so show the spinner straight away.
   const probing = fetcher.formData?.get("intent") === "probeChannel";
+
+  const statusBadges =
+    !channel.sourceEnabled ||
+    !channel.sourceAvailable ||
+    !channel.sourceCategoryEnabled ||
+    (channel.autoDisabledAt && !enabled) ? (
+      <>
+        {!channel.sourceEnabled ? (
+          <Badge className="border-transparent bg-muted text-muted-foreground">
+            Source off
+          </Badge>
+        ) : null}
+        {!channel.sourceAvailable ? (
+          <Badge className="border-transparent bg-warning/10 text-warning">
+            Unavailable
+          </Badge>
+        ) : null}
+        {!channel.sourceCategoryEnabled ? (
+          <Badge className="border-transparent bg-muted text-muted-foreground">
+            Category off
+          </Badge>
+        ) : null}
+        {/* A source that's off already explains why the channel is out, so
+            the auto-disabled marker would just be noise next to it. */}
+        {channel.sourceEnabled && channel.autoDisabledAt && !enabled ? (
+          <Badge className="border-transparent bg-warning/10 text-warning">
+            Auto-disabled
+          </Badge>
+        ) : null}
+      </>
+    ) : null;
 
   return (
     <>
@@ -409,101 +450,88 @@ export function ChannelRowBody({
         </span>
       )}
 
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-0.5 transition-opacity",
-          dimmed && "opacity-40",
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-1.5">
-          <NameField
-            channel={channel}
-            displayName={displayName}
-            baseName={baseName}
-            format={(name) => formatName(name, channel.sourceProviderName)}
-            disabled={overlay}
-            editable={!group?.isAlternate}
-          />
-          {renamed || group?.isAlternate ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="shrink-0 cursor-default text-muted-foreground"
-                >
-                  <Pencil className="size-3" />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {group?.isAlternate
-                  ? `Original: ${channel.sourceName}`
-                  : `Renamed from “${baseName}”`}
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-          {group?.hasAlternates ? (
-            <Badge className="shrink-0 border-transparent bg-white/[0.06] text-muted-foreground">
-              {group.altCount} alt{group.altCount === 1 ? "" : "s"}
-            </Badge>
-          ) : null}
-          {group?.needsSort && !overlay ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => setSmartSortOpen(true)}
-                  className="shrink-0 cursor-pointer text-primary hover:text-primary/80"
-                  aria-label="Smart sort available"
-                >
-                  <Sparkles className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Smart sort would put this group in a different order. Click to
-                see it.
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-0.5 transition-opacity",
+            dimmed && "opacity-40",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-1.5">
+            <NameField
+              channel={channel}
+              displayName={displayName}
+              baseName={baseName}
+              format={(name) => formatName(name, channel.sourceProviderName)}
+              disabled={overlay}
+              editable={!group?.isAlternate}
+              editing={editingName}
+              onEditingChange={setEditingName}
+            />
+            {renamed || group?.isAlternate ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="shrink-0 cursor-default text-muted-foreground"
+                  >
+                    <Pencil className="size-3" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {group?.isAlternate
+                    ? `Original: ${channel.sourceName}`
+                    : `Renamed from “${baseName}”`}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {group?.hasAlternates ? (
+              <Badge className="shrink-0 border-transparent bg-white/[0.06] text-muted-foreground">
+                {group.altCount} alt{group.altCount === 1 ? "" : "s"}
+              </Badge>
+            ) : null}
+            {group?.needsSort && !overlay ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => setSmartSortOpen(true)}
+                    className="shrink-0 cursor-pointer text-primary hover:text-primary/80"
+                    aria-label="Smart sort available"
+                  >
+                    <Sparkles className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Smart sort would put this group in a different order. Click to
+                  see it.
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <span className="shrink-0">{channel.sourceProviderName}</span>
+            <span className="shrink-0 text-muted-foreground/50">·</span>
+            <span className="min-w-0 truncate">
+              {channel.sourceCategoryName ?? "Uncategorised"}
+            </span>
+          </div>
+          <QualityLine channel={channel} probing={probing} />
         </div>
-        <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-          <span className="shrink-0">{channel.sourceProviderName}</span>
-          <span className="shrink-0 text-muted-foreground/50">·</span>
-          <span className="min-w-0 truncate">
-            {channel.sourceCategoryName ?? "Uncategorised"}
-          </span>
-        </div>
-        <QualityLine channel={channel} probing={probing} />
+        {/* On a phone the badges sit under the name, or they squeeze it down to
+            a few letters. */}
+        {statusBadges ? (
+          <div className="mt-0.5 flex flex-wrap gap-1 sm:hidden">
+            {statusBadges}
+          </div>
+        ) : null}
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
-        {!channel.sourceEnabled ||
-        !channel.sourceAvailable ||
-        !channel.sourceCategoryEnabled ||
-        (channel.autoDisabledAt && !enabled) ? (
-          <div className="flex shrink-0 items-center gap-1">
-            {!channel.sourceEnabled ? (
-              <Badge className="border-transparent bg-muted text-muted-foreground">
-                Source off
-              </Badge>
-            ) : null}
-            {!channel.sourceAvailable ? (
-              <Badge className="border-transparent bg-warning/10 text-warning">
-                Unavailable
-              </Badge>
-            ) : null}
-            {!channel.sourceCategoryEnabled ? (
-              <Badge className="border-transparent bg-muted text-muted-foreground">
-                Category off
-              </Badge>
-            ) : null}
-            {/* A source that's off already explains why the channel is out, so
-                the auto-disabled marker would just be noise next to it. */}
-            {channel.sourceEnabled && channel.autoDisabledAt && !enabled ? (
-              <Badge className="border-transparent bg-warning/10 text-warning">
-                Auto-disabled
-              </Badge>
-            ) : null}
+        {statusBadges ? (
+          <div className="hidden shrink-0 items-center gap-1 sm:flex">
+            {statusBadges}
           </div>
         ) : null}
         <div className="flex items-center gap-0.5">
@@ -560,6 +588,7 @@ export function ChannelRowBody({
             onProbeHistory={
               playlistId != null ? () => setHistoryOpen(true) : undefined
             }
+            onRename={group.isAlternate ? undefined : () => setEditingName(true)}
             onRevertName={
               renamed
                 ? () =>
@@ -604,6 +633,7 @@ function GroupMenu({
   onProbeGroup,
   onSmartSort,
   onProbeHistory,
+  onRename,
   onRevertName,
   probing,
 }: {
@@ -617,10 +647,15 @@ function GroupMenu({
   // Set on a primary that has alternates: reorder the group by stream quality.
   onSmartSort?: () => void;
   onProbeHistory?: () => void;
+  // Unset on alternates, which are named from their primary.
+  onRename?: () => void;
   // Set when the channel has a custom name: revert it to the source name.
   onRevertName?: () => void;
   probing: boolean;
 }) {
+  // The menu hands focus back to its button as it closes, which would blur the
+  // rename box straight away and save it. So start renaming after that.
+  const renameOnClose = useRef(false);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -635,7 +670,16 @@ function GroupMenu({
           <MoreVertical className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+      <DropdownMenuContent
+        align="end"
+        onPointerDown={(e) => e.stopPropagation()}
+        onCloseAutoFocus={(e) => {
+          if (!renameOnClose.current) return;
+          renameOnClose.current = false;
+          e.preventDefault();
+          onRename?.();
+        }}
+      >
         <DropdownMenuItem onClick={onToggleEnabled}>
           {enabled ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           {enabled ? "Disable" : "Enable"}
@@ -708,15 +752,19 @@ function GroupMenu({
             <DropdownMenuSeparator />
           </>
         ) : null}
-        {onRevertName ? (
-          <>
-            <DropdownMenuItem onClick={onRevertName}>
-              <RotateCcw className="size-4" />
-              Revert name
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
+        {onRename ? (
+          <DropdownMenuItem onClick={() => (renameOnClose.current = true)}>
+            <Pencil className="size-4" />
+            Rename
+          </DropdownMenuItem>
         ) : null}
+        {onRevertName ? (
+          <DropdownMenuItem onClick={onRevertName}>
+            <RotateCcw className="size-4" />
+            Revert name
+          </DropdownMenuItem>
+        ) : null}
+        {onRename || onRevertName ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem
           onClick={group.onDelete}
           className="text-destructive focus:text-destructive"
@@ -736,6 +784,8 @@ function NameField({
   format,
   disabled,
   editable = true,
+  editing,
+  onEditingChange: setEditing,
 }: {
   channel: EditorChannel;
   displayName: string;
@@ -746,9 +796,13 @@ function NameField({
   disabled?: boolean;
   // Alternates are auto-named from their primary, so they can't be renamed.
   editable?: boolean;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
 }) {
   const fetcher = useFetcher();
-  const [editing, setEditing] = useState(false);
+  // On a touch screen it's too easy to tap the name while scrolling, so
+  // renaming starts from the row menu there.
+  const coarse = useCoarsePointer();
   const [value, setValue] = useState(displayName);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -806,17 +860,19 @@ function NameField({
     );
   }
 
+  const nameClass = cn(
+    "min-w-0 truncate text-left text-[13px]",
+    channel.customName && channel.customName !== baseName ? "font-medium" : "",
+  );
+
+  if (coarse) return <span className={nameClass}>{format(shown)}</span>;
+
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={() => setEditing(true)}
-      className={cn(
-        "min-w-0 truncate text-left text-[13px]",
-        channel.customName && channel.customName !== baseName
-          ? "font-medium"
-          : "",
-      )}
+      className={nameClass}
       title="Click to rename"
     >
       {format(shown)}

@@ -7,6 +7,7 @@ import {
   Gauge,
   GripVertical,
   MoreVertical,
+  Pencil,
   RefreshCw,
   Trash2,
   Tv,
@@ -32,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { logoSrc } from "~/lib/logo";
+import { useCoarsePointer } from "~/lib/use-coarse-pointer";
 import { cn } from "~/lib/utils";
 import { AlternateRow, PrimaryRow } from "./channel-row";
 import { useChannelName } from "./channel-name";
@@ -70,6 +72,7 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
 }) {
   const auto = category.auto;
   const isAuto = auto != null;
+  const [editingName, setEditingName] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -101,7 +104,8 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
         {dragDisabled ? null : (
           <button
             type="button"
-            className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+            // A finger on the grip should drag the category, not scroll the list.
+            className="cursor-grab touch-none text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
             {...attributes}
             {...listeners}
           >
@@ -120,7 +124,11 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
             <ChevronDown className="size-4" />
           )}
         </button>
-        <CategoryName category={category} />
+        <CategoryName
+          category={category}
+          editing={editingName}
+          onEditingChange={setEditingName}
+        />
         <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
           {count}
         </span>
@@ -141,7 +149,11 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
           </span>
         ) : null}
         <div className="ml-auto">
-          <CategoryMenu category={category} count={count} />
+          <CategoryMenu
+            category={category}
+            count={count}
+            onRename={() => setEditingName(true)}
+          />
         </div>
       </div>
     </div>
@@ -338,9 +350,19 @@ export const SortableAlternateRow = memo(function SortableAlternateRow({
   );
 });
 
-function CategoryName({ category }: { category: EditorCategory }) {
+function CategoryName({
+  category,
+  editing,
+  onEditingChange: setEditing,
+}: {
+  category: EditorCategory;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+}) {
   const fetcher = useFetcher();
-  const [editing, setEditing] = useState(false);
+  // On a touch screen it's too easy to tap the name while scrolling, so
+  // renaming starts from the category menu there.
+  const coarse = useCoarsePointer();
   const [value, setValue] = useState(category.name);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -391,6 +413,10 @@ function CategoryName({ category }: { category: EditorCategory }) {
     );
   }
 
+  if (coarse) {
+    return <span className="min-w-0 truncate text-[13px] font-semibold">{shown}</span>;
+  }
+
   return (
     <button
       type="button"
@@ -408,12 +434,17 @@ function CategoryName({ category }: { category: EditorCategory }) {
 function CategoryMenu({
   category,
   count,
+  onRename,
 }: {
   category: EditorCategory;
   count: number;
+  onRename: () => void;
 }) {
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
+  // The menu hands focus back to its button as it closes, which would blur the
+  // rename box straight away and save it. So start renaming after that.
+  const renameOnClose = useRef(false);
   const isAuto = category.auto != null;
   const probing = fetcher.formData?.get("intent") === "probeCategory";
 
@@ -431,7 +462,20 @@ function CategoryMenu({
             <MoreVertical className="size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(e) => {
+            if (!renameOnClose.current) return;
+            renameOnClose.current = false;
+            e.preventDefault();
+            onRename();
+          }}
+        >
+          <DropdownMenuItem onClick={() => (renameOnClose.current = true)}>
+            <Pencil className="size-4" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {!isAuto ? (
             <>
               <DropdownMenuItem

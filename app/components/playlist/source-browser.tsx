@@ -404,7 +404,8 @@ export function SourceBrowser({
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-3">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          {/* The phone tabs already say which pane this is. */}
+          <div className="hidden text-[11px] font-medium uppercase tracking-wider text-muted-foreground md:block">
             Source channels
           </div>
           {results.length > 0 ? (
@@ -439,10 +440,11 @@ export function SourceBrowser({
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={onSearchKeyDown}
               placeholder="Search all sources..."
-              className="h-8 px-8"
+              className="h-8 px-8 pointer-coarse:pr-3"
             />
+            {/* Touch screens have no keyboard for the shortcut. */}
             {searchInput ? null : (
-              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">
+              <kbd className="pointer-events-none absolute pointer-coarse:hidden right-2 top-1/2 -translate-y-1/2 rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">
                 /
               </kbd>
             )}

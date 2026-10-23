@@ -1,16 +1,15 @@
-import { Menu, Tv } from "lucide-react";
-import { useState } from "react";
+import { Tv } from "lucide-react";
+import { useCallback, useState } from "react";
 import { Outlet, type ShouldRevalidateFunctionArgs } from "react-router";
 import type { Route } from "./+types/_app";
 import { AppSidebar, SidebarContent } from "~/components/app-sidebar";
-import { Button } from "~/components/ui/button";
-import { JobsProvider } from "~/lib/jobs";
 import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "~/components/ui/sheet";
+  MobileNavButton,
+  MobileNavContext,
+  useOwnMobileHeader,
+} from "~/components/mobile-nav";
+import { JobsProvider } from "~/lib/jobs";
+import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 
 // Screens put their filters in the URL. The sidebar doesn't care about those,
 // and revalidating here would still cost a server round trip per keystroke in a
@@ -39,6 +38,8 @@ export function clientLoader() {
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(loaderData.sidebarCollapsed);
+  const ownMobileHeader = useOwnMobileHeader();
+  const openNav = useCallback(() => setOpen(true), []);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -51,42 +52,42 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
 
   return (
     <JobsProvider>
-      {/* On phones 100vh is taller than the visible screen and hides the bottom
-          of the page behind Safari's toolbar, so size to what's visible. The
-          viewport tag lets the page draw under the notch and home bar, so pad
-          clear of them. */}
-      <div className="flex h-dvh overflow-hidden bg-background pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-        <AppSidebar collapsed={collapsed} onToggle={toggleCollapsed} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mobile top bar. Desktop uses the always-on sidebar instead. */}
-          <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border px-3 pt-[env(safe-area-inset-top)] md:hidden">
-            <Sheet open={open} onOpenChange={setOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-9">
-                  <Menu className="size-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
-                <SheetTitle className="sr-only">Menu</SheetTitle>
-                {/* Close the drawer when a link navigates. */}
-                <SidebarContent onNavigate={() => setOpen(false)} />
-              </SheetContent>
-            </Sheet>
-            <div className="flex items-center gap-2">
-              <div className="flex size-7 items-center justify-center rounded-md bg-primary/15 text-primary">
-                <Tv className="size-4" />
-              </div>
-              <span className="text-sm font-semibold tracking-tight">
-                Bouquet
-              </span>
-            </div>
-          </header>
+      <MobileNavContext.Provider value={openNav}>
+        {/* On phones 100vh is taller than the visible screen and hides the
+            bottom of the page behind Safari's toolbar, so size to what's
+            visible. The viewport tag lets the page draw under the notch and
+            home bar, so pad clear of them. */}
+        <div className="flex h-dvh overflow-hidden bg-background pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
+          <AppSidebar collapsed={collapsed} onToggle={toggleCollapsed} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* Mobile top bar. Desktop uses the always-on sidebar instead. */}
+            {ownMobileHeader ? null : (
+              <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border px-3 pt-[env(safe-area-inset-top)] md:hidden">
+                <MobileNavButton />
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-md bg-primary/15 text-primary">
+                    <Tv className="size-4" />
+                  </div>
+                  <span className="text-sm font-semibold tracking-tight">
+                    Bouquet
+                  </span>
+                </div>
+              </header>
+            )}
 
-          <main className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-            <Outlet />
-          </main>
+            <main className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent side="left" className="w-64 p-0">
+            <SheetTitle className="sr-only">Menu</SheetTitle>
+            {/* Close the drawer when a link navigates. */}
+            <SidebarContent onNavigate={() => setOpen(false)} />
+          </SheetContent>
+        </Sheet>
+      </MobileNavContext.Provider>
     </JobsProvider>
   );
 }
