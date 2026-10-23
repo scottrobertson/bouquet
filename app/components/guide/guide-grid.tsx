@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Copy, MoreVertical, Play, RotateCcw, Tv } from "lucide-react";
+import { Copy, MoreVertical, Play, Rewind, Tv } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -387,7 +387,7 @@ const ChannelRow = memo(function ChannelRow({
         )}
         <span className="flex-1 truncate text-[13px]">{row.displayName}</span>
         {row.catchupDays > 0 ? (
-          <RotateCcw
+          <Rewind
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-label={`${row.catchupDays} day catchup`}
           />
@@ -474,7 +474,7 @@ function ProgrammeBlock({
       >
         <span className="flex min-w-0 items-center gap-1">
           {isReplayable(p.startMs, p.stopMs, nowMs, catchupDays) ? (
-            <RotateCcw className="size-3 shrink-0 text-muted-foreground" />
+            <Rewind className="size-3 shrink-0 text-muted-foreground" />
           ) : null}
           <span className="truncate text-[12px] font-medium">
             {p.title ?? "Unknown"}
@@ -561,7 +561,7 @@ function ProgrammeDialog({
         {replayUrl ? (
           <div className="flex flex-col gap-2">
             <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <RotateCcw className="size-3.5" />
+              <Rewind className="size-3.5" />
               Available to replay from your provider's catchup.
             </p>
             <div className="flex flex-wrap gap-2">
